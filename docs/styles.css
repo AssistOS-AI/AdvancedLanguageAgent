@@ -1,0 +1,11 @@
+:root { color-scheme: light; font-family: Inter, system-ui, sans-serif; line-height: 1.6; --ink:#1f2937; --muted:#5b6472; --accent:#2457a6; --surface:#f4f7fb; }
+* { box-sizing: border-box; }
+body { margin:0; color:var(--ink); background:var(--surface); }
+.shell { display:grid; grid-template-columns: 260px minmax(0, 860px); gap:2rem; max-width:1200px; margin:0 auto; padding:2rem 1.25rem; }
+aside { position:sticky; top:1rem; align-self:start; background:#fff; padding:1.2rem; border:1px solid #dbe3ef; border-radius:10px; }
+aside h1 { font-size:1.1rem; margin-top:0; } nav a { display:block; padding:.35rem 0; color:var(--accent); text-decoration:none; }
+main { background:#fff; padding:2.2rem 2.5rem; border:1px solid #dbe3ef; border-radius:10px; }
+h1,h2,h3 { line-height:1.25; } h1 { margin-top:0; } a { color:var(--accent); }
+.note { border-left:4px solid var(--accent); background:#eef4ff; padding:.8rem 1rem; }
+pre.mermaid { overflow:auto; background:#fafcff; padding:1rem; }
+@media (max-width:760px) { .shell { display:block; padding:.75rem; } aside { position:static; margin-bottom:1rem; } main { padding:1.25rem; } }

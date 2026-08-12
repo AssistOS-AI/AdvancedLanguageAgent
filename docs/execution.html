@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Advanced Language Agent Documentation</title><link rel="stylesheet" href="styles.css"><script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'; mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script></head>
+<body><div class="shell"><aside><h1>Advanced Language Agent</h1><nav><a href="index.html">Overview</a><a href="architecture.html">Architecture</a><a href="routing.html">Routing</a><a href="execution.html">Execution</a><a href="integration.html">Integration</a><a href="specsLoader.html?spec=matrix.md">Specifications</a></nav></aside><main><p><a href="index.html">Documentation</a> / Execution</p><h1>Execution backends and task feedback</h1><p>After an A-Skill is selected, ALA resolves the capabilities it needs against the current environment. The skill requests a class of executor, such as a fast LLM, strong reasoning, long context, web research, or coding-agent execution; ALA chooses a configured compatible backend.</p><h2>Backend policy</h2><p>Direct LLM calls are the normal path for straightforward work. Complex planning, multi-source research, long transformations, iterative verification, and quality-sensitive synthesis may use stronger models or authenticated coding agents such as Codex or OpenCode. ALA invokes supported CLIs without reading or extracting their credentials. Ploinky agents may participate when their advertised capability metadata matches.</p><h2>Workspace and feedback flow</h2><pre class="mermaid">sequenceDiagram
+  participant C as Caller
+  participant A as ALA
+  participant S as A-Skill
+  participant X as Executor
+  C->>A: instruction and payload
+  A->>S: select task method
+  S->>A: capability and workspace requirements
+  A->>X: execute bounded task
+  X-->>A: result and checks
+  A-->>C: result; diagnostics separate
+  C->>A: corrective feedback (optional)
+  A->>X: bounded retry or escalation</pre><p>A temporary workspace may hold explicit inputs, retrieved sources, intermediate outputs, verification results, and final artifacts. It is not an implicit copy of the caller's software repository. Interactive sessions preserve the current task and previous answer; feedback becomes an additional constraint. Retries are bounded and may escalate from a fast model to a stronger model or from direct execution to agentic execution.</p></main></div></body></html>
