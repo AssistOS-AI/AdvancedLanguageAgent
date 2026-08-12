@@ -8,13 +8,27 @@ summary: Defines the extension boundary for independently versioned task familie
 
 ## Introduction
 
-A task repository packages one coherent class of language work, such as translation, reference verification, CNL transformation, SOP Lang planning, scientific writing, or web research. Its A-Skills define task methodology.
+A task repository extends Advanced Language Agent (ALA) with one coherent class of
+language work, such as translation,
+reference verification, controlled-natural-language transformation, SOP Lang
+planning, scientific writing, or web research. AchillesAgentLib is the JavaScript
+library ALA uses to discover and run skills. An A-Skill is a reusable
+AchillesAgentLib skill in a task repository. It packages task instructions and
+optional code using a supported family: Code Skills run repository-provided modules,
+Orchestration Skills coordinate multiple actions, DBTable Skills describe table
+operations, and Dynamic Code Generation Skills produce code during execution.
 
 ## Core Content
 
-Each repository must describe covered requests, selection evidence, expected inputs and outputs, available A-Skills, constraints, verification procedures, and generic ALA capabilities that may be requested. This semantic description participates in automatic routing.
+Each repository must describe the requests it covers, the evidence used to select
+it, expected inputs and outputs, available A-Skills, constraints, verification
+procedures, and required ALA services. ALA must use this description during
+automatic routing.
 
-An A-Skill must delegate model execution, agent execution, research access, and temporary workspace creation to ALA. ALA must not hard-code task-specific methodology in its core. Repositories must be independently configurable and versionable.
+An A-Skill must delegate model calls, agent execution, research access, and temporary
+workspace creation to ALA. ALA must not hard-code task-specific instructions or
+validation procedures in its runtime. Task repositories must remain independently
+configurable and versionable.
 
 ## Decisions & Questions
 
@@ -24,8 +38,11 @@ Response: Discovery follows existing AchillesAgentLib skill conventions wherever
 
 ### Question #2: How are incompatible skills isolated?
 
-Options: Resolve repository isolation and dependency loading during implementation; no cross-repository execution guarantee is defined yet.
+Options: A deployment may isolate every task repository in its own dependency scope
+or allow repositories to share dependencies through the ALA installation. No
+cross-repository execution guarantee applies until one isolation policy is selected.
 
 ## Conclusion
 
-Task repositories define what ALA knows how to do; ALA defines the generic execution substrate.
+Task repositories define the work ALA can select; ALA supplies the shared services
+used to execute that work.

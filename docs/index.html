@@ -1,16 +1,71 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Advanced Language Agent Documentation</title><link rel="stylesheet" href="styles.css"><script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'; mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script></head>
-<body><div class="shell"><aside><h1>Advanced Language Agent</h1><nav><a href="index.html">Overview</a><a href="architecture.html">Architecture</a><a href="routing.html">Routing</a><a href="execution.html">Execution</a><a href="integration.html">Integration</a><a href="specsLoader.html?spec=matrix.md">Specifications</a></nav></aside><main>
-<p><a href="index.html">Documentation</a> / Overview</p><h1>Advanced Language Agent</h1>
-<p>Advanced Language Agent (ALA) is a system-installed CLI for language-oriented and documentation-oriented tasks. It gives callers one interface while independent A-Skills define task methodology.</p>
-<h2>What the system does</h2><p>A caller supplies an instruction and optional payload. ALA selects a task repository or A-Skill, resolves generic execution requirements, and returns the result through standard output or a file. Routing diagnostics remain separate from the result.</p>
-<pre class="mermaid">flowchart LR
-  U[Caller] --> I[Instruction and payload]
-  I --> R[Task or A-Skill routing]
-  R --> C[Generic ALA capability]
-  C --> E[LLM or coding agent]
-  E --> O[Result output]</pre>
-<h2>Documentation map</h2><p><a href="architecture.html">Architecture</a> defines the ALA boundary and task repositories. <a href="routing.html">Routing</a> describes MainAgent-compatible and symbolic-first selection. <a href="execution.html">Execution</a> covers models, agents, workspaces, feedback, and retries. <a href="integration.html">Integration</a> records configuration, Ploinky operation, and evaluation.</p>
-<h2>Rules and verification</h2><p><a href="specsLoader.html?spec=DS001-coding-style.md">DS001-coding-style.md</a> is the canonical source for coding style, module layout, and modular test organization. The full specification set is available through the <a href="specsLoader.html?spec=matrix.md">specification matrix</a>. Source changes must update both these pages and the affected specifications.</p>
-<h2>Skill catalog</h2><p>The host repository uses the <code>gamp-specs</code> documentation skill. A-Skills are supplied by independent task repositories and remain documented with those repositories.</p>
-</main></div></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Advanced Language Agent Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main>
+    <p><a href="index.html">Documentation</a> / Overview</p>
+    <h1>Advanced Language Agent</h1>
+    <p>
+      Advanced Language Agent (ALA) is a system-installed command-line interface
+      for language and documentation tasks. It gives people and other agents one
+      entry point for research, transformation, planning, and verification without
+      requiring each caller to integrate language models and agent tools directly.
+    </p>
+    <p>
+      ALA uses AchillesAgentLib, a JavaScript library that discovers and runs
+      reusable agent skills. ALA performs task-specific work through A-Skills. An
+      A-Skill is an AchillesAgentLib skill installed through an independent task
+      repository; it packages the instructions and optional code for one kind of
+      work.
+    </p>
+    <h2>What the system does</h2>
+    <p>
+      A caller supplies an instruction and optional input. ALA selects an A-Skill,
+      determines which execution service it needs, and returns the result through
+      standard output or a file. An execution service is a language model, coding
+      agent, research tool, or temporary workspace supplied by ALA. Routing
+      diagnostics remain separate from the result.
+    </p>
+    <pre class="mermaid">flowchart LR
+      U[Caller] --> I[Instruction and payload]
+      I --> R[Task or A-Skill routing]
+      R --> C[Required execution service]
+      C --> E[Model, agent, research, or workspace]
+      E --> O[Result output]</pre>
+    <h2>AchillesAgentLib skill families</h2>
+    <p>
+      AchillesAgentLib provides several skill families for different execution
+      needs. Code Skills run modules supplied by a task repository. Orchestration
+      Skills coordinate multiple skills, tools, or agents across a multi-step task.
+      DBTable Skills describe table fields and database operations. Dynamic Code
+      Generation Skills generate and execute code when a task cannot be handled by
+      a fixed module. A task repository selects the family that matches the work its
+      A-Skills perform.
+    </p>
+    <h2>Documentation path</h2>
+    <p>
+      Start with <a href="architecture.html">Architecture</a> to understand how ALA,
+      task repositories, and A-Skills divide responsibility. Continue with
+      <a href="routing.html">Routing</a> to see how ALA selects an A-Skill, then read
+      <a href="execution.html">Execution</a> to follow the selected skill through
+      models, agents, research, workspaces, feedback, and retries. Finish with
+      <a href="integration.html">Integration</a> for deployment through Ploinky,
+      configuration reuse, and routing evaluation. The
+      <a href="specsLoader.html?spec=matrix.md">specification matrix</a> contains the
+      normative contracts behind all four pages.
+    </p>
+  </main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

@@ -1,9 +1,53 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Advanced Language Agent Documentation</title><link rel="stylesheet" href="styles.css"><script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'; mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script></head>
-<body><div class="shell"><aside><h1>Advanced Language Agent</h1><nav><a href="index.html">Overview</a><a href="architecture.html">Architecture</a><a href="routing.html">Routing</a><a href="execution.html">Execution</a><a href="integration.html">Integration</a><a href="specsLoader.html?spec=matrix.md">Specifications</a></nav></aside><main>
-<p><a href="index.html">Documentation</a> / Integration</p><h1>Integration and evaluation</h1>
-<p>ALA operates as a standalone CLI and, where deployed, as a Ploinky agent. The same interface is exposed through existing Ploinky CLI and WebChat mechanisms.</p>
-<h2>Configuration boundary</h2><p>Task repositories are configured independently from the ALA installation. Existing AchillesAgentLib model configuration and semantic tags are reused when available, including tags for fast, deep, planning, coding, research, and long-context work. Distribution metadata supplies the ALA manifest, configuration file, executable name, and provider installation procedure.</p>
-<h2>Evaluation paths</h2><p>The evaluation corpus must compare explicit task selection, default Achilles/MainAgent detection, and symbolic-first detection. It must include canonical instructions, paraphrases, multilingual requests, spelling errors, ambiguous and multi-step requests, missing parameters, and unsupported tasks. Results must report direct-routing accuracy, incorrect direct routing, abstention, fallback, and final correctness after fallback.</p>
-<h2>Operational contract</h2><p>Deployments must preserve the integration and evaluation contract recorded in <a href="specsLoader.html?spec=DS005-integration-and-evaluation.md">DS005</a>, including independent task-repository configuration, bounded retries, and measurable routing safety.</p>
-</main></div></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Advanced Language Agent Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main>
+    <p><a href="index.html">Documentation</a> / Integration</p>
+    <h1>Integration and evaluation</h1>
+    <p>
+      Advanced Language Agent (ALA) operates as a standalone command-line interface
+      (CLI) and as a Ploinky agent. Ploinky is an agent-hosting environment that
+      exposes registered agents through its CLI, router, and WebChat. A Ploinky deployment therefore makes the
+      same ALA task interface available to terminal users, web-chat users, and other
+      agents.
+    </p>
+    <h2>Deployment and configuration</h2>
+    <p>
+      Task repositories are configured independently from the ALA installation.
+      AchillesAgentLib is the skill-based agent library used by ALA. It supplies the
+      model configuration and semantic tags that map task requirements such as fast,
+      deep, planning, coding, research, and long-context work to configured models.
+      Task repositories are configured independently so a deployment can install
+      only the task families it needs.
+    </p>
+    <h2>Evaluation paths</h2>
+    <p>
+      Routing evaluation compares explicit task selection, default selection by
+      AchillesAgentLib's <code>MainAgent</code> coordinator, and symbolic-first selection.
+      The evaluation corpus includes
+      canonical instructions, paraphrases, multilingual requests, spelling errors,
+      ambiguous and multi-step requests, missing parameters, and unsupported tasks.
+      Results must report direct-routing accuracy, incorrect direct routing,
+      abstention, fallback, and final correctness after fallback.
+    </p>
+    <p>
+      <a href="specsLoader.html?spec=DS005-integration-and-evaluation.md">DS005</a>
+      defines the deployment, workspace, retry, and evaluation requirements that an
+      ALA integration must preserve.
+    </p>
+  </main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

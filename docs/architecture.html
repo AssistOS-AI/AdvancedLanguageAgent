@@ -1,9 +1,72 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Advanced Language Agent Documentation</title><link rel="stylesheet" href="styles.css"><script type="module">import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'; mermaid.initialize({ startOnLoad: true, theme: 'neutral' });</script></head>
-<body><div class="shell"><aside><h1>Advanced Language Agent</h1><nav><a href="index.html">Overview</a><a href="architecture.html">Architecture</a><a href="routing.html">Routing</a><a href="execution.html">Execution</a><a href="integration.html">Integration</a><a href="specsLoader.html?spec=matrix.md">Specifications</a></nav></aside><main><p><a href="index.html">Documentation</a> / Architecture</p><h1>Architecture and task repositories</h1><p>ALA is a small execution substrate. It owns generic ways to run work; a task repository owns the meaning and method of one coherent task family. An A-Skill is an Achilles skill inside that repository.</p><h2>Boundary of responsibility</h2><p>Generic ALA capabilities include direct, fast, and deep LLM calls; coding-agent and agentic execution; web or research access; and isolated temporary workspaces. Translation, reference verification, controlled-natural-language conversion, SOP Lang planning, and scientific writing remain task-specific A-Skills.</p><pre class="mermaid">flowchart TB
-  TR[Task repository] --> AS[A-Skill methodology]
-  AS -->|requests| ALA[ALA generic infrastructure]
-  ALA --> LLM[Configured LLM]
-  ALA --> AG[Coding or Ploinky agent]
-  ALA --> WS[Temporary workspace]
-  ALA --> OUT[Result and separate diagnostics]</pre><h2>Repository contract</h2><p>Each task repository must describe the request types it covers, selection evidence, input and output expectations, available A-Skills, constraints and verification procedures, and generic capabilities those skills may request. This description participates in routing; it is not documentation-only metadata.</p><h2>AchillesAgentLib integration point</h2><p>The intended default follows the existing AchillesAgentLib/MainAgent pattern: discover skills, register them, select a capability, and route execution to the appropriate subsystem. ALA hides that library-level complexity from its callers while preserving compatible model tags and session behavior.</p><p>Imported skills remain local to their task repository. They do not become host-project DS files or standalone pages under this documentation tree.</p></main></div></body></html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Advanced Language Agent Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main>
+    <p><a href="index.html">Documentation</a> / Architecture</p>
+    <h1>Architecture and task repositories</h1>
+    <p>
+      Advanced Language Agent (ALA) supplies the services needed to run language
+      tasks: model calls, coding agents, web research, temporary workspaces, routing,
+      and retries. ALA uses AchillesAgentLib, a JavaScript library that discovers and
+      runs reusable agent skills. Independent task repositories supply A-Skills. An
+      A-Skill is a reusable AchillesAgentLib skill that packages the instructions and
+      optional code for one kind of work. Code Skills run repository-provided
+      modules, Orchestration Skills coordinate multiple actions, DBTable Skills
+      describe table operations, and Dynamic Code Generation Skills produce code
+      during execution.
+    </p>
+    <h2>Boundary of responsibility</h2>
+    <p>
+      ALA decides how to execute a selected A-Skill in the current environment. It
+      can call a large language model (LLM), invoke an authenticated coding agent,
+      retrieve web sources, or create an isolated temporary workspace. The A-Skill
+      decides what steps the task requires and how the result must be checked. For
+      example, translation, reference verification, controlled-natural-language
+      conversion, scientific writing, and planning with SOP Lang belong in A-Skills,
+      not in the ALA runtime. SOP Lang is a language for expressing executable
+      multi-step procedures.
+    </p>
+    <pre class="mermaid">flowchart TB
+      TR[Task repository] --> AS[A-Skill instructions and code]
+      AS -->|requests services| ALA[ALA runtime]
+      ALA --> LLM[Configured LLM]
+      ALA --> AG[Coding or remote agent]
+      ALA --> WS[Temporary workspace]
+      ALA --> OUT[Result and separate diagnostics]</pre>
+    <h2>What a task repository provides</h2>
+    <p>
+      Each task repository must describe the request types it covers, selection
+      evidence, input and output expectations, available A-Skills, constraints, and
+      verification procedures. It must also identify whether a skill needs a model,
+      coding agent, research access, or temporary workspace. ALA uses the repository
+      description when it selects a task, so the description affects routing as well
+      as human documentation.
+    </p>
+    <h2>AchillesAgentLib integration point</h2>
+    <p>
+      AchillesAgentLib provides <code>MainAgent</code>, the coordinator that discovers
+      skills, registers them, selects a matching skill, and sends it to the subsystem
+      for its skill family. ALA uses this behavior for its default task selection and
+      preserves compatible model tags and session behavior while exposing a simpler
+      CLI to callers.
+    </p>
+    <p>
+      Imported skills remain local to their task repository. They do not become
+      host-project DS files or standalone pages under this documentation tree.
+    </p>
+  </main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

@@ -227,7 +227,7 @@ echo ""
 # Line length analysis for text files
 text_exts="md html css"
 total_long=0
-declare -A file_long_info
+declare -A file_long_info=()
 
 for ext in $text_exts; do
   arr="files_${ext}"
