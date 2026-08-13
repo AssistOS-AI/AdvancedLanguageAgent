@@ -109,7 +109,7 @@ function renderMatrix(specs) {
   const rows = specs
     .map(
       (spec) =>
-        `| [${spec.name}](/specsLoader.html?spec=${spec.fileName}) | ${spec.description.replace(/\|/g, '\\|')} |`
+        `| [${spec.name}](specsLoader.html?spec=${spec.fileName}) | ${spec.description.replace(/\|/g, '\\|')} |`
     )
     .join('\n');
 
