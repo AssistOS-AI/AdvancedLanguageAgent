@@ -1,61 +1,82 @@
 # Advanced Language Agent
 
 Advanced Language Agent (ALA) is a system-installed command-line interface for
-language and documentation work. It gives people and other agents one stable entry
-point for prompts, research, transformations, planning, and verification.
+language-oriented and documentation-oriented tasks. It gives people and other
+agents one stable interface for using language models, authenticated agents,
+research tools, and reusable task methods without integrating AchillesAgentLib
+directly.
 
-ALA uses AchillesAgentLib, a JavaScript library that discovers and runs reusable
-agent skills. ALA performs task-specific work through A-Skills. An A-Skill is a
-reusable AchillesAgentLib skill installed through an independent task repository.
-It packages the instructions and optional code for one kind of work.
+An **A-Skill** is a reusable AchillesAgentLib skill supplied by an independently
+versioned task repository. It packages the instructions and optional code for one
+coherent task. A-Skill is the task-facing role of an AchillesAgentLib skill in ALA,
+not a separate skill format.
 
 ## Overview
 
-ALA accepts an instruction and optional input from command-line arguments, standard
-input, a URL, or a file. It selects an A-Skill, determines whether that skill needs
-a language model, coding agent, web research, or temporary workspace, and writes the
-requested result to standard output or a file. Diagnostics and routing information
-stay separate from the result stream.
+A caller provides an instruction and may provide input through command arguments,
+standard input, a URL, or a file. ALA selects a task and A-Skill, resolves the
+skill's execution requirements against available backends, and writes the requested
+result to standard output or a file. Diagnostics and routing information remain
+separate from the result.
 
-Within AchillesAgentLib, `MainAgent` coordinates skill discovery and routing. ALA
-also reuses the library's model tags, language-model agents, sessions, and agent
-backends. Task repositories are installed and configured independently from the ALA
-runtime.
+ALA owns generic execution infrastructure: direct, fast, and deep LLM execution;
+authenticated coding-agent execution; multi-step agentic execution; web and
+research access; temporary workspaces; routing; interactive sessions; verification;
+and bounded retries. Task repositories own domain methods such as translation,
+scientific-reference verification, controlled-language transformation, SOP Lang
+planning, scientific writing, and web research.
 
-## AchillesAgentLib skill families
+## AchillesAgentLib and A-Skills
 
-AchillesAgentLib provides several skill families for different execution needs.
-Code Skills (`cskill.md`) run modules supplied by a task repository. Orchestration
-Skills (`oskill.md`) coordinate multiple skills, tools, or agents. DBTable Skills
-(`tskill.md`) describe table fields and database operations. Dynamic Code Generation
-Skills (`dcgskill.md`) generate and execute code during a task.
+ALA uses AchillesAgentLib for skill discovery and execution, `MainAgent`-compatible
+routing, model tags, `LLMAgent`, sessions, and supported execution regimes. An
+A-Skill may use an AchillesAgentLib Code Skill (`cskill.md`), Orchestration Skill
+(`oskill.md`), DBTable Skill (`tskill.md`), Dynamic Code Generation Skill
+(`dcgskill.md`), or another compatible family.
+
+Each task repository describes the requests it covers, selection evidence,
+expected inputs and outputs, available A-Skills, constraints, verification
+procedures, and the generic ALA capabilities its skills may request. Task
+repositories are installed, configured, and versioned independently from ALA.
 
 ## Prerequisites
 
-ALA requires a JavaScript runtime supported by its deployment and access to
-AchillesAgentLib. Execution requires either a configured model provider or an
-authenticated coding-agent CLI, depending on the selected A-Skill and available
-backend.
+An ALA deployment requires a supported JavaScript runtime and resolvable access to
+AchillesAgentLib. A task also requires a configured model provider or an
+authenticated supported agent CLI that satisfies the selected A-Skill's execution
+requirements. ALA invokes agent CLIs through their supported interfaces and does
+not extract or reuse their credentials.
 
 ## Installation and configuration
 
-Install ALA through the deployment's system package or application installation
-procedure, then configure task repositories independently from the ALA installation.
-Existing AchillesAgentLib model configuration and semantic tags are reused when
-available. See
-[DS005](docs/specsLoader.html?spec=DS005-integration-and-evaluation.md) for the
-integration contract.
+Install ALA with the system package or application procedure supplied by its
+distribution. Configure task-repository locations independently from the ALA
+installation. Reuse AchillesAgentLib model configuration and semantic tags when
+available. Manual runtime values may override environment-derived defaults.
+
+The executable name, package manifest, concrete option syntax, configuration-file
+schema, environment-variable schema, and exit codes belong to the distribution
+contract. This repository does not invent values for those interfaces.
 
 ## Basic usage
 
-ALA supports interactive and single-shot operation. It accepts instructions and
-optional payloads through arguments, standard input, URLs, or files, and supports
-explicit task or A-Skill selection. Results are written to standard output or files
-while diagnostics and routing information remain separate.
+ALA supports interactive and single-shot operation. A request contains an
+instruction, an optional payload, and an optional explicit task or A-Skill
+selection. Explicit selection bypasses automatic intent detection. Otherwise ALA
+uses AchillesAgentLib/MainAgent-compatible selection, optionally preceded by
+experimental symbolic detection that falls back whenever its evidence is uncertain.
+
+Interactive sessions retain the selected task and previous result so corrective
+feedback can constrain a bounded retry. A retry may use a stronger model or agentic
+execution when the A-Skill's quality requirements justify escalation.
 
 ## Documentation
 
-- [ALA documentation](docs/index.html)
+- [Technical documentation](docs/index.html)
+- [Architecture and task repositories](docs/architecture.html)
+- [Task and execution routing](docs/routing.html)
+- [Execution backends and feedback](docs/execution.html)
+- [Integration and evaluation](docs/integration.html)
 - [Specification matrix](docs/specsLoader.html?spec=matrix.md)
 
 ## License

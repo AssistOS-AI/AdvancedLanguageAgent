@@ -3,45 +3,44 @@ id: DS000
 title: ALA vision
 status: active
 owner: ALA maintainers
-summary: Defines the purpose, boundary, and user-visible contract of Advanced Language Agent.
+summary: Defines the purpose, user-visible result, and product boundary of Advanced Language Agent.
 ---
 
 ## Introduction
 
 Advanced Language Agent (ALA) is a system-installed command-line interface for
-language-oriented and documentation-oriented work. ALA uses AchillesAgentLib, a
-JavaScript library for discovering and executing reusable agent skills. An A-Skill
-is a reusable AchillesAgentLib skill supplied by a task repository. It packages the
-instructions and optional code for one kind of work. Code Skills run modules,
-Orchestration Skills coordinate multiple actions, DBTable Skills describe table
-operations, and Dynamic Code Generation Skills produce code during execution.
+language-oriented and documentation-oriented work. It gives human and agent callers
+one stable interface for reusable task methods without requiring them to integrate
+AchillesAgentLib, model providers, research tools, or coding agents directly.
 
 ## Core Content
 
-ALA must provide one stable interface for interactive and single-shot requests. It
-must accept instructions and optional inputs from arguments, standard input, URLs,
-or files, and return the requested result through standard output or a file.
-Diagnostics and routing information must remain separate from the result stream.
+ALA must support interactive and single-shot requests. A caller must be able to
+provide an instruction and optional input through command arguments, standard input,
+a URL, or a file. ALA must write the requested result to standard output or a file
+and must keep diagnostics and routing information separate from that result.
 
-ALA must provide the services shared by language tasks: routing, large language
-model (LLM) calls, agent execution, research access, temporary workspaces, and
-bounded feedback retries. Task-specific instructions and validation rules must
-remain in independently versioned task repositories and their A-Skills.
+ALA must own generic execution infrastructure: task and skill discovery, task
+routing, model and agent execution, research access, temporary workspaces, sessions,
+verification support, and bounded retries. Task methodology and task-specific
+verification rules must remain in independently versioned task repositories.
 
-## Decisions & Questions
+An A-Skill is a reusable AchillesAgentLib skill supplied by a task repository. It
+packages instructions and optional code for one coherent task. The term identifies
+an AchillesAgentLib skill in ALA's task-facing role and does not establish a second
+skill representation.
 
-### Question #1: Which product boundary is normative?
+ALA is not a general repository-owning coding agent. An A-Skill may request bounded
+code generation or an authenticated coding agent, but language processing,
+planning, research, documentation, transformation, and verification define ALA's
+primary domain.
 
-Response: The normative product is the stable ALA CLI and the shared execution
-services it exposes. Repository layout is not part of the user-facing contract.
-
-### Question #2: What is the dependency boundary?
-
-Response: ALA reuses AchillesAgentLib `MainAgent`, the coordinator responsible for
-skill discovery and selection, together with compatible model configuration. The
-ALA distribution defines how that dependency is packaged.
+The executable name, package manifest, concrete option syntax, configuration-file
+schema, environment-variable schema, and exit codes are distribution-owned
+contracts. A distribution must define them without weakening input flexibility,
+explicit task selection, or result-stream separation.
 
 ## Conclusion
 
-ALA provides shared execution services and keeps task-specific instructions and
-validation rules in A-Skills.
+ALA provides a stable language-task interface and shared execution services while
+independent AchillesAgentLib A-Skills retain ownership of domain methods.

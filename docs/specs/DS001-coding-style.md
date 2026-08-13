@@ -3,48 +3,53 @@ id: DS001
 title: Coding style and test organization
 status: active
 owner: ALA maintainers
-summary: Defines source layout, coding conventions, documentation rules, and modular verification for ALA.
+summary: Defines source layout, AchillesAgentLib conventions, file limits, documentation rules, and modular verification.
 ---
 
 ## Introduction
 
-This specification establishes the source structure and coding rules for Advanced
-Language Agent (ALA). AchillesAgentLib is the skill-based agent library used by ALA.
-An A-Skill is a reusable AchillesAgentLib skill supplied by a task repository; any
-examples or executable resources belonging to that skill must remain portable with
-the repository that supplies it.
+This specification is the canonical source for ALA coding style, source layout,
+file-size rules, and test organization. AchillesAgentLib is an authorized external
+dependency. Code owned by a task repository must remain portable with its A-Skill.
 
 ## Core Content
 
-The implementation must use ECMAScript modules (ESM) unless a later specification
-records a justified exception. Generic runtime code must stay separate from
-task-repository content, routing metadata, and tests. Example code belonging to an
-A-Skill must remain inside that skill or task repository; the host must not grow a
-copied shared `src/` tree.
+ALA runtime code must use ECMAScript modules unless an affected specification states
+a justified exception. Production runtime, tests, configuration, and persistent
+data should use clear `src/`, `tests/`, and `data/` boundaries. Generic runtime code
+must remain separate from installed task repositories and their skill-local code.
 
-Modules should have one clear responsibility, use descriptive names, and expose stable boundaries through explicit entry modules. Public interfaces must document input, output, diagnostics, and failure behavior. Standard output must remain reserved for requested results.
+Modules should have one responsibility, descriptive names, explicit entry points,
+and documented input, output, diagnostic, and failure behavior. Standard output
+must remain reserved for requested results. Modules should remain below 500 lines;
+files above 800 lines require decomposition. Source and prose should normally keep
+lines within 120 characters, and lines longer than 300 characters require review.
+The repository-level `fileSizesCheck.sh` is the canonical mechanical check.
 
-Tests must be modular and colocated by concern or grouped under a dedicated `tests/`
-tree. Routing, executor selection, workspace lifecycle, retry bounds, CLI parsing,
-and output separation require independent tests. Tests must not require real
-provider credentials; external integrations need deterministic fakes or contract
-fixtures.
+All LLM interactions must use AchillesAgentLib's `LLMAgent`. Runtime configuration
+must combine environment-derived defaults with explicit manual overrides, and
+manual values must take precedence. Dependency resolution must permit an explicit
+AchillesAgentLib path, parent-directory resolution, and package resolution without
+hard-coding a workstation path.
 
-Persistent documentation and comments must be written in English. The repository-level `fileSizesCheck.sh` is the canonical size and line-length check and must run before broad documentation or source changes are submitted.
+Routing-sensitive work must apply relevant metadata tags for documentation,
+specification, orchestration, bootstrap, and testing. Model selection must follow
+DS002 rather than embedding provider-specific model names throughout task code.
 
-## Decisions & Questions
+Tests must be modular and grouped by concern. CLI input handling, output separation,
+task selection, symbolic abstention, executor selection, workspace lifecycle,
+configuration precedence, and retry bounds require independent tests. Tests must use
+deterministic fakes or contract fixtures and must not require real credentials.
 
-### Question #1: Which runtime and formatter are mandatory?
+Persistent documentation, specifications, and comments must be written in English.
+A source change that alters behavior, interfaces, architecture, workflows, or
+constraints must update both explanatory HTML documentation and affected DS files.
 
-Response: The deployment selects the supported runtime, formatter, linter, and package manifest. Their concrete values belong to the distribution configuration and must not change the source-layout contract.
-
-### Question #2: Where should production modules live?
-
-Options: The package may place production modules under a dedicated `src/` directory
-or expose a small set of top-level entry modules. A selected layout must keep ALA
-runtime modules separate from independently installed task repositories.
+Concrete formatter, linter, runtime-version, and package-manifest choices remain
+distribution boundaries. They must be documented before a distribution presents
+repository commands that depend on them.
 
 ## Conclusion
 
-This specification is the canonical source for ALA coding style, source layout, and
-test organization.
+ALA code must remain modular, portable, testable without credentials, and aligned
+with AchillesAgentLib configuration and `LLMAgent` conventions.

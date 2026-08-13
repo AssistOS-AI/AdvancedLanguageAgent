@@ -1,9 +1,28 @@
-import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { access, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, '..');
+async function findRepoRoot() {
+  const candidates = [
+    process.cwd(),
+    resolve(scriptDir, '..'),
+    resolve(scriptDir, '../../../..')
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      await access(resolve(candidate, 'docs/specs'));
+      return candidate;
+    } catch {
+      // Continue through supported installed and skill-local locations.
+    }
+  }
+
+  throw new Error('Could not locate a repository containing docs/specs.');
+}
+
+const repoRoot = await findRepoRoot();
 const specsDir = resolve(repoRoot, 'docs/specs');
 const matrixPath = resolve(specsDir, 'matrix.md');
 
@@ -31,11 +50,6 @@ function parseFrontmatter(markdown) {
   };
 }
 
-function parseTitle(body, fallback) {
-  const match = body.match(/^#\s+(.+)$/m);
-  return match ? match[1].trim() : fallback;
-}
-
 function parseSummary(metadata, body) {
   if (metadata.summary) {
     return metadata.summary;
@@ -50,20 +64,11 @@ function parseSummary(metadata, body) {
   return paragraphs[0]?.replace(/\s+/g, ' ') ?? '';
 }
 
-function normalizeStatus(status) {
-  const normalized = (status ?? 'unknown').trim().toLowerCase();
-  return normalized.replace(/\s+/g, '-');
-}
-
 function requiredMetadata(fileName, metadata, body) {
-  const title = parseTitle(body, metadata.title ?? fileName);
-
   return {
     id: metadata.id,
-    title: metadata.title ?? title.replace(/^DS\d{3}\s+/, ''),
-    status: normalizeStatus(metadata.status),
-    owner: metadata.owner ?? 'repository',
-    summary: parseSummary(metadata, body),
+    name: fileName.replace(/\.md$/, ''),
+    description: parseSummary(metadata, body),
     fileName
   };
 }
@@ -104,16 +109,16 @@ function renderMatrix(specs) {
   const rows = specs
     .map(
       (spec) =>
-        `| [${spec.id}](/specsLoader.html?spec=${spec.fileName}) | ${spec.title} | [[status:${spec.status}]] | ${spec.owner} | ${spec.summary.replace(/\|/g, '\\|')} |`
+        `| [${spec.name}](/specsLoader.html?spec=${spec.fileName}) | ${spec.description.replace(/\|/g, '\\|')} |`
     )
     .join('\n');
 
-  return `# Specification Matrix
+  return `---
+title: Specification Matrix
+---
 
-Generated from DS frontmatter by \`scripts/generate_specs_matrix.mjs\`. Edit the DS files and rerun the generator instead of editing this file manually.
-
-| Specification | Title | Status | Owner | Summary |
-| --- | --- | --- | --- | --- |
+| Name | Description |
+| --- | --- |
 ${rows}
 `;
 }

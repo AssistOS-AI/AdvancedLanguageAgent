@@ -11,42 +11,107 @@
   </script>
 </head>
 <body>
-  <div data-include="partials/header.html"></div>
-  <main>
-    <p><a href="index.html">Documentation</a> / Integration</p>
-    <h1>Integration and evaluation</h1>
-    <p>
-      Advanced Language Agent (ALA) operates as a standalone command-line interface
-      (CLI) and as a Ploinky agent. Ploinky is an agent-hosting environment that
-      exposes registered agents through its CLI, router, and WebChat. A Ploinky deployment therefore makes the
-      same ALA task interface available to terminal users, web-chat users, and other
-      agents.
+  <div data-include="partials/header.html">
+      <header class="site-header">
+        <a class="site-title" href="index.html">Advanced Language Agent Documentation</a>
+        <nav class="primary-nav" aria-label="Primary navigation">
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="architecture.html">Architecture</a>
+          <div class="nav-menu">
+            <button class="nav-trigger" type="button" aria-expanded="false">Runtime</button>
+            <ul class="nav-submenu">
+              <li><a href="routing.html">Routing</a></li>
+              <li><a href="execution.html">Execution</a></li>
+              <li><a href="integration.html">Integration</a></li>
+            </ul>
+          </div>
+          <a class="nav-link" href="specsLoader.html?spec=matrix.md">Specifications</a>
+        </nav>
+      </header>
+    </div>
+  <main class="page"><article class="page__panel">
+    <p class="breadcrumbs"><a href="index.html">Documentation</a> / Integration</p>
+    <h1>Ploinky integration and routing evaluation</h1>
+    <p class="lead">
+      <a href="index.html#definition-ala">ALA</a> operates as a standalone CLI and
+      may also run as a <a href="#definition-ploinky">Ploinky</a> agent. Both forms
+      preserve the same task-selection and result-separation contracts.
     </p>
+
     <h2>Deployment and configuration</h2>
     <p>
-      Task repositories are configured independently from the ALA installation.
-      AchillesAgentLib is the skill-based agent library used by ALA. It supplies the
-      model configuration and semantic tags that map task requirements such as fast,
-      deep, planning, coding, research, and long-context work to configured models.
-      Task repositories are configured independently so a deployment can install
-      only the task families it needs.
-    </p>
-    <h2>Evaluation paths</h2>
-    <p>
-      Routing evaluation compares explicit task selection, default selection by
-      AchillesAgentLib's <code>MainAgent</code> coordinator, and symbolic-first selection.
-      The evaluation corpus includes
-      canonical instructions, paraphrases, multilingual requests, spelling errors,
-      ambiguous and multi-step requests, missing parameters, and unsupported tasks.
-      Results must report direct-routing accuracy, incorrect direct routing,
-      abstention, fallback, and final correctness after fallback.
+      User-level configuration comes from the current user's environment, with
+      explicit manual overrides available for core runtime values.
+      <a href="index.html#definition-ala">ALA</a> reuses
+      <a href="index.html#definition-achilles-agent-lib">AchillesAgentLib</a> model
+      configuration and tags when present. Independently configured
+      <a href="index.html#definition-task-repository">task repositories</a> let a
+      deployment install only the task families it needs.
     </p>
     <p>
-      <a href="specsLoader.html?spec=DS005-integration-and-evaluation.md">DS005</a>
-      defines the deployment, workspace, retry, and evaluation requirements that an
-      ALA integration must preserve.
+      When hosted by <a href="#definition-ploinky">Ploinky</a>, the same operations
+      may be exposed through its CLI, router, and
+      <a href="#definition-webchat">WebChat</a>. A
+      <a href="#definition-ploinky">Ploinky</a> agent may also serve as an execution
+      backend when its advertised capabilities match an
+      <a href="index.html#definition-a-skill">A-Skill</a>. Standalone operation must
+      not depend on <a href="#definition-ploinky">Ploinky</a>.
     </p>
-  </main>
+
+    <h2>Routing evaluation</h2>
+    <p>
+      <a href="#definition-routing-evaluation">Routing evaluation</a> compares
+      explicit task selection, default
+      <a href="index.html#definition-main-agent">MainAgent</a>-compatible detection,
+      and symbolic-first detection. The shared corpus covers canonical instructions,
+      paraphrases, multilingual requests, spelling errors, ambiguous and multi-step
+      requests, missing parameters, and unsupported work.
+    </p>
+    <figure class="diagram">
+      <pre class="mermaid">flowchart TB
+        Corpus[Shared request corpus]
+        subgraph Paths[Selection paths]
+          Explicit[Explicit choice]
+          Default[Default selection]
+          Experimental[Experimental-first with fallback]
+        end
+        Corpus --> Explicit
+        Corpus --> Default
+        Corpus --> Experimental
+        Explicit --> Metrics[Selection and final-result metrics]
+        Default --> Metrics
+        Experimental --> Metrics
+        classDef input fill:#e7f0fc,stroke:#245b99,font-weight:bold
+        classDef route fill:#e8f5eb,stroke:#367a46
+        class Corpus,Metrics input
+        class Explicit,Default,Experimental route</pre>
+      <figcaption><em>Comparable selection paths: every path is measured against the same expected task and final outcome.</em></figcaption>
+    </figure>
+    <p>
+      Symbolic measurements include correct and incorrect direct decisions,
+      abstention, fallback, and final correctness after fallback. A false confident
+      decision receives a greater penalty than abstention because it bypasses the
+      safe default route with the wrong method.
+    </p>
+
+    <h2>Distribution-owned contracts</h2>
+    <p>
+      A concrete distribution defines the executable name, option syntax, package
+      manifest, configuration files, environment-variable schema, exit codes,
+      workspace retention, and numeric retry limits. The design specifications
+      define the invariant behavior those choices must preserve.
+    </p>
+
+    <h2 id="definitions">Definitions</h2>
+    <dl class="definitions">
+      <dt id="definition-ploinky">Ploinky</dt>
+      <dd>An agent-hosting environment that can expose registered agents through a CLI, router, and WebChat and advertise agents as execution backends.</dd>
+      <dt id="definition-webchat">WebChat</dt>
+      <dd>The Ploinky web conversation interface through which a hosted ALA agent may receive the same task requests as its CLI.</dd>
+      <dt id="definition-routing-evaluation">Routing evaluation</dt>
+      <dd>A comparison of selection paths using a shared corpus and metrics for direct decisions, abstention, fallback, and final correctness.</dd>
+    </dl>
+  </article></main>
   <div data-include="partials/footer.html"></div>
   <script src="partials-loader.js"></script>
 </body>

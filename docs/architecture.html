@@ -11,61 +11,99 @@
   </script>
 </head>
 <body>
-  <div data-include="partials/header.html"></div>
-  <main>
-    <p><a href="index.html">Documentation</a> / Architecture</p>
-    <h1>Architecture and task repositories</h1>
-    <p>
-      Advanced Language Agent (ALA) supplies the services needed to run language
-      tasks: model calls, coding agents, web research, temporary workspaces, routing,
-      and retries. ALA uses AchillesAgentLib, a JavaScript library that discovers and
-      runs reusable agent skills. Independent task repositories supply A-Skills. An
-      A-Skill is a reusable AchillesAgentLib skill that packages the instructions and
-      optional code for one kind of work. Code Skills run repository-provided
-      modules, Orchestration Skills coordinate multiple actions, DBTable Skills
-      describe table operations, and Dynamic Code Generation Skills produce code
-      during execution.
+  <div data-include="partials/header.html">
+      <header class="site-header">
+        <a class="site-title" href="index.html">Advanced Language Agent Documentation</a>
+        <nav class="primary-nav" aria-label="Primary navigation">
+          <a class="nav-link" href="index.html">Overview</a>
+          <a class="nav-link" href="architecture.html">Architecture</a>
+          <div class="nav-menu">
+            <button class="nav-trigger" type="button" aria-expanded="false">Runtime</button>
+            <ul class="nav-submenu">
+              <li><a href="routing.html">Routing</a></li>
+              <li><a href="execution.html">Execution</a></li>
+              <li><a href="integration.html">Integration</a></li>
+            </ul>
+          </div>
+          <a class="nav-link" href="specsLoader.html?spec=matrix.md">Specifications</a>
+        </nav>
+      </header>
+    </div>
+  <main class="page"><article class="page__panel">
+    <p class="breadcrumbs"><a href="index.html">Documentation</a> / Architecture</p>
+    <h1>Runtime and task-repository architecture</h1>
+    <p class="lead">
+      <a href="index.html#definition-ala">ALA</a> supplies reusable execution
+      services. Independent
+      <a href="index.html#definition-task-repository">task repositories</a> supply
+      domain methods through <a href="index.html#definition-a-skill">A-Skills</a>.
+      This boundary lets a task family evolve without extending the central runtime.
     </p>
-    <h2>Boundary of responsibility</h2>
+
+    <h2>Responsibility boundary</h2>
     <p>
-      ALA decides how to execute a selected A-Skill in the current environment. It
-      can call a large language model (LLM), invoke an authenticated coding agent,
-      retrieve web sources, or create an isolated temporary workspace. The A-Skill
-      decides what steps the task requires and how the result must be checked. For
-      example, translation, reference verification, controlled-natural-language
-      conversion, scientific writing, and planning with SOP Lang belong in A-Skills,
-      not in the ALA runtime. SOP Lang is a language for expressing executable
-      multi-step procedures.
+      A <a href="index.html#definition-task-repository">task repository</a> decides
+      which requests it covers, which <a href="index.html#definition-a-skill">A-Skill</a>
+      performs the work, which inputs and outputs are valid, and how the result is
+      checked. <a href="index.html#definition-ala">ALA</a> decides how the selected
+      method runs in the current environment. It maps requested
+      <a href="index.html#definition-generic-capability">generic execution capabilities</a>
+      to configured models, authenticated agents, research access, or an isolated
+      workspace.
     </p>
-    <pre class="mermaid">flowchart TB
-      TR[Task repository] --> AS[A-Skill instructions and code]
-      AS -->|requests services| ALA[ALA runtime]
-      ALA --> LLM[Configured LLM]
-      ALA --> AG[Coding or remote agent]
-      ALA --> WS[Temporary workspace]
-      ALA --> OUT[Result and separate diagnostics]</pre>
-    <h2>What a task repository provides</h2>
+    <figure class="diagram">
+      <pre class="mermaid">flowchart LR
+        subgraph Package[Independent task package]
+          Description[Routing description] --> Method[Task method and checks]
+        end
+        subgraph Runtime[CLI runtime]
+          Resolver[Requirement resolver] --> Backend[Configured backend]
+        end
+        Method -->|requests service| Resolver
+        Backend --> Output[Verified result]
+        classDef package fill:#fff1db,stroke:#9a641d,font-weight:bold
+        classDef runtime fill:#e8f5eb,stroke:#367a46
+        class Description,Method package
+        class Resolver,Backend runtime</pre>
+      <figcaption><em>Method and execution ownership: the independent package owns task procedure; the runtime owns reusable services.</em></figcaption>
+    </figure>
+
+    <h2>AchillesAgentLib skill families</h2>
     <p>
-      Each task repository must describe the request types it covers, selection
-      evidence, input and output expectations, available A-Skills, constraints, and
-      verification procedures. It must also identify whether a skill needs a model,
-      coding agent, research access, or temporary workspace. ALA uses the repository
-      description when it selects a task, so the description affects routing as well
-      as human documentation.
+      An <a href="index.html#definition-a-skill">A-Skill</a> is a normal
+      <a href="index.html#definition-achilles-agent-lib">AchillesAgentLib</a> skill.
+      A <a href="#definition-code-skill">Code Skill</a> runs a supplied module. An
+      <a href="#definition-orchestration-skill">Orchestration Skill</a> coordinates
+      several actions. A <a href="#definition-dbtable-skill">DBTable Skill</a>
+      describes table fields and operations. A
+      <a href="#definition-dcg-skill">Dynamic Code Generation Skill</a> creates code
+      during task execution. The owning repository selects the family that fits its
+      method.
     </p>
-    <h2>AchillesAgentLib integration point</h2>
+
+    <h2>Discovery and portability</h2>
     <p>
-      AchillesAgentLib provides <code>MainAgent</code>, the coordinator that discovers
-      skills, registers them, selects a matching skill, and sends it to the subsystem
-      for its skill family. ALA uses this behavior for its default task selection and
-      preserves compatible model tags and session behavior while exposing a simpler
-      CLI to callers.
+      <a href="index.html#definition-ala">ALA</a> loads configured
+      <a href="index.html#definition-task-repository">task repositories</a> through
+      <a href="index.html#definition-achilles-agent-lib">AchillesAgentLib</a>
+      conventions wherever practical. Each semantic repository description becomes
+      routing evidence, not only explanatory prose. Imported
+      <a href="index.html#definition-a-skill">A-Skill</a> instructions, code, pages,
+      and specifications remain in the repository that owns them.
     </p>
-    <p>
-      Imported skills remain local to their task repository. They do not become
-      host-project DS files or standalone pages under this documentation tree.
-    </p>
-  </main>
+
+    <h2 id="definitions">Definitions</h2>
+    <dl class="definitions">
+      <dt id="definition-code-skill">Code Skill</dt>
+      <dd>An AchillesAgentLib skill, conventionally described by <code>cskill.md</code>, that runs a supplied module.</dd>
+      <dt id="definition-orchestration-skill">Orchestration Skill</dt>
+      <dd>An AchillesAgentLib skill, conventionally described by <code>oskill.md</code>, that coordinates multiple skills, tools, or agents.</dd>
+      <dt id="definition-dbtable-skill">DBTable Skill</dt>
+      <dd>An AchillesAgentLib skill, conventionally described by <code>tskill.md</code>, that defines table fields and database operations.</dd>
+      <dt id="definition-dcg-skill">Dynamic Code Generation Skill</dt>
+      <dd>An AchillesAgentLib skill, conventionally described by <code>dcgskill.md</code>, that generates and executes code during a task.</dd>
+    </dl>
+  </article></main>
   <div data-include="partials/footer.html"></div>
   <script src="partials-loader.js"></script>
 </body>
