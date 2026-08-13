@@ -141,6 +141,10 @@ async function main() {
   const htmlFiles = await listHtmlFiles(docsDir);
   const allIssues = [];
 
+  if (!(await fileExists(resolve(docsDir, '.nojekyll')))) {
+    allIssues.push(`${docsDir}: missing .nojekyll required for static Markdown files on GitHub Pages.`);
+  }
+
   for (const htmlFile of htmlFiles) {
     allIssues.push(...(await verifyHtmlFile(htmlFile)));
     const html = await readFile(htmlFile, 'utf8');
