@@ -50,25 +50,26 @@ function parseFrontmatter(markdown) {
   };
 }
 
-function parseSummary(metadata, body) {
-  if (metadata.summary) {
-    return metadata.summary;
+function requiredMetadata(fileName, metadata) {
+  const name = fileName.replace(/\.md$/, '');
+  const id = fileName.match(/^(DS\d{3})-/)?.[1];
+  const allowedFields = new Set(['title', 'summary']);
+  const unexpectedFields = Object.keys(metadata).filter((field) => !allowedFields.has(field));
+
+  if (unexpectedFields.length > 0) {
+    throw new Error(`${fileName} contains unsupported frontmatter fields: ${unexpectedFields.join(', ')}.`);
+  }
+  if (metadata.title !== name) {
+    throw new Error(`${fileName} must use the exact filename stem as its frontmatter title: ${name}.`);
+  }
+  if (!metadata.summary) {
+    throw new Error(`${fileName} is missing required frontmatter field "summary".`);
   }
 
-  const paragraphs = body
-    .split('\n\n')
-    .map((chunk) => chunk.trim())
-    .filter(Boolean)
-    .filter((chunk) => !chunk.startsWith('#'));
-
-  return paragraphs[0]?.replace(/\s+/g, ' ') ?? '';
-}
-
-function requiredMetadata(fileName, metadata, body) {
   return {
-    id: metadata.id,
-    name: fileName.replace(/\.md$/, ''),
-    description: parseSummary(metadata, body),
+    id,
+    name,
+    description: metadata.summary,
     fileName
   };
 }
@@ -94,11 +95,8 @@ async function loadSpecs() {
   const specs = [];
   for (const fileName of specFiles) {
     const markdown = await readFile(resolve(specsDir, fileName), 'utf8');
-    const { metadata, body } = parseFrontmatter(markdown);
-    if (!metadata.id) {
-      throw new Error(`${fileName} is missing required frontmatter field "id".`);
-    }
-    specs.push(requiredMetadata(fileName, metadata, body));
+    const { metadata } = parseFrontmatter(markdown);
+    specs.push(requiredMetadata(fileName, metadata));
   }
 
   validateContiguousIds(specs);

@@ -32,20 +32,10 @@
   <main class="page"><article class="page__panel">
     <p class="breadcrumbs"><a href="index.html">Documentation</a> / Execution</p>
     <h1>Execution backends, workspaces, and feedback</h1>
-    <p class="lead">
-      After routing selects an <a href="index.html#definition-a-skill">A-Skill</a>,
-      <a href="index.html#definition-ala">ALA</a> chooses an executor that can meet
-      its quality and capability requirements. The task method remains independent
-      from a provider or authenticated tool.
-    </p>
+    <p class="lead">After routing selects an <a href="index.html#definition-a-skill">A-Skill</a>, <a href="index.html#definition-ala">ALA</a> chooses an executor that can meet its quality and capability requirements. The task method remains independent from a provider or authenticated tool.</p>
 
     <h2>Generic execution capabilities</h2>
-    <p>
-      Straightforward work normally uses direct model execution through
-      <a href="index.html#definition-llm-agent">LLMAgent</a>. Cost and latency may be
-      optimized only among executors considered capable of meeting the
-      <a href="index.html#definition-a-skill">A-Skill</a>'s requirements.
-    </p>
+    <p>Straightforward work normally uses direct model execution through <a href="index.html#definition-llm-agent">LLMAgent</a>. Cost and latency may be optimized only among executors considered capable of meeting the <a href="index.html#definition-a-skill">A-Skill</a>'s requirements.</p>
     <div class="table-wrap">
       <table class="spec-table">
         <thead><tr><th>Capability</th><th>Execution responsibility</th></tr></thead>
@@ -60,13 +50,7 @@
         </tbody>
       </table>
     </div>
-    <p>
-      Authenticated coding-agent CLIs such as Codex or OpenCode may perform language
-      tasks as well as bounded code work. <a href="index.html#definition-ala">ALA</a>
-      invokes their supported interfaces and does not extract credentials. This
-      path permits execution when a machine has an authenticated agent but no direct
-      provider API key.
-    </p>
+    <p>Authenticated coding-agent CLIs such as Codex or OpenCode may perform language tasks as well as bounded code work. <a href="index.html#definition-ala">ALA</a> invokes their supported interfaces and does not extract credentials. This path permits execution when a machine has an authenticated agent but no direct provider API key.</p>
 
     <h2>Task workspaces and feedback</h2>
     <figure class="diagram">
@@ -86,31 +70,11 @@
         class Select,Workspace,Run,Escalate runtime</pre>
       <figcaption><em>Bounded correction cycle: feedback becomes a new constraint and may select a stronger executor.</em></figcaption>
     </figure>
-    <p>
-      An <a href="index.html#definition-a-skill">A-Skill</a> may request a
-      <a href="#definition-task-workspace">task workspace</a> for explicit input,
-      retrieved sources, intermediate artifacts, verification results, and final
-      output. The <a href="#definition-task-workspace">task workspace</a> is isolated
-      and is not an implicit copy of the caller's repository.
-    </p>
-    <p>
-      Interactive sessions retain the selected task and previous result. Corrective
-      feedback becomes an additional constraint, and every retry stops at a
-      configured bound. A failed quality check may move execution from a fast model
-      to a stronger model or to
-      <a href="#definition-agentic-execution">agentic execution</a>.
-    </p>
+    <p>An <a href="index.html#definition-a-skill">A-Skill</a> may request a <a href="#definition-task-workspace">task workspace</a> for explicit input, retrieved sources, intermediate artifacts, verification results, and final output. The <a href="#definition-task-workspace">task workspace</a> is isolated and is not an implicit copy of the caller's repository.</p>
+    <p>Interactive sessions retain the selected task and previous result. Corrective feedback becomes an additional constraint, and every retry stops at a configured bound. A failed quality check may move execution from a fast model to a stronger model or to <a href="#definition-agentic-execution">agentic execution</a>.</p>
 
     <h2>Configuration discipline</h2>
-    <p>
-      Every direct model call uses
-      <a href="index.html#definition-llm-agent">LLMAgent</a> with
-      <a href="index.html#definition-achilles-agent-lib">AchillesAgentLib</a>-compatible
-      model tags. Manual runtime values take precedence over environment-derived
-      defaults. Documentation, specification, orchestration, bootstrap, and testing
-      work use applicable metadata tags. DS002 contains the
-      <a href="specsLoader.html?spec=DS002-execution-and-model-strategy.md">authoritative execution strategy</a>.
-    </p>
+    <p>Every direct model call uses <a href="index.html#definition-llm-agent">LLMAgent</a> with <a href="index.html#definition-achilles-agent-lib">AchillesAgentLib</a>-compatible model tags. Manual runtime values take precedence over environment-derived defaults. Documentation, specification, orchestration, bootstrap, and testing work use applicable metadata tags. DS002 contains the <a href="specsLoader.html?spec=DS002-execution-and-model-strategy.md">authoritative execution strategy</a>.</p>
 
     <h2 id="definitions">Definitions</h2>
     <dl class="definitions">

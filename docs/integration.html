@@ -32,41 +32,14 @@
   <main class="page"><article class="page__panel">
     <p class="breadcrumbs"><a href="index.html">Documentation</a> / Integration</p>
     <h1>Ploinky integration and routing evaluation</h1>
-    <p class="lead">
-      <a href="index.html#definition-ala">ALA</a> operates as a standalone CLI and
-      may also run as a <a href="#definition-ploinky">Ploinky</a> agent. Both forms
-      preserve the same task-selection and result-separation contracts.
-    </p>
+    <p class="lead"><a href="index.html#definition-ala">ALA</a> operates as a standalone CLI and may also run as a <a href="#definition-ploinky">Ploinky</a> agent. Both forms preserve the same task-selection and result-separation contracts.</p>
 
     <h2>Deployment and configuration</h2>
-    <p>
-      User-level configuration comes from the current user's environment, with
-      explicit manual overrides available for core runtime values.
-      <a href="index.html#definition-ala">ALA</a> reuses
-      <a href="index.html#definition-achilles-agent-lib">AchillesAgentLib</a> model
-      configuration and tags when present. Independently configured
-      <a href="index.html#definition-task-repository">task repositories</a> let a
-      deployment install only the task families it needs.
-    </p>
-    <p>
-      When hosted by <a href="#definition-ploinky">Ploinky</a>, the same operations
-      may be exposed through its CLI, router, and
-      <a href="#definition-webchat">WebChat</a>. A
-      <a href="#definition-ploinky">Ploinky</a> agent may also serve as an execution
-      backend when its advertised capabilities match an
-      <a href="index.html#definition-a-skill">A-Skill</a>. Standalone operation must
-      not depend on <a href="#definition-ploinky">Ploinky</a>.
-    </p>
+    <p>User-level configuration comes from the current user's environment, with explicit manual overrides available for core runtime values. <a href="index.html#definition-ala">ALA</a> reuses <a href="index.html#definition-achilles-agent-lib">AchillesAgentLib</a> model configuration and tags when present. Independently configured <a href="index.html#definition-task-repository">task repositories</a> let a deployment install only the task families it needs.</p>
+    <p>When hosted by <a href="#definition-ploinky">Ploinky</a>, the same operations may be exposed through its CLI, router, and <a href="#definition-webchat">WebChat</a>. A <a href="#definition-ploinky">Ploinky</a> agent may also serve as an execution backend when its advertised capabilities match an <a href="index.html#definition-a-skill">A-Skill</a>. Standalone operation must not depend on <a href="#definition-ploinky">Ploinky</a>.</p>
 
     <h2>Routing evaluation</h2>
-    <p>
-      <a href="#definition-routing-evaluation">Routing evaluation</a> compares
-      explicit task selection, default
-      <a href="index.html#definition-main-agent">MainAgent</a>-compatible detection,
-      and symbolic-first detection. The shared corpus covers canonical instructions,
-      paraphrases, multilingual requests, spelling errors, ambiguous and multi-step
-      requests, missing parameters, and unsupported work.
-    </p>
+    <p><a href="#definition-routing-evaluation">Routing evaluation</a> compares explicit task selection, default <a href="index.html#definition-main-agent">MainAgent</a>-compatible detection, and symbolic-first detection. The shared corpus covers canonical instructions, paraphrases, multilingual requests, spelling errors, ambiguous and multi-step requests, missing parameters, and unsupported work.</p>
     <figure class="diagram">
       <pre class="mermaid">flowchart TB
         Corpus[Shared request corpus]
@@ -87,20 +60,10 @@
         class Explicit,Default,Experimental route</pre>
       <figcaption><em>Comparable selection paths: every path is measured against the same expected task and final outcome.</em></figcaption>
     </figure>
-    <p>
-      Symbolic measurements include correct and incorrect direct decisions,
-      abstention, fallback, and final correctness after fallback. A false confident
-      decision receives a greater penalty than abstention because it bypasses the
-      safe default route with the wrong method.
-    </p>
+    <p>Symbolic measurements include correct and incorrect direct decisions, abstention, fallback, and final correctness after fallback. A false confident decision receives a greater penalty than abstention because it bypasses the safe default route with the wrong method.</p>
 
     <h2>Distribution-owned contracts</h2>
-    <p>
-      A concrete distribution defines the executable name, option syntax, package
-      manifest, configuration files, environment-variable schema, exit codes,
-      workspace retention, and numeric retry limits. The design specifications
-      define the invariant behavior those choices must preserve.
-    </p>
+    <p>A concrete distribution defines the executable name, option syntax, package manifest, configuration files, environment-variable schema, exit codes, workspace retention, and numeric retry limits. The design specifications define the invariant behavior those choices must preserve.</p>
 
     <h2 id="definitions">Definitions</h2>
     <dl class="definitions">

@@ -32,25 +32,10 @@
   <main class="page"><article class="page__panel">
     <p class="breadcrumbs"><a href="index.html">Documentation</a> / Architecture</p>
     <h1>Runtime and task-repository architecture</h1>
-    <p class="lead">
-      <a href="index.html#definition-ala">ALA</a> supplies reusable execution
-      services. Independent
-      <a href="index.html#definition-task-repository">task repositories</a> supply
-      domain methods through <a href="index.html#definition-a-skill">A-Skills</a>.
-      This boundary lets a task family evolve without extending the central runtime.
-    </p>
+    <p class="lead"><a href="index.html#definition-ala">ALA</a> supplies reusable execution services. Independent <a href="index.html#definition-task-repository">task repositories</a> supply domain methods through <a href="index.html#definition-a-skill">A-Skills</a>. This boundary lets a task family evolve without extending the central runtime.</p>
 
     <h2>Responsibility boundary</h2>
-    <p>
-      A <a href="index.html#definition-task-repository">task repository</a> decides
-      which requests it covers, which <a href="index.html#definition-a-skill">A-Skill</a>
-      performs the work, which inputs and outputs are valid, and how the result is
-      checked. <a href="index.html#definition-ala">ALA</a> decides how the selected
-      method runs in the current environment. It maps requested
-      <a href="index.html#definition-generic-capability">generic execution capabilities</a>
-      to configured models, authenticated agents, research access, or an isolated
-      workspace.
-    </p>
+    <p>A <a href="index.html#definition-task-repository">task repository</a> decides which requests it covers, which <a href="index.html#definition-a-skill">A-Skill</a> performs the work, which inputs and outputs are valid, and how the result is checked. <a href="index.html#definition-ala">ALA</a> decides how the selected method runs in the current environment. It maps requested <a href="index.html#definition-generic-capability">generic execution capabilities</a> to configured models, authenticated agents, research access, or an isolated workspace.</p>
     <figure class="diagram">
       <pre class="mermaid">flowchart LR
         subgraph Package[Independent task package]
@@ -69,28 +54,10 @@
     </figure>
 
     <h2>AchillesAgentLib skill families</h2>
-    <p>
-      An <a href="index.html#definition-a-skill">A-Skill</a> is a normal
-      <a href="index.html#definition-achilles-agent-lib">AchillesAgentLib</a> skill.
-      A <a href="#definition-code-skill">Code Skill</a> runs a supplied module. An
-      <a href="#definition-orchestration-skill">Orchestration Skill</a> coordinates
-      several actions. A <a href="#definition-dbtable-skill">DBTable Skill</a>
-      describes table fields and operations. A
-      <a href="#definition-dcg-skill">Dynamic Code Generation Skill</a> creates code
-      during task execution. The owning repository selects the family that fits its
-      method.
-    </p>
+    <p>An <a href="index.html#definition-a-skill">A-Skill</a> is a normal <a href="index.html#definition-achilles-agent-lib">AchillesAgentLib</a> skill. A <a href="#definition-code-skill">Code Skill</a> runs a supplied module. An <a href="#definition-orchestration-skill">Orchestration Skill</a> coordinates several actions. A <a href="#definition-dbtable-skill">DBTable Skill</a> describes table fields and operations. A <a href="#definition-dcg-skill">Dynamic Code Generation Skill</a> creates code during task execution. The owning repository selects the family that fits its method.</p>
 
     <h2>Discovery and portability</h2>
-    <p>
-      <a href="index.html#definition-ala">ALA</a> loads configured
-      <a href="index.html#definition-task-repository">task repositories</a> through
-      <a href="index.html#definition-achilles-agent-lib">AchillesAgentLib</a>
-      conventions wherever practical. Each semantic repository description becomes
-      routing evidence, not only explanatory prose. Imported
-      <a href="index.html#definition-a-skill">A-Skill</a> instructions, code, pages,
-      and specifications remain in the repository that owns them.
-    </p>
+    <p><a href="index.html#definition-ala">ALA</a> loads configured <a href="index.html#definition-task-repository">task repositories</a> through <a href="index.html#definition-achilles-agent-lib">AchillesAgentLib</a> conventions wherever practical. Each semantic repository description becomes routing evidence, not only explanatory prose. Imported <a href="index.html#definition-a-skill">A-Skill</a> instructions, code, pages, and specifications remain in the repository that owns them.</p>
 
     <h2 id="definitions">Definitions</h2>
     <dl class="definitions">

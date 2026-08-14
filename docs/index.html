@@ -33,30 +33,11 @@
     <article class="page__panel">
       <p class="breadcrumbs"><a href="index.html">Documentation</a> / Overview</p>
       <h1>Advanced Language Agent Documentation</h1>
-      <p class="lead">
-        <a href="#definition-ala">Advanced Language Agent (ALA)</a> is a
-        system-installed CLI for language and documentation tasks. A human or agent
-        submits an instruction and optional input; the CLI selects a reusable task
-        method, runs it through an eligible backend, and returns the requested result.
-      </p>
-      <p>
-        <a href="#definition-ala">ALA</a> uses
-        <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> to discover and
-        execute <a href="#definition-a-skill">A-Skills</a>. Each
-        <a href="#definition-a-skill">A-Skill</a> owns the method and checks for one
-        task. <a href="#definition-ala">ALA</a> owns reusable routing, model, agent,
-        research, workspace, session, and retry services.
-      </p>
+      <p class="lead"><a href="#definition-ala">Advanced Language Agent (ALA)</a> is a system-installed CLI for language and documentation tasks. A human or agent submits an instruction and optional input; the CLI selects a reusable task method, runs it through an eligible backend, and returns the requested result.</p>
+      <p><a href="#definition-ala">ALA</a> uses <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> to discover and execute <a href="#definition-a-skill">A-Skills</a>. Each <a href="#definition-a-skill">A-Skill</a> owns the method and checks for one task. <a href="#definition-ala">ALA</a> owns reusable routing, model, agent, research, workspace, session, and retry services.</p>
 
       <h2>From instruction to result</h2>
-      <p>
-        A request may carry input through command arguments, standard input, a URL,
-        or a file. The runtime selects an <a href="#definition-a-skill">A-Skill</a>,
-        resolves its requested
-        <a href="#definition-generic-capability">generic execution capabilities</a>,
-        and writes the requested result to standard output or a file. Diagnostics
-        use a separate channel so another program can consume the result reliably.
-      </p>
+      <p>A request may carry input through command arguments, standard input, a URL, or a file. The runtime selects an <a href="#definition-a-skill">A-Skill</a>, resolves its requested <a href="#definition-generic-capability">generic execution capabilities</a>, and writes the requested result to standard output or a file. Diagnostics use a separate channel so another program can consume the result reliably.</p>
       <figure class="diagram">
         <pre class="mermaid">flowchart LR
           Caller[Human or agent] --> Request[Instruction and optional input]
@@ -75,70 +56,19 @@
       </figure>
 
       <h2>Product and repository boundaries</h2>
-      <p>
-        Independently versioned
-        <a href="#definition-task-repository">task repositories</a> provide task
-        descriptions and <a href="#definition-a-skill">A-Skills</a> for coherent
-        language-task families. Their semantic descriptions participate in routing.
-        The CLI contains generic infrastructure and does not hard-code those domain
-        methods.
-      </p>
-      <p class="note">
-        An <a href="#definition-a-skill">A-Skill</a> is an
-        <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> skill in a
-        task-facing role. It is not a separate file format or a copy embedded in the
-        CLI runtime.
-      </p>
-      <p>
-        This repository defines the core runtime contract. Imported task skills and
-        their design specifications stay in their owning
-        <a href="#definition-task-repository">task repositories</a>. The core
-        documentation therefore describes how those repositories integrate with
-        the runtime without copying their skill-specific documentation.
-      </p>
+      <p>Independently versioned <a href="#definition-task-repository">task repositories</a> provide task descriptions and <a href="#definition-a-skill">A-Skills</a> for coherent language-task families. Their semantic descriptions participate in routing. The CLI contains generic infrastructure and does not hard-code those domain methods.</p>
+      <p class="note">An <a href="#definition-a-skill">A-Skill</a> is an <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> skill in a task-facing role. It is not a separate file format or a copy embedded in the CLI runtime.</p>
+      <p>This repository defines the core runtime contract. Imported task skills and their design specifications stay in their owning <a href="#definition-task-repository">task repositories</a>. The core documentation therefore describes how those repositories integrate with the runtime without copying their skill-specific documentation.</p>
 
       <h2>Runtime defaults and verification</h2>
-      <p>
-        Explicit task or <a href="#definition-a-skill">A-Skill</a> selection takes
-        precedence. Otherwise the runtime uses the
-        <a href="#definition-main-agent">MainAgent</a>-compatible selection path.
-        Experimental symbolic detection may run first, but uncertainty returns the
-        request to the default selector. Direct model work uses
-        <a href="#definition-llm-agent">LLMAgent</a>; stronger models, authenticated
-        agents, research access, and temporary workspaces are selected only when the
-        task method requires them.
-      </p>
-      <p>
-        Coding style, source layout, file-size limits, and modular test organization
-        are defined by
-        <a href="specsLoader.html?spec=DS001-coding-style.md">DS001</a>. Tests are
-        grouped by concern and independently cover input handling, routing,
-        executor selection, configuration precedence, workspace lifecycle, retry
-        bounds, and result-stream separation.
-      </p>
+      <p>Explicit task or <a href="#definition-a-skill">A-Skill</a> selection takes precedence. Otherwise the runtime uses the <a href="#definition-main-agent">MainAgent</a>-compatible selection path. Experimental symbolic detection may run first, but uncertainty returns the request to the default selector. Direct model work uses <a href="#definition-llm-agent">LLMAgent</a>; stronger models, authenticated agents, research access, and temporary workspaces are selected only when the task method requires them.</p>
+      <p>Coding style, source layout, file-size limits, and modular test organization are defined by <a href="specsLoader.html?spec=DS001-coding-style.md">DS001</a>. Tests are grouped by concern and independently cover input handling, routing, executor selection, configuration precedence, workspace lifecycle, retry bounds, and result-stream separation.</p>
 
       <h2 id="task-skills">Task skill availability</h2>
-      <p>
-        The core repository does not implement or distribute task-specific
-        <a href="#definition-a-skill">A-Skills</a>. A deployment obtains its
-        available task methods from configured
-        <a href="#definition-task-repository">task repositories</a>, so the
-        product skill catalog can vary independently from the core installation.
-      </p>
+      <p>The core repository does not implement or distribute task-specific <a href="#definition-a-skill">A-Skills</a>. A deployment obtains its available task methods from configured <a href="#definition-task-repository">task repositories</a>, so the product skill catalog can vary independently from the core installation.</p>
 
       <h2>Documentation map</h2>
-      <p>
-        <a href="architecture.html">Architecture</a> explains the boundary between
-        the runtime and
-        <a href="#definition-task-repository">task repositories</a>.
-        <a href="routing.html">Routing</a> covers
-        task selection and backend selection. <a href="execution.html">Execution</a>
-        covers models, agents, workspaces, and feedback.
-        <a href="integration.html">Integration</a> covers deployment and routing
-        evaluation. The
-        <a href="specsLoader.html?spec=matrix.md">specification matrix</a> contains
-        the authoritative contracts.
-      </p>
+      <p><a href="architecture.html">Architecture</a> explains the boundary between the runtime and <a href="#definition-task-repository">task repositories</a>. <a href="routing.html">Routing</a> covers task selection and backend selection. <a href="execution.html">Execution</a> covers models, agents, workspaces, and feedback. <a href="integration.html">Integration</a> covers deployment and routing evaluation. The <a href="specsLoader.html?spec=matrix.md">specification matrix</a> contains the authoritative contracts.</p>
 
       <h2 id="definitions">Definitions</h2>
       <dl class="definitions">

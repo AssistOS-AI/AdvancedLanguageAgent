@@ -96,7 +96,6 @@ pre.mermaid { margin: 0; padding: .25rem 0; background: transparent; }
 .table-wrap { overflow-x: auto; }
 .spec-table { width: 100%; border-collapse: collapse; }
 .spec-table th, .spec-table td { border: 1px solid var(--border); padding: .55rem; text-align: left; }
-.spec-status { display: inline-block; border-radius: 999px; padding: .15rem .5rem; background: #e5f0ff; }
 .spec-meta__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .6rem; }
 .spec-meta__item { margin: 0; padding: .65rem; border: 1px solid var(--border); border-radius: .4rem; }
 .spec-meta__item dt { color: var(--muted); font-size: .85rem; }
