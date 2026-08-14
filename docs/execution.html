@@ -26,14 +26,14 @@
           <tr><td>Direct LLM</td><td>Runs a prompt through the configured LLMAgent.</td></tr>
           <tr><td>Fast LLM</td><td>Prefers an eligible low-latency, lower-cost model for sufficiently simple work.</td></tr>
           <tr><td>Deep LLM</td><td>Uses an eligible stronger model when task quality requires deeper reasoning.</td></tr>
-          <tr><td>Coding agent</td><td>Delegates bounded work to a supported authenticated agent CLI.</td></tr>
+          <tr><td><a href="wiki.html#definition-coding-agent">Coding agent</a></td><td>Delegates bounded work to a detected and authenticated Codex, OpenCode, or Pi CLI.</td></tr>
           <tr><td><a href="wiki.html#definition-agentic-execution">Agentic execution</a></td><td>Coordinates multi-step planning, retries, validation, or synthesis.</td></tr>
           <tr><td>Web and research access</td><td>Retrieves and checks external material when the task method requires it.</td></tr>
           <tr><td><a href="wiki.html#definition-task-workspace">Temporary task workspace</a></td><td>Isolates inputs, intermediate artifacts, checks, and final outputs for one request.</td></tr>
         </tbody>
       </table>
     </div>
-    <p>Authenticated coding-agent CLIs such as Codex or OpenCode may perform language tasks as well as bounded code work. ALA invokes their supported interfaces and does not extract credentials. This path permits execution when a machine has an authenticated agent but no direct provider API key.</p>
+    <p>At process startup ALA checks backend-specific binary overrides, standard user installation locations, and <code>PATH</code>. When it finds Codex, OpenCode, or Pi, it registers a generic AchillesAgentLib Code Skill that MainAgent can select. <code>--agent</code> forces the same skill without task intent classification. ALA invokes supported CLI interfaces and does not extract credentials, so a subscription-backed agent can execute work when no direct provider API key is configured.</p>
 
     <h2>Request input and result delivery</h2>
     <p>The positional text is the instruction. Repeated <code>--text</code>, <code>--file</code>, <code>--url</code>, and <code>--stdin</code> options add labeled payloads in argument order. Files and HTTP(S) responses are decoded as UTF-8, each file or response is limited to 10 MiB, the combined payload is limited to 32 MiB, and URL retrieval has a 30-second timeout.</p>
@@ -57,8 +57,8 @@
         class Select,Workspace,Run,Escalate runtime</pre>
       <figcaption><em>Bounded correction cycle: feedback becomes a new constraint and may select a stronger executor.</em></figcaption>
     </figure>
-    <p>An A-Skill may request a task workspace for explicit input, retrieved sources, intermediate artifacts, verification results, and final output. The task workspace is isolated and is not an implicit copy of the caller's repository.</p>
-    <p>Running <code>ala</code> without an instruction in a terminal or using <code>--interactive</code> starts an interactive session. <a href="wiki.html#definition-main-agent">MainAgent</a> retains its conversation across prompts. With explicit <code>--skill</code> selection, the runtime retains the selected method and supplies the previous result with corrective feedback. <code>:quit</code> and <code>:exit</code> close the session.</p>
+    <p>An A-Skill may request a task workspace for explicit input, retrieved sources, intermediate artifacts, verification results, and final output. Coding-agent execution always creates its own private temporary workspace and never receives the caller's working directory as its project directory. The task workspace is not an implicit copy of the caller's repository.</p>
+    <p>Running <code>ala</code> without an instruction in a terminal or using <code>--interactive</code> starts an interactive session. <a href="wiki.html#definition-main-agent">MainAgent</a> retains its conversation across prompts. With explicit <code>--skill</code> selection, the runtime retains the selected method and supplies the previous result with corrective feedback. With explicit coding-agent execution, ALA retains the agent's native continuation identifier, pins the conversation to that backend, and reuses its temporary workspace until the session closes. <code>:quit</code> and <code>:exit</code> close the session and remove temporary state.</p>
 
     <h2>Configuration discipline</h2>
     <p>Every direct model call uses LLMAgent with <a href="wiki.html#definition-achilles-agent-lib">AchillesAgentLib</a>-compatible model tags. <code>--model</code>, repeated <code>--tag</code>, <code>--reasoning-effort</code>, and <code>--model-config</code> take precedence over environment-derived defaults. Documentation, specification, orchestration, bootstrap, and testing work can supply applicable metadata tags. DS002 contains the <a href="specsLoader.html?spec=DS002-execution-and-model-strategy.md">authoritative execution strategy</a>.</p>

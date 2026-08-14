@@ -19,6 +19,8 @@ Routing-sensitive work must apply relevant metadata tags for documentation, spec
 
 Tests must be modular and grouped by concern. CLI input handling, output separation, task selection, symbolic abstention, executor selection, workspace lifecycle, configuration precedence, and retry bounds require independent tests. Tests must use deterministic fakes or contract fixtures and must not require real credentials.
 
+Coding-agent process adapters must use argument-array child-process invocation without a shell, preserve the caller's environment for agent-owned authentication, parse only the supported machine-readable output of their backend, and return a normalized final response. Adapter tests must use fake executables or protocol fixtures and must not invoke installed subscriptions.
+
 Persistent documentation, specifications, and comments must be written in English. A source change that alters behavior, interfaces, architecture, workflows, or constraints must update both explanatory HTML documentation and affected DS files. The overview must remain the introduction and definition for ALA, while the wiki must contain specialized terminology without an ALA entry. Documentation should link the first useful occurrence of a specialized term to its wiki entry, must not self-link a term inside its own definition, and must not repeat terminology links without additional navigational value.
 
 The runtime supports Node.js 20 or newer and uses the built-in Node.js test runner. No formatter or linter contract is imposed beyond the module, file-size, line-length, and documentation rules in this specification.

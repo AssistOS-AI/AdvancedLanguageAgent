@@ -15,7 +15,9 @@ All direct model work must pass through [AchillesAgentLib's](wiki.html#definitio
 
 Quality is a mandatory eligibility constraint. ALA may optimize latency and cost only among executors capable of meeting the selected A-Skill's requirements. Straightforward tasks should use direct model execution. Multi-step synthesis, iterative validation, complex research, and long transformations may use agentic execution or an authenticated coding-agent CLI.
 
-ALA may invoke Codex, OpenCode, equivalent supported CLIs, or [Ploinky](wiki.html#definition-ploinky) agents when their advertised capabilities match the task. ALA must use supported invocation interfaces and must not extract, copy, or reuse credentials. A subscription-backed agent may satisfy a task when direct provider API keys are unavailable.
+The standalone runtime must support Codex, OpenCode, and Pi through a generic [coding-agent](wiki.html#definition-coding-agent) Code Skill. Each process must detect the supported executables through `CODEX_BIN`, `OPENCODE_BIN`, and `PI_BIN`, then standard user installation locations and `PATH`. The skill must be registered only when at least one backend is executable. Automatic backend choice must follow `ALA_CODING_AGENT_PRIORITY` before the persistent `codingAgents.priority` array and must otherwise use Codex, OpenCode, then Pi.
+
+ALA must use supported non-interactive and native continuation interfaces and must not extract, copy, or reuse credentials. Agent authentication and agent-native model configuration remain owned by the selected CLI. A subscription-backed agent may satisfy a task when direct provider API keys are unavailable. Failure after a backend process starts must not cause automatic failover because the temporary workspace may already contain partial work.
 
 Provider names, model identifiers, and mappings from tags to concrete executors are runtime configuration. Manual overrides must be possible without changing an A-Skill. Escalation may occur after a bounded failed attempt when the A-Skill's quality checks justify it; the scoring policy and numeric bounds must be configured and must never permit unlimited retries.
 

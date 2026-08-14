@@ -66,7 +66,7 @@ export async function validateTaskRepository(repositoryPath) {
   return { repositoryPath: await realpath(repositoryPath), skillsDirectories, descriptorCount };
 }
 
-export async function createSkillRegistry(repositoryPaths, achillesModule) {
+export async function createSkillRegistry(repositoryPaths, achillesModule, { builtInSkillsDirectories = [] } = {}) {
   const records = [];
   const validations = [];
   for (const repositoryPath of repositoryPaths) {
@@ -90,9 +90,19 @@ export async function createSkillRegistry(repositoryPaths, achillesModule) {
     names.set(record.name, record.repositoryPath);
   }
 
+  if (builtInSkillsDirectories.length > 0 && names.has('coding-agent-cskill')) {
+    throw new ALAError('A-Skill name is reserved by ALA: coding-agent-cskill', EXIT_CODES.repository);
+  }
+
   const registryPath = await mkdtemp(join(tmpdir(), 'ala-skills-'));
   try {
     let sourceIndex = 0;
+    for (const skillsDirectory of builtInSkillsDirectories) {
+      const wrapperPath = resolve(registryPath, `source-${sourceIndex}`);
+      await mkdir(wrapperPath);
+      await symlink(skillsDirectory, resolve(wrapperPath, 'skills'), process.platform === 'win32' ? 'junction' : 'dir');
+      sourceIndex += 1;
+    }
     for (const validation of validations) {
       for (const skillsDirectory of validation.skillsDirectories) {
         const wrapperPath = resolve(registryPath, `source-${sourceIndex}`);

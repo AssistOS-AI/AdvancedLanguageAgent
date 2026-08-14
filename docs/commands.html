@@ -24,12 +24,29 @@
 printf 'Summarize this text' | ala
 ala --interactive</code></pre>
 
+    <h2>Interactive slash commands</h2>
+    <p>When an interactive session is active, a line beginning with <code>/</code> is handled locally before ALA calls <a href="wiki.html#definition-main-agent">MainAgent</a>. These commands therefore do not consume an LLM prompt.</p>
+    <div class="table-wrap">
+      <table class="spec-table">
+        <thead><tr><th>Command</th><th>Behavior</th></tr></thead>
+        <tbody>
+          <tr><td><code>/agent list</code></td><td>Prints only the names of detected backends, one per line.</td></tr>
+          <tr><td><code>/agent auto &lt;prompt&gt;</code></td><td>Delegates the prompt to the first available backend in configured priority order.</td></tr>
+          <tr><td><code>/agent codex &lt;prompt&gt;</code></td><td>Delegates the prompt directly to Codex. OpenCode and Pi use the same form with their names.</td></tr>
+          <tr><td><code>/agent help</code></td><td>Prints the local interactive command summary to standard error.</td></tr>
+          <tr><td><code>/symbolic detection on|off</code></td><td>Enables or disables the experimental instruction-only symbolic router for the remainder of the session. Uncertain matches fall back to MainAgent.</td></tr>
+          <tr><td><code>/quit</code>, <code>/exit</code></td><td>Closes the interactive session. The existing <code>:quit</code> and <code>:exit</code> aliases remain supported.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
     <h2>Execution options</h2>
     <div class="table-wrap">
       <table class="spec-table">
         <thead><tr><th>Option</th><th>Behavior</th></tr></thead>
         <tbody>
           <tr><td><code>--skill &lt;name&gt;</code></td><td>Executes the named <a href="wiki.html#definition-a-skill">A-Skill</a> explicitly. An unknown skill name produces repository exit code <code>4</code>.</td></tr>
+          <tr><td><code>--agent &lt;name&gt;</code></td><td>Delegates the request through an installed <a href="wiki.html#definition-coding-agent">coding agent</a>. Accepted values are <code>auto</code>, <code>codex</code>, <code>opencode</code>, and <code>pi</code>. This option cannot be combined with <code>--skill</code> or ALA model overrides because the selected agent owns its model configuration.</td></tr>
           <tr><td><code>--task-repo &lt;path&gt;</code></td><td>Adds one task repository for this invocation without saving it. The option may be repeated.</td></tr>
           <tr><td><code>--text &lt;text&gt;</code></td><td>Adds a labeled text payload. Repeated payload options retain their argument order.</td></tr>
           <tr><td><code>--file &lt;path&gt;</code></td><td>Reads one UTF-8 file relative to the current working directory and adds it as a payload.</td></tr>
@@ -64,8 +81,17 @@ ala --interactive</code></pre>
     <p>This command removes the matching canonical or lexical path from ALA configuration and prints the removed path. It does not delete the task repository or any files inside it. An unregistered path produces repository exit code <code>4</code>.</p>
     <p>Each repository command accepts <code>--help</code> and prints the common command reference without reading or changing configuration.</p>
 
+    <h2>List coding agents</h2>
+    <pre><code>ala agent list [--config &lt;path&gt;] [--json] [--help]</code></pre>
+    <p>This command detects Codex, OpenCode, and Pi without starting AchillesAgentLib or an LLM session. Text output prints only the names of available backends, one per line. <code>--json</code> returns an ordered JSON array containing those names. Empty output or an empty array means that no supported backend was detected.</p>
+
+    <h2>Symbolic detection</h2>
+    <p>Symbolic detection is disabled by default and is enabled only inside an interactive session with <code>/symbolic detection on</code>. It examines the instruction, never payload contents, and compares its extracted evidence with the optional <code>## Symbolic Routing</code> metadata section in each A-Skill descriptor. The section accepts comma-separated <code>actions</code>, <code>objects</code>, <code>targets</code>, <code>modifiers</code>, <code>phrases</code>, <code>required</code>, and <code>conflicts</code> values.</p>
+    <p>A confident <code>DETERMINISTIC</code> or <code>HIGH</code> match executes the selected A-Skill directly. <code>AMBIGUOUS</code> and <code>UNKNOWN</code> results abstain and use the normal MainAgent route. Explicit <code>--skill</code> and <code>--agent</code> selections always take precedence.</p>
+
     <h2>Configuration precedence</h2>
     <p>The ALA configuration path resolves in this order: <code>--config</code>, <code>ALA_CONFIG_PATH</code>, <code>$XDG_CONFIG_HOME/ala/config.json</code>, then <code>~/.config/ala/config.json</code>. Model selection resolves command-line values before <code>ALA_MODEL</code>, <code>ALA_TAGS</code>, and <code>ALA_REASONING_EFFORT</code>, after which AchillesAgentLib applies its configured defaults.</p>
+    <p>Coding-agent executable resolution checks <code>CODEX_BIN</code>, <code>OPENCODE_BIN</code>, or <code>PI_BIN</code> first, followed by the backend's standard user installation path and <code>PATH</code>. The optional <code>codingAgents.priority</code> configuration array defaults to <code>["codex", "opencode", "pi"]</code>; <code>ALA_CODING_AGENT_PRIORITY</code> supplies a comma-separated environment override.</p>
     <p>For <a href="wiki.html#definition-soul-gateway">Soul Gateway</a>, set <code>SOUL_GATEWAY_BASE_URL</code> and <code>SOUL_GATEWAY_API_KEY</code> in the process environment or in the first <code>.env</code> file AchillesAgentLib finds while walking upward from the current working directory. Use <code>LLM_MODELS_CONFIG_PATH</code> or <code>--model-config</code> to supply another model catalog.</p>
 
     <h2>Exit codes</h2>

@@ -24,6 +24,16 @@ test('parses repository management commands', () => {
   assert.equal(parseArguments(['repo', 'list', '--json']).json, true);
 });
 
+test('parses coding-agent discovery and explicit delegation options', () => {
+  assert.deepEqual(parseArguments(['agent', 'list', '--json']), {
+    command: 'agent', action: 'list', configPath: null, json: true, help: false
+  });
+  assert.equal(parseArguments(['--agent', 'codex', 'Plan', 'this']).agent, 'codex');
+  assert.throws(() => parseArguments(['--agent', 'unknown', 'task']), /must be auto/);
+  assert.throws(() => parseArguments(['--agent', 'pi', '--skill', 'translate']), /cannot be used together/);
+  assert.throws(() => parseArguments(['--agent', 'pi', '--model', 'fast', 'task']), /cannot be combined/);
+});
+
 test('rejects unknown options and missing values', () => {
   assert.throws(() => parseArguments(['--unknown']), /Unknown option/);
   assert.throws(() => parseArguments(['--skill']), /requires a value/);

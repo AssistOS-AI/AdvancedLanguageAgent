@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { ALAError, EXIT_CODES } from './errors.mjs';
 
 export const CONFIG_VERSION = 1;
+const DEFAULT_CODING_AGENT_PRIORITY = ['codex', 'opencode', 'pi'];
 
 export function resolveConfigPath({ cliPath, env = process.env, cwd = process.cwd() } = {}) {
   if (cliPath) return resolve(cwd, cliPath);
@@ -30,7 +31,20 @@ function validateConfig(value, configPath) {
     }
     return { path: entry.path };
   });
-  return { version: CONFIG_VERSION, taskRepositories };
+  const configuredPriority = value.codingAgents?.priority ?? DEFAULT_CODING_AGENT_PRIORITY;
+  if (!Array.isArray(configuredPriority)) {
+    throw new ALAError(`codingAgents.priority must be an array in ${configPath}.`, EXIT_CODES.usage);
+  }
+  const priority = configuredPriority.map((entry) => String(entry).trim().toLowerCase());
+  const validNames = new Set(DEFAULT_CODING_AGENT_PRIORITY);
+  if (priority.length === 0 || priority.some((entry) => !validNames.has(entry)) || new Set(priority).size !== priority.length) {
+    throw new ALAError(
+      `codingAgents.priority must contain unique codex, opencode, or pi values in ${configPath}.`,
+      EXIT_CODES.usage
+    );
+  }
+  for (const name of DEFAULT_CODING_AGENT_PRIORITY) if (!priority.includes(name)) priority.push(name);
+  return { version: CONFIG_VERSION, taskRepositories, codingAgents: { priority } };
 }
 
 export async function loadConfig(configPath) {
@@ -38,7 +52,13 @@ export async function loadConfig(configPath) {
     const content = await readFile(configPath, 'utf8');
     return validateConfig(JSON.parse(content), configPath);
   } catch (error) {
-    if (error?.code === 'ENOENT') return { version: CONFIG_VERSION, taskRepositories: [] };
+    if (error?.code === 'ENOENT') {
+      return {
+        version: CONFIG_VERSION,
+        taskRepositories: [],
+        codingAgents: { priority: [...DEFAULT_CODING_AGENT_PRIORITY] }
+      };
+    }
     if (error instanceof SyntaxError) {
       throw new ALAError(`ALA configuration is not valid JSON: ${configPath}`, EXIT_CODES.usage, { cause: error });
     }

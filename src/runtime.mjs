@@ -1,6 +1,12 @@
+import { fileURLToPath } from 'node:url';
+
+import { createCodingAgentService } from './coding-agents/service.mjs';
 import { createSkillRegistry } from './repositories.mjs';
 import { ALAError, EXIT_CODES } from './errors.mjs';
 import { normalizeResult } from './output.mjs';
+import { createSymbolicRouter } from './routing/symbolic.mjs';
+
+const internalSkillsDirectory = fileURLToPath(new URL('./internal-skills', import.meta.url));
 
 export function createDiagnosticLogger(stream = process.stderr, env = process.env) {
   const debugEnabled = env.ALA_DEBUG === '1' || env.ALA_DEBUG === 'true';
@@ -25,6 +31,7 @@ function runtimeOptions(options, env) {
 export async function createRuntime({
   achillesModule,
   repositories,
+  codingAgents = [],
   options,
   env = process.env,
   diagnostics = process.stderr
@@ -35,44 +42,78 @@ export async function createRuntime({
       EXIT_CODES.repository
     );
   }
-  const registry = await createSkillRegistry(repositories, achillesModule);
   const logger = createDiagnosticLogger(diagnostics, env);
+  const codingAgentService = createCodingAgentService({ agents: codingAgents, env, logger });
+  const registry = await createSkillRegistry(repositories, achillesModule, {
+    builtInSkillsDirectories: codingAgents.some((record) => record.available) ? [internalSkillsDirectory] : []
+  });
+  const symbolicRouter = await createSymbolicRouter(registry.skills);
   const selected = runtimeOptions(options, env);
-  let agent;
+  let mainAgent;
   try {
-    agent = new achillesModule.MainAgent({
+    mainAgent = new achillesModule.MainAgent({
       startDir: registry.path,
       logger,
       reasoningEffort: selected.reasoningEffort,
       disableInternalSkills: true
     });
-    await agent.buildSkills();
+    await mainAgent.buildSkills();
   } catch (error) {
     await registry.cleanup();
+    await codingAgentService.close();
     throw error;
   }
 
   return {
     skills: registry.skills,
+    codingAgents,
+    symbolicDetectionEnabled: false,
+    setSymbolicDetection(enabled) { this.symbolicDetectionEnabled = Boolean(enabled); },
+    getSymbolicDetection() { return this.symbolicDetectionEnabled; },
+    listCodingAgents() {
+      return codingAgents.filter((record) => record.available).map((record) => record.name);
+    },
+    async executeAgent(prompt, { agent = 'auto', signal = null } = {}) {
+      const selected = agent === 'auto'
+        ? codingAgents.find((record) => record.available)
+        : codingAgents.find((record) => record.name === agent && record.available);
+      if (!selected) throw new ALAError(`Coding agent is not available: ${agent}`, EXIT_CODES.execution);
+      return mainAgent.executeSkill('coding-agent', prompt, {
+        signal,
+        context: { codingAgentService, codingAgentPreference: agent }
+      });
+    },
     async execute(prompt, executionOptions = {}) {
       const common = {
         model: selected.model,
         tags: selected.tags.length > 0 ? selected.tags : null,
         reasoningEffort: selected.reasoningEffort,
-        signal: executionOptions.signal || null
+        signal: executionOptions.signal || null,
+        context: {
+          codingAgentService,
+          codingAgentPreference: options.agent || 'auto'
+        }
       };
+      if (options.agent) return mainAgent.executeSkill('coding-agent', prompt, common);
       if (options.skill) {
-        const record = agent.getSkillRecord(options.skill);
+        const record = mainAgent.getSkillRecord(options.skill);
         if (!record) throw new ALAError(`A-Skill not found: ${options.skill}`, EXIT_CODES.repository);
-        return agent.executeSkill(record.name, prompt, common);
+        return mainAgent.executeSkill(record.name, prompt, common);
       }
-      return agent.executePrompt(prompt, common);
+      if (this.symbolicDetectionEnabled) {
+        const decision = symbolicRouter.route(executionOptions.instruction || prompt);
+        if (decision.skill && ['DETERMINISTIC', 'HIGH'].includes(decision.state)) {
+          return mainAgent.executeSkill(decision.skill, prompt, common);
+        }
+      }
+      return mainAgent.executePrompt(prompt, common);
     },
     cancel(reason = 'cancelled') {
-      agent.cancelCurrentSession(reason);
+      mainAgent.cancelCurrentSession(reason);
     },
     async close() {
-      agent.shutdown();
+      mainAgent.shutdown();
+      await codingAgentService.close();
       await registry.cleanup();
     }
   };

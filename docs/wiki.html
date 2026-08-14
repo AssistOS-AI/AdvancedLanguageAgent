@@ -38,12 +38,12 @@
     <section class="wiki-entry" id="definition-skill-catalog">
       <h2>Skill catalog</h2>
       <p>The skill catalog is the set of enabled <a href="#definition-a-skill">A-Skills</a> that one <a href="index.html">ALA</a> runtime presents to <a href="#definition-main-agent">MainAgent</a>. ALA builds it from persistent, environment-provided, and invocation-specific <a href="#definition-task-repository">task repositories</a> after canonical path deduplication and descriptor validation.</p>
-      <p>The catalog may be empty. In that state MainAgent performs general model-backed execution. A populated catalog permits automatic selection, while <code>--skill</code> requests one named entry explicitly.</p>
+      <p>The catalog may be empty. In that state MainAgent performs general model-backed execution and may still use generic runtime skills supplied by ALA. A populated task catalog permits automatic A-Skill selection, while <code>--skill</code> requests one named task entry explicitly.</p>
     </section>
 
     <section class="wiki-entry" id="definition-discovery-registry">
       <h2>Discovery registry</h2>
-      <p>The discovery registry is a process-scoped temporary directory created by <a href="index.html">ALA</a> to present multiple task-repository <code>skills</code> directories to one <a href="#definition-main-agent">MainAgent</a>. It contains links to the owning repositories rather than copied <a href="#definition-a-skill">A-Skill</a> content.</p>
+      <p>The discovery registry is a process-scoped temporary directory created by <a href="index.html">ALA</a> to present multiple task-repository <code>skills</code> directories and available generic runtime skills to one <a href="#definition-main-agent">MainAgent</a>. It contains links to owning task repositories rather than copied <a href="#definition-a-skill">A-Skill</a> content.</p>
       <p>ALA removes the registry when runtime creation fails or when execution closes. This arrangement lets independently owned repositories participate in one catalog without transferring ownership of their code or documentation to the ALA repository.</p>
     </section>
 
@@ -65,6 +65,12 @@
       <p>An <a href="#definition-a-skill">A-Skill</a> may request these services while retaining ownership of its procedure and acceptance conditions. Availability depends on configured providers and installed executors; the capability name does not guarantee that every deployment supplies a matching backend.</p>
     </section>
 
+    <section class="wiki-entry" id="definition-coding-agent">
+      <h2>Coding agent</h2>
+      <p>A coding agent is a supported authenticated command-line agent that can plan, use tools, validate intermediate work, and return a final response for a bounded ALA request. The standalone runtime supports Codex, OpenCode, and Pi. Although these tools can edit code, ALA uses them as general executors for language, research, planning, verification, transformation, and bounded code-fragment tasks.</p>
+      <p>ALA detects their executables when each process starts and registers a generic <a href="#definition-code-skill">Code Skill</a> when at least one is available. The agent keeps ownership of its authentication and model configuration. ALA passes only the prompt and an ALA-created <a href="#definition-task-workspace">task workspace</a>, retains the agent's opaque native continuation during an interactive session, and removes the workspace at shutdown. This generic runtime skill is not an <a href="#definition-a-skill">A-Skill</a> or a task-specific method.</p>
+    </section>
+
     <section class="wiki-entry" id="definition-execution-routing">
       <h2>Execution routing</h2>
       <p>Execution routing is the decision that maps a general request or selected <a href="#definition-a-skill">A-Skill's</a> requirements to an eligible configured model, agent, research facility, or workspace service. It occurs after any task-method decision and must not change the selected method's domain procedure.</p>
@@ -73,8 +79,8 @@
 
     <section class="wiki-entry" id="definition-symbolic-routing">
       <h2>Symbolic routing</h2>
-      <p>Symbolic routing is an experimental instruction-only task-selection path. It extracts actions, objects, targets, modifiers, structural markers, and relationships, then compares that evidence with routing metadata supplied by <a href="#definition-task-repository">task repositories</a>.</p>
-      <p>The design permits direct execution only for deterministic or sufficiently strong high-confidence matches. Ambiguous and unknown requests must use <a href="#definition-abstention">abstention</a>. Symbolic routing is optional and does not replace the default CLI path.</p>
+      <p>Symbolic routing is an experimental instruction-only task-selection path enabled inside an interactive session with <code>/symbolic detection on</code>. It extracts actions, objects, targets, modifiers, structural markers, and relationships, then compares that evidence with optional routing metadata in A-Skill descriptors supplied by <a href="#definition-task-repository">task repositories</a>.</p>
+      <p>The router permits direct execution only for deterministic or sufficiently strong high-confidence matches. Ambiguous and unknown requests use <a href="#definition-abstention">abstention</a> and return to the default MainAgent path. <code>/symbolic detection off</code> disables the experimental path for the remainder of the session.</p>
     </section>
 
     <section class="wiki-entry" id="definition-abstention">
@@ -92,13 +98,13 @@
     <section class="wiki-entry" id="definition-task-workspace">
       <h2>Task workspace</h2>
       <p>A task workspace is an isolated temporary directory for one multi-stage request. It may contain explicit input, retrieved sources, intermediate artifacts, verification results, and final output needed by an <a href="#definition-a-skill">A-Skill</a> or <a href="#definition-agentic-execution">agentic execution</a> path.</p>
-      <p>A task workspace is not an implicit copy of the caller's source repository and does not give <a href="index.html">ALA</a> general ownership of that repository. Retention and sensitive-data policies remain deployment contracts, and workspace creation is requested by an A-Skill rather than selected through a public CLI option.</p>
+      <p>A task workspace is not an implicit copy of the caller's source repository and does not give <a href="index.html">ALA</a> general ownership of that repository. An A-Skill may request one, while coding-agent execution creates one automatically. The public CLI does not accept a real project directory for coding-agent work, and the runtime removes its temporary workspace when execution closes.</p>
     </section>
 
     <section class="wiki-entry" id="definition-code-skill">
       <h2>Code Skill</h2>
-      <p>A Code Skill is an <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> skill family conventionally described by <code>cskill.md</code>. Its <a href="#definition-task-repository">task repository</a> supplies a module that the corresponding AchillesAgentLib subsystem executes for a selected request.</p>
-      <p><a href="index.html">ALA</a> discovers the descriptor and delegates execution to AchillesAgentLib. The owning repository remains responsible for the module, its task contract, and its verification rules.</p>
+      <p>A Code Skill is an <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> skill family conventionally described by <code>cskill.md</code>. A <a href="#definition-task-repository">task repository</a> may supply a module for a specialized method, while ALA may supply a Code Skill for generic runtime infrastructure such as coding-agent delegation.</p>
+      <p><a href="index.html">ALA</a> discovers the descriptor and delegates execution to AchillesAgentLib. The component that distributes the skill remains responsible for its module, contract, and verification rules. A generic core Code Skill does not become an <a href="#definition-a-skill">A-Skill</a> unless a task repository owns it as a specialized task method.</p>
     </section>
 
     <section class="wiki-entry" id="definition-orchestration-skill">

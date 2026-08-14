@@ -12,7 +12,8 @@ const valueOptions = new Map([
   ['--reasoning-effort', 'reasoningEffort'],
   ['--model-config', 'modelConfigPath'],
   ['--achilles-path', 'achillesPath'],
-  ['--config', 'configPath']
+  ['--config', 'configPath'],
+  ['--agent', 'agent']
 ]);
 
 const repeatableOptions = new Set(['taskRepositories', 'tags']);
@@ -85,8 +86,28 @@ function parseRepoCommand(argv) {
   return options;
 }
 
+function parseAgentCommand(argv) {
+  const options = {
+    command: 'agent', action: argv[1] || null, configPath: null, json: false, help: false
+  };
+  if (options.action !== 'list') {
+    throw new ALAError('Usage: ala agent list [--config <path>] [--json].', EXIT_CODES.usage);
+  }
+  for (let index = 2; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === '--config') {
+      options.configPath = optionValue(argv, index, token);
+      index += 1;
+    } else if (token === '--json') options.json = true;
+    else if (token === '--help') options.help = true;
+    else throw new ALAError(`Unknown agent option: ${token}`, EXIT_CODES.usage);
+  }
+  return options;
+}
+
 export function parseArguments(argv) {
   if (argv[0] === 'repo') return parseRepoCommand(argv);
+  if (argv[0] === 'agent') return parseAgentCommand(argv);
 
   const options = defaultExecutionOptions();
   for (let index = 0; index < argv.length; index += 1) {
@@ -109,6 +130,18 @@ export function parseArguments(argv) {
       options.instructionParts.push(token);
     }
   }
+  if (options.agent && !['auto', 'codex', 'opencode', 'pi'].includes(options.agent)) {
+    throw new ALAError('--agent must be auto, codex, opencode, or pi.', EXIT_CODES.usage);
+  }
+  if (options.agent && options.skill) {
+    throw new ALAError('--agent and --skill cannot be used together.', EXIT_CODES.usage);
+  }
+  if (options.agent && (options.model || options.tags.length > 0 || options.reasoningEffort || options.modelConfigPath)) {
+    throw new ALAError(
+      '--agent cannot be combined with model, tag, reasoning-effort, or model-config overrides.',
+      EXIT_CODES.usage
+    );
+  }
   return options;
 }
 
@@ -119,9 +152,11 @@ Usage:
   ala repo add <path> [--config <path>]
   ala repo remove <path> [--config <path>]
   ala repo list [--config <path>] [--json]
+  ala agent list [--config <path>] [--json]
 
 Execution options:
   --skill <name>             Execute an A-Skill explicitly
+  --agent <name>             Delegate explicitly: auto, codex, opencode, or pi
   --task-repo <path>         Add a task repository for this invocation
   --text <text>              Add a text payload
   --file <path>              Add a UTF-8 file payload
@@ -136,5 +171,6 @@ Execution options:
   --model-config <path>      Override AchillesAgentLib model configuration
   --achilles-path <path>     Override AchillesAgentLib resolution
   --config <path>            Override the ALA configuration file
+  Interactive: /symbolic detection on|off  Toggle symbolic routing in a session
   --help, -h                 Show help
   --version, -v              Show version`;

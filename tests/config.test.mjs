@@ -22,7 +22,11 @@ test('saves and loads versioned configuration atomically with restrictive mode',
   const root = await mkdtemp(join(tmpdir(), 'ala-config-test-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const configPath = join(root, 'nested', 'config.json');
-  const config = { version: 1, taskRepositories: [{ path: '/tasks/one' }] };
+  const config = {
+    version: 1,
+    taskRepositories: [{ path: '/tasks/one' }],
+    codingAgents: { priority: ['codex', 'opencode', 'pi'] }
+  };
   await saveConfig(configPath, config);
   assert.deepEqual(await loadConfig(configPath), config);
   assert.equal((await stat(configPath)).mode & 0o777, 0o600);
@@ -52,4 +56,23 @@ test('does not replace malformed configuration with defaults', async (context) =
   const { writeFile } = await import('node:fs/promises');
   await writeFile(configPath, '{broken');
   await assert.rejects(() => loadConfig(configPath), /not valid JSON/);
+});
+
+test('validates and completes coding-agent priority', async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-agent-config-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const configPath = join(root, 'config.json');
+  const { writeFile } = await import('node:fs/promises');
+  await writeFile(configPath, JSON.stringify({
+    version: 1,
+    taskRepositories: [],
+    codingAgents: { priority: ['pi'] }
+  }));
+  assert.deepEqual((await loadConfig(configPath)).codingAgents.priority, ['pi', 'codex', 'opencode']);
+  await writeFile(configPath, JSON.stringify({
+    version: 1,
+    taskRepositories: [],
+    codingAgents: { priority: ['invalid'] }
+  }));
+  await assert.rejects(() => loadConfig(configPath), /codingAgents\.priority/);
 });

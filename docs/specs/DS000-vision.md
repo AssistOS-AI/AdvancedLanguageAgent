@@ -11,7 +11,7 @@ summary: Defines the purpose, user-visible result, and product boundary of Advan
 
 ALA must support interactive and single-shot requests. A caller must be able to provide an instruction and optional input through command arguments, standard input, a URL, or a file. ALA must write the requested result to standard output or a file and must keep diagnostics and routing information separate from that result.
 
-The distribution executable is `ala`. It must accept positional instructions, explicit payload-source options, explicit [A-Skill](wiki.html#definition-a-skill) selection through `--skill`, and automatic selection when that option is absent. It must protect an existing output file unless the caller explicitly supplies `--force`.
+The distribution executable is `ala`. It must accept positional instructions, explicit payload-source options, explicit [A-Skill](wiki.html#definition-a-skill) selection through `--skill`, explicit [coding-agent](wiki.html#definition-coding-agent) delegation through `--agent`, and automatic selection when those options are absent. It must protect an existing output file unless the caller explicitly supplies `--force`.
 
 ALA must execute general language requests without requiring a [task repository](wiki.html#definition-task-repository). It must also own [generic execution capabilities](wiki.html#definition-generic-execution-capability) for task and skill discovery, task routing, model and agent execution, research access, temporary workspaces, sessions, verification support, and bounded retries. Specialized task methodology and task-specific verification rules must remain in independently versioned task repositories.
 

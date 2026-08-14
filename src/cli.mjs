@@ -17,6 +17,7 @@ import { composePrompt, loadRequest } from './input.mjs';
 import { writeResult } from './output.mjs';
 import { validateTaskRepository } from './repositories.mjs';
 import { createRuntime, feedbackPrompt } from './runtime.mjs';
+import { discoverCodingAgents } from './coding-agents/discovery.mjs';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -63,25 +64,83 @@ async function runRepositoryCommand(options, io, env) {
   return EXIT_CODES.success;
 }
 
-async function interactiveLoop(runtime, initialPrompt, options, io, signal) {
+async function runAgentCommand(options, io, env) {
+  if (options.help) {
+    io.stdout.write(`${HELP_TEXT}\n`);
+    return EXIT_CODES.success;
+  }
+  const configPath = resolveConfigPath({ cliPath: options.configPath, env, cwd: io.cwd });
+  const config = await loadConfig(configPath);
+  const agents = await discoverCodingAgents({ env, priority: config.codingAgents.priority });
+  const names = agents.filter((agent) => agent.available).map((agent) => agent.name);
+  if (options.json) io.stdout.write(`${JSON.stringify(names, null, 2)}\n`);
+  else io.stdout.write(names.map((name) => `${name}\n`).join(''));
+  return EXIT_CODES.success;
+}
+
+async function interactiveLoop(runtime, initialPrompt, initialInstruction, options, io, signal) {
   const readline = createInterface({
     input: io.stdin,
     output: io.stderr,
     terminal: Boolean(io.stdin.isTTY)
   });
   let previousResult = null;
+  const slashHelp = 'Interactive commands: /agent list | /agent auto <prompt> | /agent codex <prompt> | /agent opencode <prompt> | /agent pi <prompt> | /symbolic detection on|off | /quit | /exit';
   try {
     if (initialPrompt) {
-      previousResult = await runtime.execute(initialPrompt, { signal });
+      previousResult = await runtime.execute(initialPrompt, { signal, instruction: initialInstruction });
       await writeResult(previousResult, { stdout: io.stdout });
     }
-    while (true) {
-      const line = (await readline.question('ala> ')).trim();
-      if (!line) continue;
-      if (line === ':quit' || line === ':exit') break;
+    const handleLine = async (rawLine) => {
+      const line = String(rawLine).trim();
+      if (!line) return false;
+      if (line === ':quit' || line === ':exit' || line === '/quit' || line === '/exit') return true;
+      if (line.startsWith('/')) {
+        try {
+          const parts = line.split(/\s+/u);
+          if (parts[0] === '/agent') {
+            const action = parts[1] || 'help';
+            if (action === 'help') {
+              io.stderr.write(`${slashHelp}\n`);
+            } else if (action === 'list') {
+              const names = runtime.listCodingAgents();
+              io.stdout.write(names.map((name) => `${name}\n`).join(''));
+            } else if (['auto', 'codex', 'opencode', 'pi'].includes(action)) {
+              const prompt = parts.slice(2).join(' ').trim();
+              if (!prompt) throw new ALAError(`/agent ${action} requires a prompt.`, EXIT_CODES.usage);
+              const result = await runtime.executeAgent(prompt, { agent: action, signal });
+              await writeResult(result, { stdout: io.stdout });
+            } else {
+              throw new ALAError(`Unknown interactive command: ${line}`, EXIT_CODES.usage);
+            }
+          } else if (parts[0] === '/symbolic') {
+            if (parts[1] !== 'detection' || !['on', 'off'].includes(parts[2])) {
+              throw new ALAError('Usage: /symbolic detection on|off', EXIT_CODES.usage);
+            }
+            runtime.setSymbolicDetection(parts[2] === 'on');
+            io.stderr.write(`ala: symbolic detection ${parts[2]}\n`);
+          } else {
+            throw new ALAError(`Unknown interactive command: ${line}`, EXIT_CODES.usage);
+          }
+        } catch (error) {
+          const alaError = asALAError(error);
+          io.stderr.write(`ala: ${alaError.message}\n`);
+        }
+        return false;
+      }
       const prompt = options.skill && previousResult !== null ? feedbackPrompt(previousResult, line) : line;
       previousResult = await runtime.execute(prompt, { signal });
       await writeResult(previousResult, { stdout: io.stdout });
+      return false;
+    };
+    if (io.stdin.isTTY) {
+      while (true) {
+        if (await handleLine(await readline.question('ala> '))) break;
+      }
+    } else {
+      for await (const line of readline) {
+        if (await handleLine(line)) break;
+      }
     }
   } finally {
     readline.close();
@@ -112,9 +171,18 @@ async function runExecution(options, io, env) {
     env,
     cwd: io.cwd
   });
+  const codingAgents = await discoverCodingAgents({ env, priority: config.codingAgents.priority });
+  if (options.agent) {
+    const available = codingAgents.filter((agent) => agent.available);
+    const selected = options.agent === 'auto'
+      ? available[0]
+      : available.find((agent) => agent.name === options.agent);
+    if (!selected) throw new ALAError(`Coding agent is not available: ${options.agent}`, EXIT_CODES.execution);
+  }
   const runtime = await createRuntime({
     achillesModule: achilles.module,
     repositories,
+    codingAgents,
     options,
     env,
     diagnostics: io.stderr
@@ -129,6 +197,7 @@ async function runExecution(options, io, env) {
   try {
     const inferredInteractive = options.interactive || (options.instructionParts.length === 0 && io.stdin.isTTY);
     let initialPrompt = null;
+    let initialInstruction = null;
     if (options.instructionParts.length > 0 || options.sources.length > 0 || !inferredInteractive) {
       const request = await loadRequest({
         instructionParts: options.instructionParts,
@@ -138,10 +207,11 @@ async function runExecution(options, io, env) {
         fetchImpl: io.fetch
       });
       initialPrompt = composePrompt(request);
+      initialInstruction = request.instruction;
     }
-    if (inferredInteractive) await interactiveLoop(runtime, initialPrompt, options, io, controller.signal);
+    if (inferredInteractive) await interactiveLoop(runtime, initialPrompt, initialInstruction, options, io, controller.signal);
     else {
-      const result = await runtime.execute(initialPrompt, { signal: controller.signal });
+      const result = await runtime.execute(initialPrompt, { signal: controller.signal, instruction: initialInstruction });
       const outputPath = options.output ? resolve(io.cwd, options.output) : null;
       await writeResult(result, { outputPath, force: options.force, stdout: io.stdout });
     }
@@ -164,9 +234,9 @@ export async function runCli({
   const io = { stdin, stdout, stderr, cwd, fetch: fetchImpl };
   try {
     const options = parseArguments(argv);
-    return options.command === 'repo'
-      ? await runRepositoryCommand(options, io, env)
-      : await runExecution(options, io, env);
+    if (options.command === 'repo') return await runRepositoryCommand(options, io, env);
+    if (options.command === 'agent') return await runAgentCommand(options, io, env);
+    return await runExecution(options, io, env);
   } catch (error) {
     const alaError = asALAError(error);
     stderr.write(`ala: ${alaError.message}\n`);

@@ -53,6 +53,87 @@ test('returns the usage exit code for invalid arguments', async () => {
   assert.match(stderr.read(), /Unknown option/);
 });
 
+test('lists detected coding agents without loading AchillesAgentLib', async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-cli-agents-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const binary = join(root, 'codex');
+  const { chmod, writeFile } = await import('node:fs/promises');
+  await writeFile(binary, '#!/bin/sh\nexit 0\n');
+  await chmod(binary, 0o700);
+  const stdout = captureStream();
+  const code = await runCli({
+    argv: ['agent', 'list', '--json', '--config', join(root, 'missing.json')],
+    env: { HOME: join(root, 'home'), PATH: root },
+    stdin: inputStream(),
+    stdout,
+    stderr: captureStream(),
+    cwd: root
+  });
+  assert.equal(code, 0);
+  assert.deepEqual(JSON.parse(stdout.read()), ['codex']);
+
+  const textStdout = captureStream();
+  assert.equal(await runCli({
+    argv: ['agent', 'list', '--config', join(root, 'missing.json')],
+    env: { HOME: join(root, 'home'), PATH: root },
+    stdin: inputStream(),
+    stdout: textStdout,
+    stderr: captureStream(),
+    cwd: root
+  }), 0);
+  assert.equal(textStdout.read(), 'codex\n');
+});
+
+test('delegates explicitly to a detected coding agent with clean stdout', async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-cli-delegate-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const binary = join(root, 'codex');
+  const { chmod, writeFile } = await import('node:fs/promises');
+  await writeFile(binary, `#!/bin/sh
+printf '%s\n' '{"type":"thread.started","thread_id":"thread-cli"}'
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"agent result"}}'
+`);
+  await chmod(binary, 0o700);
+  const stdout = captureStream();
+  const stderr = captureStream();
+  const code = await runCli({
+    argv: ['--agent', 'codex', '--config', join(root, 'missing.json'), 'complete', 'task'],
+    env: { HOME: join(root, 'home'), PATH: root },
+    stdin: inputStream(),
+    stdout,
+    stderr,
+    cwd: root
+  });
+  assert.equal(code, 0);
+  assert.equal(stdout.read(), 'agent result\n');
+  assert.equal(stderr.read(), '');
+});
+
+test('handles slash agent commands locally in interactive mode', async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-cli-interactive-agent-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const binary = join(root, 'codex');
+  const { chmod, writeFile } = await import('node:fs/promises');
+  await writeFile(binary, `#!/bin/sh
+printf '%s\n' '{"type":"thread.started","thread_id":"thread-interactive"}'
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"slash result"}}'
+`);
+  await chmod(binary, 0o700);
+  const stdout = captureStream();
+  const stderr = captureStream();
+  const code = await runCli({
+    argv: ['--interactive', '--config', join(root, 'missing.json')],
+    env: { HOME: join(root, 'home'), PATH: root },
+    stdin: inputStream('/symbolic detection on\n/agent list\n/agent codex do this\n/quit\n'),
+    stdout,
+    stderr,
+    cwd: root
+  });
+  assert.equal(code, 0);
+  assert.equal(stdout.read(), 'codex\nslash result\n');
+  assert.match(stderr.read(), /symbolic detection on/);
+});
+
 test('executes an explicitly selected A-Skill from the persistent registry', async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-cli-execute-'));
   context.after(() => rm(root, { recursive: true, force: true }));

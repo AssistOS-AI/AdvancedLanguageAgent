@@ -63,6 +63,12 @@ ala repo list
 
 ALA saves registered repositories in `$XDG_CONFIG_HOME/ala/config.json`, or in `~/.config/ala/config.json` when `XDG_CONFIG_HOME` is not set.
 
+ALA also detects authenticated Codex, OpenCode, and Pi installations. Inspect the detected backend names with:
+
+```sh
+ala agent list
+```
+
 ## Run a single task
 
 Run a general request without a task repository:
@@ -83,6 +89,15 @@ Write the result to a file:
 ala "Summarize this report" --file report.md --output summary.md
 ```
 
+MainAgent may delegate suitable complex work to an installed [coding agent](docs/wiki.html#definition-coding-agent) automatically. Force one supported backend with `--agent`; `auto` uses the configured priority, which defaults to Codex, OpenCode, then Pi:
+
+```sh
+ala --agent codex "Research this topic and produce a verified summary"
+ala --agent auto "Plan and validate this multi-step language task"
+```
+
+The selected coding-agent CLI must already be authenticated through its own login mechanism. ALA runs it in a temporary workspace and removes that workspace when the command or interactive session closes.
+
 ## Run interactively
 
 Start an interactive session. This works without a task repository:
@@ -97,7 +112,18 @@ Start an interactive session with a specific A-Skill:
 ala --interactive --skill translate
 ```
 
-Enter `:quit` or `:exit` to close the session.
+Interactive sessions also accept local slash commands. `/agent ...` commands are handled by ALA and are never sent to the LLM:
+
+```text
+/agent list
+/agent codex Review this task
+/agent auto Produce a verified multi-step summary
+/symbolic detection on
+/symbolic detection off
+/quit
+```
+
+`/agent list` reports detected backends, `/agent auto <prompt>` follows the configured priority, and `/agent <codex|opencode|pi> <prompt>` selects a backend. Symbolic detection is off by default for each session; `/symbolic detection on` enables instruction-only symbolic task routing with safe fallback to MainAgent, and `off` disables it again. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
 
 ## More information
 
