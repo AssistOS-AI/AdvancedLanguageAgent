@@ -19,28 +19,35 @@
 
     <h2>Selection precedence</h2>
     <p><code>--skill &lt;name&gt;</code> selects an A-Skill explicitly and calls its <a href="wiki.html#definition-achilles-agent-lib">AchillesAgentLib</a> subsystem without intent classification. <code>--agent &lt;name&gt;</code> instead forces the generic <a href="wiki.html#definition-coding-agent">coding-agent</a> path, and the two explicit choices are mutually exclusive. Without either option, ALA passes the instruction to <a href="wiki.html#definition-main-agent">MainAgent</a>. An empty task catalog produces general model-backed execution while a detected coding agent remains available as a generic runtime tool. The experimental <a href="wiki.html#definition-symbolic-routing">symbolic routing</a> path is disabled by default and is enabled for an interactive session with <code>/symbolic detection on</code>; <code>off</code> disables it again.</p>
+    <h2>Task-selection detail</h2>
+    <p>The task-method stage contains the precedence decisions hidden by the overview. Explicit choices bypass automatic selection; otherwise ALA uses MainAgent, with the optional symbolic path able to select a confident match first.</p>
     <figure class="diagram">
       <pre class="mermaid">flowchart LR
-        Request[Instruction] --> Agent{Explicit agent?}
-        Agent -->|Yes| Delegated[Generic coding-agent execution]
-        Agent -->|No| Explicit{Explicit task skill?}
-        Explicit -->|Yes| Selected[Selected task method]
-        Explicit -->|No| Catalog{Task skills available?}
-        Catalog -->|No| General[General execution]
-        Catalog -->|Yes| Enabled{Experimental mode?}
-        Enabled -->|No| Default[MainAgent selection]
-        Enabled -->|Yes| Evidence[Instruction evidence]
-        Evidence -->|Clear| Selected
-        Evidence -->|Uncertain| Default
-        Default --> Selected
-        Selected --> Requirements[Execution requirements]
-        General --> Requirements
-        Delegated --> Requirements
+        Instruction[Instruction] --> Choice{Explicit selection?}
+        Choice -->|--skill| Skill[Selected A-Skill]
+        Choice -->|none| Main[MainAgent]
+        Main -->|skill match| Skill
+        Main -->|general request| General[General method]
         classDef decision fill:#fff1db,stroke:#9a641d
         classDef route fill:#e8f5eb,stroke:#367a46,font-weight:bold
-        class Agent,Explicit,Catalog,Enabled decision
-        class Selected,Default,Evidence,General,Delegated route</pre>
-      <figcaption><em>Safe request routing: explicit agent delegation bypasses task selection, while uncertain symbolic evidence returns to MainAgent.</em></figcaption>
+        class Choice decision
+        class Skill,General,Main route</pre>
+      <figcaption><em>Task-method detail: explicit A-Skill selection takes precedence over MainAgent routing.</em></figcaption>
+    </figure>
+
+    <h2>Symbolic-routing detail</h2>
+    <p>When `/symbolic detection on` is active, the symbolic router makes a bounded decision from instruction evidence and A-Skill metadata. It does not inspect payloads. Only a clear result bypasses MainAgent.</p>
+    <figure class="diagram">
+      <pre class="mermaid">flowchart LR
+        Instruction[Instruction only] --> Symbolic[Symbolic router]
+        Symbolic --> Decision{Confidence state}
+        Decision -->|DETERMINISTIC or HIGH| Direct[Direct A-Skill]
+        Decision -->|AMBIGUOUS or UNKNOWN| Fallback[MainAgent fallback]
+        classDef decision fill:#fff1db,stroke:#9a641d
+        classDef route fill:#e8f5eb,stroke:#367a46,font-weight:bold
+        class Decision decision
+        class Symbolic,Direct,Fallback route</pre>
+      <figcaption><em>Symbolic detail: uncertain evidence abstains and returns to the default MainAgent path.</em></figcaption>
     </figure>
 
     <h2>Symbolic routing and abstention</h2>
