@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Advanced Language Agent Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page"><article class="page__panel">
+    <p class="breadcrumbs"><a href="index.html">Documentation</a> / Wiki</p>
+    <h1>Advanced Language Agent Wiki</h1>
+    <p class="lead">This page is the canonical reference for specialized project terminology. Each entry explains one concept and links only to different concepts needed to understand its relationships.</p>
+
+    <section class="wiki-entry" id="definition-achilles-agent-lib">
+      <h2>AchillesAgentLib</h2>
+      <p>AchillesAgentLib is the external JavaScript library installed under the package identity <code>ploinky-agent-lib</code>. <a href="index.html">ALA</a> uses it for skill discovery, <a href="#definition-main-agent">MainAgent</a>, <a href="#definition-llm-agent">LLMAgent</a>, model tags, sessions, cancellation, and the execution subsystems associated with supported skill families.</p>
+      <p>ALA resolves the library from an explicit path, the <code>ACHILLES_AGENT_LIB_PATH</code> environment value, a sibling checkout, or the package dependency. Model providers and concrete model identifiers remain AchillesAgentLib configuration. ALA passes supported overrides to the library and does not reimplement provider credentials or model invocation.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-a-skill">
+      <h2>A-Skill</h2>
+      <p>An A-Skill is an <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> skill used by <a href="index.html">ALA</a> as a specialized task method. The independently versioned <a href="#definition-task-repository">task repository</a> that supplies it owns its instructions, optional code, input and output expectations, validation rules, and acceptance conditions.</p>
+      <p>An A-Skill is not a separate file format and is not copied into the ALA core. It may use a supported AchillesAgentLib skill family and may request model, agent, research, or workspace services from ALA. Explicit selection with <code>--skill</code> takes precedence over automatic selection.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-task-repository">
+      <h2>Task repository</h2>
+      <p>A task repository is an independently installed and versioned directory that packages one coherent family of specialized work and its <a href="#definition-a-skill">A-Skills</a>. Operators register persistent repositories with <code>ala repo add</code> or supply them through <code>ALA_TASK_REPOSITORIES</code> and <code>--task-repo</code>.</p>
+      <p><a href="index.html">ALA</a> validates <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> skill descriptors, combines canonical repository paths, and rejects duplicate canonical skill names. Removing a registration changes only ALA's configuration and does not delete repository files. Task repositories are optional because general requests remain available with an empty catalog.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-skill-catalog">
+      <h2>Skill catalog</h2>
+      <p>The skill catalog is the set of enabled <a href="#definition-a-skill">A-Skills</a> that one <a href="index.html">ALA</a> runtime presents to <a href="#definition-main-agent">MainAgent</a>. ALA builds it from persistent, environment-provided, and invocation-specific <a href="#definition-task-repository">task repositories</a> after canonical path deduplication and descriptor validation.</p>
+      <p>The catalog may be empty. In that state MainAgent performs general model-backed execution. A populated catalog permits automatic selection, while <code>--skill</code> requests one named entry explicitly.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-discovery-registry">
+      <h2>Discovery registry</h2>
+      <p>The discovery registry is a process-scoped temporary directory created by <a href="index.html">ALA</a> to present multiple task-repository <code>skills</code> directories to one <a href="#definition-main-agent">MainAgent</a>. It contains links to the owning repositories rather than copied <a href="#definition-a-skill">A-Skill</a> content.</p>
+      <p>ALA removes the registry when runtime creation fails or when execution closes. This arrangement lets independently owned repositories participate in one catalog without transferring ownership of their code or documentation to the ALA repository.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-main-agent">
+      <h2>MainAgent</h2>
+      <p>MainAgent is the <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> coordinator that <a href="index.html">ALA</a> creates for each runtime. It receives the discovery-registry path, prepares available skills, retains the active conversation, and executes prompts through its configured <a href="#definition-llm-agent">LLMAgent</a> and supported skill subsystems.</p>
+      <p>When no <a href="#definition-a-skill">A-Skill</a> is available or explicitly selected, MainAgent still executes a general request. ALA forwards cancellation to MainAgent and shuts it down before removing the temporary registry.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-llm-agent">
+      <h2>LLMAgent</h2>
+      <p>LLMAgent is the <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> class through which <a href="index.html">ALA's</a> model-backed work runs. It resolves an explicit model, semantic tags, reasoning effort, and configured defaults into an eligible provider invocation.</p>
+      <p>ALA supplies command-line or environment overrides but does not call providers outside LLMAgent. If no model is explicitly selected, AchillesAgentLib applies its configured defaults, which may point to <a href="#definition-soul-gateway">Soul Gateway</a> or another provider.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-generic-execution-capability">
+      <h2>Generic execution capability</h2>
+      <p>A generic execution capability describes how <a href="index.html">ALA</a> can run work without embedding a domain-specific method. The architecture recognizes direct, fast, and deep model execution, authenticated coding-agent execution, multi-step <a href="#definition-agentic-execution">agentic execution</a>, web and research access, and temporary workspace creation.</p>
+      <p>An <a href="#definition-a-skill">A-Skill</a> may request these services while retaining ownership of its procedure and acceptance conditions. Availability depends on configured providers and installed executors; the capability name does not guarantee that every deployment supplies a matching backend.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-execution-routing">
+      <h2>Execution routing</h2>
+      <p>Execution routing is the decision that maps a general request or selected <a href="#definition-a-skill">A-Skill's</a> requirements to an eligible configured model, agent, research facility, or workspace service. It occurs after any task-method decision and must not change the selected method's domain procedure.</p>
+      <p><a href="index.html">ALA</a> forwards model, tag, and reasoning overrides to <a href="#definition-achilles-agent-lib">AchillesAgentLib</a>. MainAgent owns concrete prompt and skill execution under the broader capability-based routing contract.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-symbolic-routing">
+      <h2>Symbolic routing</h2>
+      <p>Symbolic routing is an experimental instruction-only task-selection path. It extracts actions, objects, targets, modifiers, structural markers, and relationships, then compares that evidence with routing metadata supplied by <a href="#definition-task-repository">task repositories</a>.</p>
+      <p>The design permits direct execution only for deterministic or sufficiently strong high-confidence matches. Ambiguous and unknown requests must use <a href="#definition-abstention">abstention</a>. Symbolic routing is optional and does not replace the default CLI path.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-abstention">
+      <h2>Abstention</h2>
+      <p>Abstention is the symbolic router's decision not to force a task match when its instruction evidence is ambiguous or unknown. The request returns to the <a href="#definition-main-agent">MainAgent</a>-compatible default path so uncertainty does not select an unrelated specialized method.</p>
+      <p>The routing design treats a false confident selection as more harmful than abstention. Concrete confidence thresholds remain deployment configuration and are not fixed by the current CLI.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-agentic-execution">
+      <h2>Agentic execution</h2>
+      <p>Agentic execution is a bounded multi-step mode in which an eligible agent may plan, invoke tools, retry, validate, and synthesize a result. It is intended for work whose procedure cannot be completed adequately by one straightforward model call.</p>
+      <p>An <a href="#definition-a-skill">A-Skill</a> continues to own the task procedure and acceptance conditions. Retry limits and escalation policy must remain finite; <a href="index.html">ALA</a> does not expose a separate command that directly selects this mode.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-task-workspace">
+      <h2>Task workspace</h2>
+      <p>A task workspace is an isolated temporary directory for one multi-stage request. It may contain explicit input, retrieved sources, intermediate artifacts, verification results, and final output needed by an <a href="#definition-a-skill">A-Skill</a> or <a href="#definition-agentic-execution">agentic execution</a> path.</p>
+      <p>A task workspace is not an implicit copy of the caller's source repository and does not give <a href="index.html">ALA</a> general ownership of that repository. Retention and sensitive-data policies remain deployment contracts, and workspace creation is requested by an A-Skill rather than selected through a public CLI option.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-code-skill">
+      <h2>Code Skill</h2>
+      <p>A Code Skill is an <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> skill family conventionally described by <code>cskill.md</code>. Its <a href="#definition-task-repository">task repository</a> supplies a module that the corresponding AchillesAgentLib subsystem executes for a selected request.</p>
+      <p><a href="index.html">ALA</a> discovers the descriptor and delegates execution to AchillesAgentLib. The owning repository remains responsible for the module, its task contract, and its verification rules.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-orchestration-skill">
+      <h2>Orchestration Skill</h2>
+      <p>An Orchestration Skill is an <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> skill family conventionally described by <code>oskill.md</code>. It coordinates multiple skills, tools, or agents for a task whose method requires several related actions.</p>
+      <p><a href="index.html">ALA</a> supplies the shared runtime and available executors, while the owning <a href="#definition-task-repository">task repository</a> defines the orchestration procedure, constraints, and completion checks.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-dbtable-skill">
+      <h2>DBTable Skill</h2>
+      <p>A DBTable Skill is an <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> skill family conventionally described by <code>tskill.md</code>. It defines table fields and database operations used by its task method.</p>
+      <p><a href="index.html">ALA</a> treats the descriptor as an optional <a href="#definition-a-skill">A-Skill</a> and does not assume ownership of the referenced data model. The <a href="#definition-task-repository">task repository</a> remains responsible for its database contract and permitted operations.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-dynamic-code-generation-skill">
+      <h2>Dynamic Code Generation Skill</h2>
+      <p>A Dynamic Code Generation Skill is an <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> skill family conventionally described by <code>dcgskill.md</code>. Its subsystem can generate and execute code when a fixed module is insufficient for the selected task.</p>
+      <p>The <a href="#definition-task-repository">task repository</a> defines when generation is appropriate and which checks apply. <a href="index.html">ALA</a> provides access to the AchillesAgentLib subsystem but does not convert the skill into a core domain method.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-soul-gateway">
+      <h2>Soul Gateway</h2>
+      <p>Soul Gateway is an <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> model provider that can resolve semantic model names such as <code>plan</code>, <code>fast</code>, <code>write</code>, and <code>deep</code. An operator can configure external access with <code>SOUL_GATEWAY_BASE_URL</code> and <code>SOUL_GATEWAY_API_KEY</code>.</p>
+      <p>AchillesAgentLib loads an applicable <code>.env</code> file by walking upward from the current working directory and preserves environment values that are already set. The bundled model configuration maps the default planning model to <code>soul_gateway/plan</code>; deployments may replace that configuration through <code>LLM_MODELS_CONFIG_PATH</code>.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-ploinky">
+      <h2>Ploinky</h2>
+      <p>Ploinky is an external agent-hosting environment described by <a href="index.html">ALA</a>'s integration contract. A deployment may expose ALA operations through Ploinky interfaces or use a Ploinky agent as an executor when its advertised capabilities match the request.</p>
+      <p>ALA remains a standalone CLI and must not require Ploinky. Concrete hosting and remote-agent protocols remain integration contracts outside the implemented standalone runtime.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-webchat">
+      <h2>WebChat</h2>
+      <p>WebChat is the <a href="#definition-ploinky">Ploinky</a> browser conversation interface through which a hosted <a href="index.html">ALA</a> agent may receive task requests. It is an optional integration surface and does not replace the standalone <code>ala</code> command.</p>
+      <p>The ALA repository defines the shared request and result contract but does not own WebChat transport. Ploinky owns authentication, session transport, and browser hosting behavior.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-routing-evaluation">
+      <h2>Routing evaluation</h2>
+      <p>Routing evaluation compares explicit skill selection, <a href="#definition-main-agent">MainAgent</a>-compatible default selection, and experimental symbolic-first selection against one request corpus. It measures whether each path selects the expected method and ultimately produces the correct result.</p>
+      <p>The corpus includes canonical requests, paraphrases, multilingual input, spelling errors, ambiguity, multi-step work, missing parameters, and unsupported tasks. False confident symbolic selection receives a greater penalty than abstention because it bypasses the safe default path.</p>
+    </section>
+  </article></main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

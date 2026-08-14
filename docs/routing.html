@@ -11,65 +11,43 @@
   </script>
 </head>
 <body>
-  <div data-include="partials/header.html">
-      <header class="site-header">
-        <a class="site-title" href="index.html">Advanced Language Agent Documentation</a>
-        <nav class="primary-nav" aria-label="Primary navigation">
-          <a class="nav-link" href="index.html">Overview</a>
-          <a class="nav-link" href="architecture.html">Architecture</a>
-          <div class="nav-menu">
-            <button class="nav-trigger" type="button" aria-expanded="false">Runtime</button>
-            <ul class="nav-submenu">
-              <li><a href="routing.html">Routing</a></li>
-              <li><a href="execution.html">Execution</a></li>
-              <li><a href="integration.html">Integration</a></li>
-            </ul>
-          </div>
-          <a class="nav-link" href="specsLoader.html?spec=matrix.md">Specifications</a>
-        </nav>
-      </header>
-    </div>
+  <div data-include="partials/header.html"></div>
   <main class="page"><article class="page__panel">
     <p class="breadcrumbs"><a href="index.html">Documentation</a> / Routing</p>
     <h1>Task selection and backend routing</h1>
-    <p class="lead"><a href="index.html#definition-ala">ALA</a> first selects what work must be performed, then selects how that work will run. Keeping those decisions separate lets an <a href="index.html#definition-a-skill">A-Skill</a> retain the same method across provider and agent configurations.</p>
+    <p class="lead"><a href="index.html">ALA</a> can execute a general request with an empty <a href="wiki.html#definition-skill-catalog">skill catalog</a>. When an <a href="wiki.html#definition-a-skill">A-Skill</a> is available, ALA first selects what specialized work must be performed, then selects how that work will run.</p>
 
     <h2>Selection precedence</h2>
-    <p>Explicit task or <a href="index.html#definition-a-skill">A-Skill</a> selection always wins. Without an explicit choice, the default path uses the <a href="index.html#definition-main-agent">MainAgent</a>-compatible selector. Experimental <a href="#definition-symbolic-routing">symbolic routing</a> may run first, but it examines only the instruction; payload contents cannot increase its confidence.</p>
+    <p><code>--skill &lt;name&gt;</code> selects an A-Skill explicitly and calls its <a href="wiki.html#definition-achilles-agent-lib">AchillesAgentLib</a> subsystem without intent classification. Without <code>--skill</code>, ALA passes the instruction to <a href="wiki.html#definition-main-agent">MainAgent</a>. An empty catalog produces general model-backed execution; a populated catalog also permits skill selection. Experimental <a href="wiki.html#definition-symbolic-routing">symbolic routing</a> may precede skill selection, but it examines only the instruction and payload contents cannot increase its confidence.</p>
     <figure class="diagram">
       <pre class="mermaid">flowchart LR
-        Request[Instruction] --> Explicit{Explicit choice?}
+        Request[Instruction] --> Explicit{Explicit skill?}
         Explicit -->|Yes| Selected[Selected task method]
-        Explicit -->|No| Enabled{Experimental mode?}
-        Enabled -->|No| Default[Default skill selection]
+        Explicit -->|No| Catalog{Skills available?}
+        Catalog -->|No| General[General execution]
+        Catalog -->|Yes| Enabled{Experimental mode?}
+        Enabled -->|No| Default[MainAgent selection]
         Enabled -->|Yes| Evidence[Instruction evidence]
         Evidence -->|Clear| Selected
         Evidence -->|Uncertain| Default
         Default --> Selected
         Selected --> Requirements[Execution requirements]
+        General --> Requirements
         classDef decision fill:#fff1db,stroke:#9a641d
         classDef route fill:#e8f5eb,stroke:#367a46,font-weight:bold
-        class Explicit,Enabled decision
-        class Selected,Default,Evidence route</pre>
-      <figcaption><em>Safe task selection: uncertain instruction evidence returns to the default selector.</em></figcaption>
+        class Explicit,Catalog,Enabled decision
+        class Selected,Default,Evidence,General route</pre>
+      <figcaption><em>Safe request routing: an empty catalog executes generally, while uncertain symbolic evidence returns to MainAgent selection.</em></figcaption>
     </figure>
 
     <h2>Symbolic routing and abstention</h2>
-    <p><a href="#definition-symbolic-routing">Symbolic routing</a> extracts actions, objects, targets, modifiers, structural markers, and explicit relationships between operations. A <a href="index.html#definition-task-repository">task repository</a> may add characteristic phrases, required parameters, and conflicting evidence.</p>
-    <p>The result states are <code>DETERMINISTIC</code>, <code>HIGH</code>, <code>AMBIGUOUS</code>, and <code>UNKNOWN</code>. Deterministic and sufficiently strong high-confidence results may execute directly. Ambiguous and unknown results must use <a href="#definition-abstention">abstention</a> and return the request to the <a href="index.html#definition-main-agent">MainAgent</a>-compatible path. This policy treats a false confident match as more harmful than a safe fallback.</p>
+    <p>Symbolic routing extracts actions, objects, targets, modifiers, structural markers, and explicit relationships between operations. A <a href="wiki.html#definition-task-repository">task repository</a> may add characteristic phrases, required parameters, and conflicting evidence.</p>
+    <p>The result states are <code>DETERMINISTIC</code>, <code>HIGH</code>, <code>AMBIGUOUS</code>, and <code>UNKNOWN</code>. Deterministic and sufficiently strong high-confidence results may execute directly. Ambiguous and unknown results must use <a href="wiki.html#definition-abstention">abstention</a> and return the request to the MainAgent-compatible path. This policy treats a false confident match as more harmful than a safe fallback.</p>
 
     <h2>Execution routing</h2>
-    <p>After task selection, <a href="#definition-execution-routing">execution routing</a> maps the <a href="index.html#definition-a-skill">A-Skill</a>'s requirements to direct model execution, stronger reasoning, an authenticated agent, research access, multi-step execution, or an isolated workspace. The <a href="index.html#definition-task-repository">task repository</a> continues to own the method and acceptance conditions.</p>
+    <p>After task selection, <a href="wiki.html#definition-execution-routing">execution routing</a> maps the A-Skill's requirements to direct model execution, stronger reasoning, an authenticated agent, research access, multi-step execution, or an isolated workspace. The task repository continues to own the method and acceptance conditions.</p>
+    <p>Model and tag overrides use command-line values before <code>ALA_MODEL</code>, <code>ALA_TAGS</code>, and <code>ALA_REASONING_EFFORT</code>. Unknown explicit A-Skills and invalid repositories stop before execution with diagnostics on standard error.</p>
 
-    <h2 id="definitions">Definitions</h2>
-    <dl class="definitions">
-      <dt id="definition-symbolic-routing">Symbolic routing</dt>
-      <dd>An optional instruction-only selection path that chooses a task directly only when symbolic evidence is sufficiently clear.</dd>
-      <dt id="definition-abstention">Abstention</dt>
-      <dd>A routing result that declines to select a candidate and transfers the request to the MainAgent-compatible path.</dd>
-      <dt id="definition-execution-routing">Execution routing</dt>
-      <dd>The post-selection decision that maps task requirements to an eligible configured model, agent, research facility, or workspace.</dd>
-    </dl>
   </article></main>
   <div data-include="partials/footer.html"></div>
   <script src="partials-loader.js"></script>

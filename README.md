@@ -1,45 +1,115 @@
 # Advanced Language Agent
 
-Advanced Language Agent (ALA) is a system-installed command-line interface for language-oriented and documentation-oriented tasks. It gives people and other agents one stable interface for using language models, authenticated agents, research tools, and reusable task methods without integrating AchillesAgentLib directly.
+[Advanced Language Agent](docs/index.html) (ALA) is a command-line application for language and documentation tasks. It can execute general requests without [task repositories](docs/wiki.html#definition-task-repository) and can load [A-Skills](docs/wiki.html#definition-a-skill) when specialized task methods are needed. It writes the result to standard output or a file.
 
-An **A-Skill** is a reusable AchillesAgentLib skill supplied by an independently versioned task repository. It packages the instructions and optional code for one coherent task. A-Skill is the task-facing role of an AchillesAgentLib skill in ALA, not a separate skill format.
+An A-Skill is an [AchillesAgentLib](docs/wiki.html#definition-achilles-agent-lib) skill supplied by an independent task repository. ALA provides the CLI and execution runtime; the task repository provides the method for translation, research, writing, verification, or another language task.
 
-## Overview
+## Install
 
-A caller provides an instruction and may provide input through command arguments, standard input, a URL, or a file. ALA selects a task and A-Skill, resolves the skill's execution requirements against available backends, and writes the requested result to standard output or a file. Diagnostics and routing information remain separate from the result.
+ALA requires Node.js 20 or newer, npm, and Git. From the repository root, run:
 
-ALA owns generic execution infrastructure: direct, fast, and deep LLM execution; authenticated coding-agent execution; multi-step agentic execution; web and research access; temporary workspaces; routing; interactive sessions; verification; and bounded retries. Task repositories own domain methods such as translation, scientific-reference verification, controlled-language transformation, SOP Lang planning, scientific writing, and web research.
+```sh
+npm install
+```
 
-## AchillesAgentLib and A-Skills
+This installs AchillesAgentLib from the Git dependency in `package.json`.
 
-ALA uses AchillesAgentLib for skill discovery and execution, `MainAgent`-compatible routing, model tags, `LLMAgent`, sessions, and supported execution regimes. An A-Skill may use an AchillesAgentLib Code Skill (`cskill.md`), Orchestration Skill (`oskill.md`), DBTable Skill (`tskill.md`), Dynamic Code Generation Skill (`dcgskill.md`), or another compatible family.
+Add the project's `bin` directory to `PATH`. Put this line in `~/.bashrc` when the repository is located at `$HOME/Desktop/work/AdvancedLanguageAgent`:
 
-Each task repository describes the requests it covers, selection evidence, expected inputs and outputs, available A-Skills, constraints, verification procedures, and the generic ALA capabilities its skills may request. Task repositories are installed, configured, and versioned independently from ALA.
+```sh
+export PATH="$PATH:$HOME/Desktop/work/AdvancedLanguageAgent/bin"
+```
 
-## Prerequisites
+Reload the shell configuration and verify the installation:
 
-An ALA deployment requires a supported JavaScript runtime and resolvable access to AchillesAgentLib. A task also requires a configured model provider or an authenticated supported agent CLI that satisfies the selected A-Skill's execution requirements. ALA invokes agent CLIs through their supported interfaces and does not extract or reuse their credentials.
+```sh
+source ~/.bashrc
+ala --version
+ala --help
+```
 
-## Installation and configuration
+## Configure
 
-Install ALA with the system package or application procedure supplied by its distribution. Configure task-repository locations independently from the ALA installation. Reuse AchillesAgentLib model configuration and semantic tags when available. Manual runtime values may override environment-derived defaults.
+ALA can use [Soul Gateway](docs/wiki.html#definition-soul-gateway) or your own AchillesAgentLib-compatible model configuration.
 
-The executable name, package manifest, concrete option syntax, configuration-file schema, environment-variable schema, and exit codes belong to the distribution contract. This repository does not invent values for those interfaces.
+To use Soul Gateway, create a `.env` file in the directory where you run ALA or in one of its parent directories:
 
-## Basic usage
+```dotenv
+SOUL_GATEWAY_BASE_URL=https://your-soul-gateway.example
+SOUL_GATEWAY_API_KEY=your-api-key
+```
 
-ALA supports interactive and single-shot operation. A request contains an instruction, an optional payload, and an optional explicit task or A-Skill selection. Explicit selection bypasses automatic intent detection. Otherwise ALA uses AchillesAgentLib/MainAgent-compatible selection, optionally preceded by experimental symbolic detection that falls back whenever its evidence is uncertain.
+AchillesAgentLib loads the first `.env` file it finds while walking upward from the current working directory. With the bundled model configuration, ALA uses the Soul Gateway `plan` model by default.
 
-Interactive sessions retain the selected task and previous result so corrective feedback can constrain a bounded retry. A retry may use a stronger model or agentic execution when the A-Skill's quality requirements justify escalation.
+To configure your own models, point ALA to another AchillesAgentLib model configuration:
 
-## Documentation
+```sh
+export LLM_MODELS_CONFIG_PATH=/absolute/path/to/LLMConfig.json
+```
 
-- [Technical documentation](docs/index.html)
-- [Architecture and task repositories](docs/architecture.html)
-- [Task and execution routing](docs/routing.html)
-- [Execution backends and feedback](docs/execution.html)
-- [Integration and evaluation](docs/integration.html)
-- [Specification matrix](docs/specsLoader.html?spec=matrix.md)
+Select a configured model for one invocation with `--model`, or set `ALA_MODEL` as the default:
+
+```sh
+ala --model fast "Summarize this text" --file report.md
+export ALA_MODEL=fast
+```
+
+No task repository is required for general use. To add specialized task methods, register a task repository:
+
+```sh
+ala repo add /absolute/path/to/task-repository
+ala repo list
+```
+
+ALA saves registered repositories in `$XDG_CONFIG_HOME/ala/config.json`, or in `~/.config/ala/config.json` when `XDG_CONFIG_HOME` is not set.
+
+## Run a single task
+
+Run a general request without a task repository:
+
+```sh
+ala "Summarize the supplied report" --file report.md
+```
+
+When task repositories are configured, ALA can select a matching A-Skill automatically. Select an A-Skill explicitly when its name is known:
+
+```sh
+ala --skill translate "Translate this document to Romanian" --file document.md
+```
+
+Write the result to a file:
+
+```sh
+ala "Summarize this report" --file report.md --output summary.md
+```
+
+## Run interactively
+
+Start an interactive session. This works without a task repository:
+
+```sh
+ala
+```
+
+Start an interactive session with a specific A-Skill:
+
+```sh
+ala --interactive --skill translate
+```
+
+Enter `:quit` or `:exit` to close the session.
+
+## More information
+
+See the [command reference](docs/commands.html) for every CLI command and option, the [technical documentation](docs/index.html) for architecture, the [wiki](docs/wiki.html) for canonical terminology, and the [specification matrix](docs/specsLoader.html?spec=matrix.md) for complete runtime contracts.
+
+## Development
+
+```sh
+npm test
+npm run check
+npm run docs:verify
+```
 
 ## License
 

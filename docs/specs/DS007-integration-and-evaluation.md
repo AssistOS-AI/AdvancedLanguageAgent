@@ -5,19 +5,19 @@ summary: Defines standalone and Ploinky operation, independent configuration, an
 
 ## Introduction
 
-ALA must operate inside and outside Ploinky while preserving the same CLI task contract. Routing behavior must be evaluated across explicit, default, and symbolic-first selection paths.
+[ALA](index.html) must operate inside and outside [Ploinky](wiki.html#definition-ploinky) while preserving the same CLI task contract. Routing behavior must be evaluated across explicit, default, and symbolic-first selection paths.
 
 ## Core Content
 
-User-level configuration must be available from the current user's environment. ALA must reuse AchillesAgentLib model configuration and tags when available and must permit manual runtime overrides. Task-repository configuration must remain independent from ALA installation so a deployment can install only required task families.
+User-level configuration must be available from the XDG configuration directory with a home-directory fallback, and [task repositories](wiki.html#definition-task-repository) must remain independently manageable through the `ala repo` commands. ALA must reuse [AchillesAgentLib](wiki.html#definition-achilles-agent-lib) model configuration and tags when available. CLI values must override environment values, which must override AchillesAgentLib defaults. The supported environment interfaces are `ALA_CONFIG_PATH`, `ALA_TASK_REPOSITORIES`, `ALA_MODEL`, `ALA_TAGS`, `ALA_REASONING_EFFORT`, `ACHILLES_AGENT_LIB_PATH`, and `LLM_MODELS_CONFIG_PATH`.
 
-As a Ploinky agent, ALA may expose the same operations through Ploinky CLI, router, and WebChat integrations. Ploinky agents may also act as executors when their advertised capabilities satisfy an A-Skill's requirements. Standalone ALA operation must not depend on Ploinky.
+As a Ploinky agent, ALA may expose the same operations through Ploinky CLI, router, and [WebChat](wiki.html#definition-webchat) integrations. Ploinky agents may also act as executors when their advertised capabilities satisfy an [A-Skill's](wiki.html#definition-a-skill) requirements. Standalone ALA operation must not depend on Ploinky.
 
-Evaluation must compare explicit selection, default MainAgent-compatible detection, and symbolic-first detection. The same corpus must include canonical instructions, paraphrases, multilingual requests, spelling errors, ambiguous requests, multi-step tasks, missing parameters, and unsupported tasks.
+[Routing evaluation](wiki.html#definition-routing-evaluation) must compare explicit selection, default [MainAgent](wiki.html#definition-main-agent)-compatible detection, and [symbolic routing](wiki.html#definition-symbolic-routing) before fallback. The same corpus must include canonical instructions, paraphrases, multilingual requests, spelling errors, ambiguous requests, multi-step tasks, missing parameters, and unsupported tasks.
 
-Symbolic evaluation must report correct direct routing, incorrect direct routing, abstention rate, fallback rate, and final correctness after fallback. Evaluation must assign a greater cost to false confident selection than to abstention because a false direct route bypasses the safe default selector with the wrong method.
+Symbolic evaluation must report correct direct routing, incorrect direct routing, [abstention](wiki.html#definition-abstention) rate, fallback rate, and final correctness after fallback. Evaluation must assign a greater cost to false confident selection than to abstention because a false direct route bypasses the safe default selector with the wrong method.
 
-Concrete configuration locations, remote-agent protocols, workspace-retention values, retry counts, and diagnostic schemas remain distribution-owned contracts. Each distribution must define those values while preserving portability, bounded work, secure credential handling, and result-stream separation.
+Remote-agent protocols, [task-workspace](wiki.html#definition-task-workspace) retention values, retry counts, and symbolic thresholds remain specialized deployment contracts. The standalone distribution must preserve portable repository paths, bounded input handling, secure credential handling, and result-stream separation.
 
 ## Conclusion
 

@@ -1,0 +1,22 @@
+{
+  "name": "advanced-language-agent",
+  "version": "0.1.0",
+  "description": "A system-installed CLI for language-oriented and documentation-oriented tasks.",
+  "type": "module",
+  "bin": {
+    "ala": "bin/ala.mjs"
+  },
+  "scripts": {
+    "test": "node --test",
+    "check": "npm test && bash fileSizesCheck.sh",
+    "docs:matrix": "node scripts/generate_specs_matrix.mjs",
+    "docs:verify": "node scripts/verify_docs_links.mjs && node scripts/verify_static_site.js docs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "ploinky-agent-lib": "git+https://github.com/AssistOS-AI/AchillesAgentLib.git#master"
+  },
+  "license": "MIT"
+}

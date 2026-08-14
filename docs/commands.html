@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Advanced Language Agent Documentation</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
+  </script>
+</head>
+<body>
+  <div data-include="partials/header.html"></div>
+  <main class="page"><article class="page__panel">
+    <p class="breadcrumbs"><a href="index.html">Documentation</a> / Commands</p>
+    <h1>ALA command reference</h1>
+    <p class="lead">The <code>ala</code> executable lets a human or calling agent run one language request, retain an interactive conversation, or manage optional <a href="wiki.html#definition-task-repository">task repository</a> registrations. General execution does not require a repository.</p>
+
+    <h2>Execute a request</h2>
+    <pre><code>ala [options] [instruction...]</code></pre>
+    <p>Positional words form the instruction. With no instruction in a terminal, <a href="index.html">ALA</a> starts an interactive session. In a non-interactive pipeline with no positional instruction, standard input becomes the instruction. The command sends the composed prompt to <a href="wiki.html#definition-main-agent">MainAgent</a> and writes the normalized result to standard output unless <code>--output</code> selects a file.</p>
+    <pre><code>ala "Summarize the report" --file report.md
+printf 'Summarize this text' | ala
+ala --interactive</code></pre>
+
+    <h2>Execution options</h2>
+    <div class="table-wrap">
+      <table class="spec-table">
+        <thead><tr><th>Option</th><th>Behavior</th></tr></thead>
+        <tbody>
+          <tr><td><code>--skill &lt;name&gt;</code></td><td>Executes the named <a href="wiki.html#definition-a-skill">A-Skill</a> explicitly. An unknown skill name produces repository exit code <code>4</code>.</td></tr>
+          <tr><td><code>--task-repo &lt;path&gt;</code></td><td>Adds one task repository for this invocation without saving it. The option may be repeated.</td></tr>
+          <tr><td><code>--text &lt;text&gt;</code></td><td>Adds a labeled text payload. Repeated payload options retain their argument order.</td></tr>
+          <tr><td><code>--file &lt;path&gt;</code></td><td>Reads one UTF-8 file relative to the current working directory and adds it as a payload.</td></tr>
+          <tr><td><code>--url &lt;url&gt;</code></td><td>Retrieves one HTTP or HTTPS response as a UTF-8 payload with a 30-second timeout.</td></tr>
+          <tr><td><code>--stdin</code></td><td>Adds standard input as a payload when a positional instruction is present. Without a positional instruction, standard input already supplies the instruction.</td></tr>
+          <tr><td><code>--output &lt;path&gt;</code></td><td>Writes the result to the selected path instead of standard output.</td></tr>
+          <tr><td><code>--force</code></td><td>Allows <code>--output</code> to replace an existing file. Without this option, ALA refuses the overwrite.</td></tr>
+          <tr><td><code>--interactive</code>, <code>-i</code></td><td>Starts or retains an interactive session. Enter <code>:quit</code> or <code>:exit</code> to close it.</td></tr>
+          <tr><td><code>--model &lt;value&gt;</code></td><td>Selects a configured model name or semantic model value for this invocation.</td></tr>
+          <tr><td><code>--tag &lt;tag&gt;</code></td><td>Adds a model-selection tag. The option may be repeated, and command-line tags replace <code>ALA_TAGS</code>.</td></tr>
+          <tr><td><code>--reasoning-effort &lt;value&gt;</code></td><td>Overrides the reasoning effort forwarded to <a href="wiki.html#definition-achilles-agent-lib">AchillesAgentLib</a>.</td></tr>
+          <tr><td><code>--model-config &lt;path&gt;</code></td><td>Resolves the path from the current working directory and supplies it to AchillesAgentLib through <code>LLM_MODELS_CONFIG_PATH</code>.</td></tr>
+          <tr><td><code>--achilles-path &lt;path&gt;</code></td><td>Uses an explicit AchillesAgentLib module, package directory, or entry file before the normal dependency-resolution paths.</td></tr>
+          <tr><td><code>--config &lt;path&gt;</code></td><td>Selects an ALA JSON configuration file relative to the current working directory.</td></tr>
+          <tr><td><code>--help</code>, <code>-h</code></td><td>Prints usage and option help to standard output without starting the runtime.</td></tr>
+          <tr><td><code>--version</code>, <code>-v</code></td><td>Prints the version from <code>package.json</code> to standard output.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>Each file or URL payload is limited to 10 MiB, and all explicit payloads together are limited to 32 MiB. Diagnostics and interactive prompts use standard error so standard output remains usable by another program.</p>
+
+    <h2>Add a task repository</h2>
+    <pre><code>ala repo add &lt;path&gt; [--config &lt;path&gt;] [--help]</code></pre>
+    <p>This command resolves the repository to a canonical path, verifies that it contains at least one supported AchillesAgentLib skill descriptor, and stores it in the selected ALA configuration. Adding the same canonical path again is idempotent. The command prints the registered path and does not copy the repository.</p>
+
+    <h2>List task repositories</h2>
+    <pre><code>ala repo list [--config &lt;path&gt;] [--json] [--help]</code></pre>
+    <p>This command prints persistent repository paths from the selected configuration. The default output contains one path per line. <code>--json</code> writes a JSON array, including an empty array when no repository is registered.</p>
+
+    <h2>Remove a task repository</h2>
+    <pre><code>ala repo remove &lt;path&gt; [--config &lt;path&gt;] [--help]</code></pre>
+    <p>This command removes the matching canonical or lexical path from ALA configuration and prints the removed path. It does not delete the task repository or any files inside it. An unregistered path produces repository exit code <code>4</code>.</p>
+    <p>Each repository command accepts <code>--help</code> and prints the common command reference without reading or changing configuration.</p>
+
+    <h2>Configuration precedence</h2>
+    <p>The ALA configuration path resolves in this order: <code>--config</code>, <code>ALA_CONFIG_PATH</code>, <code>$XDG_CONFIG_HOME/ala/config.json</code>, then <code>~/.config/ala/config.json</code>. Model selection resolves command-line values before <code>ALA_MODEL</code>, <code>ALA_TAGS</code>, and <code>ALA_REASONING_EFFORT</code>, after which AchillesAgentLib applies its configured defaults.</p>
+    <p>For <a href="wiki.html#definition-soul-gateway">Soul Gateway</a>, set <code>SOUL_GATEWAY_BASE_URL</code> and <code>SOUL_GATEWAY_API_KEY</code> in the process environment or in the first <code>.env</code> file AchillesAgentLib finds while walking upward from the current working directory. Use <code>LLM_MODELS_CONFIG_PATH</code> or <code>--model-config</code> to supply another model catalog.</p>
+
+    <h2>Exit codes</h2>
+    <div class="table-wrap">
+      <table class="spec-table">
+        <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+        <tbody>
+          <tr><td><code>0</code></td><td>The command completed successfully.</td></tr>
+          <tr><td><code>2</code></td><td>An option, command, or configuration value was invalid.</td></tr>
+          <tr><td><code>3</code></td><td>ALA could not read an input or safely write the requested output.</td></tr>
+          <tr><td><code>4</code></td><td>A task repository, A-Skill, or AchillesAgentLib dependency could not be resolved or validated.</td></tr>
+          <tr><td><code>5</code></td><td>Runtime execution failed.</td></tr>
+          <tr><td><code>130</code></td><td>The active execution was interrupted.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </article></main>
+  <div data-include="partials/footer.html"></div>
+  <script src="partials-loader.js"></script>
+</body>
+</html>

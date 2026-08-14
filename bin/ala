@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+
+ala_bin_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+exec node "$ala_bin_dir/ala.mjs" "$@"

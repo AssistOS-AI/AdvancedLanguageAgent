@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import { parseArguments } from '../src/arguments.mjs';
+
+test('parses ordered payload sources and repeatable runtime options', () => {
+  const options = parseArguments([
+    '--text', 'alpha', '--file', 'input.md', '--url', 'https://example.test/input',
+    '--stdin', '--task-repo', 'one', '--task-repo', 'two', '--tag', 'documentation',
+    '--skill', 'writer', 'Rewrite', 'this'
+  ]);
+  assert.equal(options.command, 'execute');
+  assert.deepEqual(options.instructionParts, ['Rewrite', 'this']);
+  assert.deepEqual(options.sources.map((source) => source.type), ['text', 'file', 'url', 'stdin']);
+  assert.deepEqual(options.taskRepositories, ['one', 'two']);
+  assert.deepEqual(options.tags, ['documentation']);
+  assert.equal(options.skill, 'writer');
+});
+
+test('parses repository management commands', () => {
+  assert.deepEqual(parseArguments(['repo', 'add', './tasks', '--config', './ala.json']), {
+    command: 'repo', action: 'add', target: './tasks', configPath: './ala.json', json: false, help: false
+  });
+  assert.equal(parseArguments(['repo', 'list', '--json']).json, true);
+});
+
+test('rejects unknown options and missing values', () => {
+  assert.throws(() => parseArguments(['--unknown']), /Unknown option/);
+  assert.throws(() => parseArguments(['--skill']), /requires a value/);
+  assert.throws(() => parseArguments(['repo', 'remove']), /requires a repository path/);
+});

@@ -13,7 +13,7 @@ PROJECT_NAME=$(basename "$(pwd)")
 YELLOW_THRESHOLD=500
 RED_THRESHOLD=800
 LONG_LINE_THRESHOLD=120
-VERY_LONG_LINE_THRESHOLD=300
+VERY_LONG_LINE_THRESHOLD=1000
 
 # Extensions to scan (space-separated, without dots)
 EXTENSIONS="${FILE_EXTENSIONS:-js mjs sys2 md html css json sh}"

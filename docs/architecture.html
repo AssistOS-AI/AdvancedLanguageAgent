@@ -11,31 +11,14 @@
   </script>
 </head>
 <body>
-  <div data-include="partials/header.html">
-      <header class="site-header">
-        <a class="site-title" href="index.html">Advanced Language Agent Documentation</a>
-        <nav class="primary-nav" aria-label="Primary navigation">
-          <a class="nav-link" href="index.html">Overview</a>
-          <a class="nav-link" href="architecture.html">Architecture</a>
-          <div class="nav-menu">
-            <button class="nav-trigger" type="button" aria-expanded="false">Runtime</button>
-            <ul class="nav-submenu">
-              <li><a href="routing.html">Routing</a></li>
-              <li><a href="execution.html">Execution</a></li>
-              <li><a href="integration.html">Integration</a></li>
-            </ul>
-          </div>
-          <a class="nav-link" href="specsLoader.html?spec=matrix.md">Specifications</a>
-        </nav>
-      </header>
-    </div>
+  <div data-include="partials/header.html"></div>
   <main class="page"><article class="page__panel">
     <p class="breadcrumbs"><a href="index.html">Documentation</a> / Architecture</p>
     <h1>Runtime and task-repository architecture</h1>
-    <p class="lead"><a href="index.html#definition-ala">ALA</a> supplies reusable execution services. Independent <a href="index.html#definition-task-repository">task repositories</a> supply domain methods through <a href="index.html#definition-a-skill">A-Skills</a>. This boundary lets a task family evolve without extending the central runtime.</p>
+    <p class="lead"><a href="index.html">ALA</a> supplies general language execution and reusable execution services. Independent <a href="wiki.html#definition-task-repository">task repositories</a> may add specialized domain methods through <a href="wiki.html#definition-a-skill">A-Skills</a>. This boundary lets a task family evolve without extending the central runtime.</p>
 
     <h2>Responsibility boundary</h2>
-    <p>A <a href="index.html#definition-task-repository">task repository</a> decides which requests it covers, which <a href="index.html#definition-a-skill">A-Skill</a> performs the work, which inputs and outputs are valid, and how the result is checked. <a href="index.html#definition-ala">ALA</a> decides how the selected method runs in the current environment. It maps requested <a href="index.html#definition-generic-capability">generic execution capabilities</a> to configured models, authenticated agents, research access, or an isolated workspace.</p>
+    <p>A task repository decides which requests it covers, which A-Skill performs the work, which inputs and outputs are valid, and how the result is checked. ALA decides how the selected method runs in the current environment. It maps requested <a href="wiki.html#definition-generic-execution-capability">generic execution capabilities</a> to configured models, authenticated agents, research access, or an isolated workspace.</p>
     <figure class="diagram">
       <pre class="mermaid">flowchart LR
         subgraph Package[Independent task package]
@@ -54,22 +37,11 @@
     </figure>
 
     <h2>AchillesAgentLib skill families</h2>
-    <p>An <a href="index.html#definition-a-skill">A-Skill</a> is a normal <a href="index.html#definition-achilles-agent-lib">AchillesAgentLib</a> skill. A <a href="#definition-code-skill">Code Skill</a> runs a supplied module. An <a href="#definition-orchestration-skill">Orchestration Skill</a> coordinates several actions. A <a href="#definition-dbtable-skill">DBTable Skill</a> describes table fields and operations. A <a href="#definition-dcg-skill">Dynamic Code Generation Skill</a> creates code during task execution. The owning repository selects the family that fits its method.</p>
+    <p>An A-Skill is a normal <a href="wiki.html#definition-achilles-agent-lib">AchillesAgentLib</a> skill. A <a href="wiki.html#definition-code-skill">Code Skill</a> runs a supplied module. An <a href="wiki.html#definition-orchestration-skill">Orchestration Skill</a> coordinates several actions. A <a href="wiki.html#definition-dbtable-skill">DBTable Skill</a> describes table fields and operations. A <a href="wiki.html#definition-dynamic-code-generation-skill">Dynamic Code Generation Skill</a> creates code during task execution. The owning repository selects the family that fits its method.</p>
 
     <h2>Discovery and portability</h2>
-    <p><a href="index.html#definition-ala">ALA</a> loads configured <a href="index.html#definition-task-repository">task repositories</a> through <a href="index.html#definition-achilles-agent-lib">AchillesAgentLib</a> conventions wherever practical. Each semantic repository description becomes routing evidence, not only explanatory prose. Imported <a href="index.html#definition-a-skill">A-Skill</a> instructions, code, pages, and specifications remain in the repository that owns them.</p>
-
-    <h2 id="definitions">Definitions</h2>
-    <dl class="definitions">
-      <dt id="definition-code-skill">Code Skill</dt>
-      <dd>An AchillesAgentLib skill, conventionally described by <code>cskill.md</code>, that runs a supplied module.</dd>
-      <dt id="definition-orchestration-skill">Orchestration Skill</dt>
-      <dd>An AchillesAgentLib skill, conventionally described by <code>oskill.md</code>, that coordinates multiple skills, tools, or agents.</dd>
-      <dt id="definition-dbtable-skill">DBTable Skill</dt>
-      <dd>An AchillesAgentLib skill, conventionally described by <code>tskill.md</code>, that defines table fields and database operations.</dd>
-      <dt id="definition-dcg-skill">Dynamic Code Generation Skill</dt>
-      <dd>An AchillesAgentLib skill, conventionally described by <code>dcgskill.md</code>, that generates and executes code during a task.</dd>
-    </dl>
+    <p>ALA combines persistent, environment-provided, and invocation-specific task repositories. It validates their AchillesAgentLib descriptors, rejects duplicate canonical A-Skill names, and links every discovered <code>skills</code> directory into an isolated <a href="wiki.html#definition-discovery-registry">discovery registry</a>. One <a href="wiki.html#definition-main-agent">MainAgent</a> sees the resulting <a href="wiki.html#definition-skill-catalog">skill catalog</a> and executes general requests when that catalog is empty. The registry is removed when the runtime closes.</p>
+    <p>AchillesAgentLib is installed through the <code>ploinky-agent-lib</code> dependency in <code>package.json</code>. A manual path, <code>ACHILLES_AGENT_LIB_PATH</code>, and a sibling checkout remain supported before package resolution. Imported A-Skill instructions, code, pages, and specifications remain in the repository that owns them.</p>
   </article></main>
   <div data-include="partials/footer.html"></div>
   <script src="partials-loader.js"></script>

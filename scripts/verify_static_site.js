@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-const fs = require("fs");
-const http = require("http");
-const net = require("net");
-const path = require("path");
+import fs from 'node:fs';
+import http from 'node:http';
+import net from 'node:net';
+import path from 'node:path';
 
 function parseArgs(argv) {
   const result = {

@@ -11,46 +11,33 @@
   </script>
 </head>
 <body>
-  <div data-include="partials/header.html">
-      <header class="site-header">
-        <a class="site-title" href="index.html">Advanced Language Agent Documentation</a>
-        <nav class="primary-nav" aria-label="Primary navigation">
-          <a class="nav-link" href="index.html">Overview</a>
-          <a class="nav-link" href="architecture.html">Architecture</a>
-          <div class="nav-menu">
-            <button class="nav-trigger" type="button" aria-expanded="false">Runtime</button>
-            <ul class="nav-submenu">
-              <li><a href="routing.html">Routing</a></li>
-              <li><a href="execution.html">Execution</a></li>
-              <li><a href="integration.html">Integration</a></li>
-            </ul>
-          </div>
-          <a class="nav-link" href="specsLoader.html?spec=matrix.md">Specifications</a>
-        </nav>
-      </header>
-    </div>
+  <div data-include="partials/header.html"></div>
   <main class="page"><article class="page__panel">
     <p class="breadcrumbs"><a href="index.html">Documentation</a> / Execution</p>
     <h1>Execution backends, workspaces, and feedback</h1>
-    <p class="lead">After routing selects an <a href="index.html#definition-a-skill">A-Skill</a>, <a href="index.html#definition-ala">ALA</a> chooses an executor that can meet its quality and capability requirements. The task method remains independent from a provider or authenticated tool.</p>
+    <p class="lead"><a href="index.html">ALA</a> executes general requests without requiring an <a href="wiki.html#definition-a-skill">A-Skill</a>. When routing selects a skill, ALA chooses an executor that can meet its quality and capability requirements while the task method remains independent from a provider or authenticated tool.</p>
 
     <h2>Generic execution capabilities</h2>
-    <p>Straightforward work normally uses direct model execution through <a href="index.html#definition-llm-agent">LLMAgent</a>. Cost and latency may be optimized only among executors considered capable of meeting the <a href="index.html#definition-a-skill">A-Skill</a>'s requirements.</p>
+    <p>Straightforward work normally uses direct model execution through <a href="wiki.html#definition-llm-agent">LLMAgent</a>. The complete set of <a href="wiki.html#definition-generic-execution-capability">generic execution capabilities</a> separates execution methods from domain procedures. Cost and latency may be optimized only among executors considered capable of meeting the A-Skill's requirements.</p>
     <div class="table-wrap">
       <table class="spec-table">
         <thead><tr><th>Capability</th><th>Execution responsibility</th></tr></thead>
         <tbody>
-          <tr><td>Direct LLM</td><td>Runs a prompt through the configured <a href="index.html#definition-llm-agent">LLMAgent</a>.</td></tr>
+          <tr><td>Direct LLM</td><td>Runs a prompt through the configured LLMAgent.</td></tr>
           <tr><td>Fast LLM</td><td>Prefers an eligible low-latency, lower-cost model for sufficiently simple work.</td></tr>
           <tr><td>Deep LLM</td><td>Uses an eligible stronger model when task quality requires deeper reasoning.</td></tr>
           <tr><td>Coding agent</td><td>Delegates bounded work to a supported authenticated agent CLI.</td></tr>
-          <tr><td><a href="#definition-agentic-execution">Agentic execution</a></td><td>Coordinates multi-step planning, retries, validation, or synthesis.</td></tr>
+          <tr><td><a href="wiki.html#definition-agentic-execution">Agentic execution</a></td><td>Coordinates multi-step planning, retries, validation, or synthesis.</td></tr>
           <tr><td>Web and research access</td><td>Retrieves and checks external material when the task method requires it.</td></tr>
-          <tr><td><a href="#definition-task-workspace">Temporary task workspace</a></td><td>Isolates inputs, intermediate artifacts, checks, and final outputs for one request.</td></tr>
+          <tr><td><a href="wiki.html#definition-task-workspace">Temporary task workspace</a></td><td>Isolates inputs, intermediate artifacts, checks, and final outputs for one request.</td></tr>
         </tbody>
       </table>
     </div>
-    <p>Authenticated coding-agent CLIs such as Codex or OpenCode may perform language tasks as well as bounded code work. <a href="index.html#definition-ala">ALA</a> invokes their supported interfaces and does not extract credentials. This path permits execution when a machine has an authenticated agent but no direct provider API key.</p>
+    <p>Authenticated coding-agent CLIs such as Codex or OpenCode may perform language tasks as well as bounded code work. ALA invokes their supported interfaces and does not extract credentials. This path permits execution when a machine has an authenticated agent but no direct provider API key.</p>
+
+    <h2>Request input and result delivery</h2>
+    <p>The positional text is the instruction. Repeated <code>--text</code>, <code>--file</code>, <code>--url</code>, and <code>--stdin</code> options add labeled payloads in argument order. Files and HTTP(S) responses are decoded as UTF-8, each file or response is limited to 10 MiB, the combined payload is limited to 32 MiB, and URL retrieval has a 30-second timeout.</p>
+    <p>In a non-interactive pipeline without a positional instruction, standard input becomes the instruction. With a positional instruction, standard input is read only when <code>--stdin</code> is present. The result is written to standard output or the file selected by <code>--output</code>; an existing file requires <code>--force</code>. Prompts and diagnostics remain on standard error.</p>
 
     <h2>Task workspaces and feedback</h2>
     <figure class="diagram">
@@ -70,19 +57,11 @@
         class Select,Workspace,Run,Escalate runtime</pre>
       <figcaption><em>Bounded correction cycle: feedback becomes a new constraint and may select a stronger executor.</em></figcaption>
     </figure>
-    <p>An <a href="index.html#definition-a-skill">A-Skill</a> may request a <a href="#definition-task-workspace">task workspace</a> for explicit input, retrieved sources, intermediate artifacts, verification results, and final output. The <a href="#definition-task-workspace">task workspace</a> is isolated and is not an implicit copy of the caller's repository.</p>
-    <p>Interactive sessions retain the selected task and previous result. Corrective feedback becomes an additional constraint, and every retry stops at a configured bound. A failed quality check may move execution from a fast model to a stronger model or to <a href="#definition-agentic-execution">agentic execution</a>.</p>
+    <p>An A-Skill may request a task workspace for explicit input, retrieved sources, intermediate artifacts, verification results, and final output. The task workspace is isolated and is not an implicit copy of the caller's repository.</p>
+    <p>Running <code>ala</code> without an instruction in a terminal or using <code>--interactive</code> starts an interactive session. <a href="wiki.html#definition-main-agent">MainAgent</a> retains its conversation across prompts. With explicit <code>--skill</code> selection, the runtime retains the selected method and supplies the previous result with corrective feedback. <code>:quit</code> and <code>:exit</code> close the session.</p>
 
     <h2>Configuration discipline</h2>
-    <p>Every direct model call uses <a href="index.html#definition-llm-agent">LLMAgent</a> with <a href="index.html#definition-achilles-agent-lib">AchillesAgentLib</a>-compatible model tags. Manual runtime values take precedence over environment-derived defaults. Documentation, specification, orchestration, bootstrap, and testing work use applicable metadata tags. DS002 contains the <a href="specsLoader.html?spec=DS002-execution-and-model-strategy.md">authoritative execution strategy</a>.</p>
-
-    <h2 id="definitions">Definitions</h2>
-    <dl class="definitions">
-      <dt id="definition-agentic-execution">Agentic execution</dt>
-      <dd>A bounded multi-step run in which an agent can plan, retry, validate, and synthesize according to an A-Skill's method.</dd>
-      <dt id="definition-task-workspace">Task workspace</dt>
-      <dd>An isolated temporary directory created for one multi-stage request and limited to explicit task material and artifacts.</dd>
-    </dl>
+    <p>Every direct model call uses LLMAgent with <a href="wiki.html#definition-achilles-agent-lib">AchillesAgentLib</a>-compatible model tags. <code>--model</code>, repeated <code>--tag</code>, <code>--reasoning-effort</code>, and <code>--model-config</code> take precedence over environment-derived defaults. Documentation, specification, orchestration, bootstrap, and testing work can supply applicable metadata tags. DS002 contains the <a href="specsLoader.html?spec=DS002-execution-and-model-strategy.md">authoritative execution strategy</a>.</p>
   </article></main>
   <div data-include="partials/footer.html"></div>
   <script src="partials-loader.js"></script>
