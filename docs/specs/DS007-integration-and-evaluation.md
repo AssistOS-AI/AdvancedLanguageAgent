@@ -13,7 +13,7 @@ User-level configuration must be available from the XDG configuration directory 
 
 The version-1 JSON configuration may contain `codingAgents.priority` as an ordered array of unique supported backend names. Missing backend names must be appended in the default order so a partial preference remains valid. Agent credentials and agent-native provider configuration must not be persisted by ALA.
 
-As a Ploinky agent, ALA may expose the same operations through Ploinky CLI, router, and [WebChat](wiki.html#definition-webchat) integrations. Ploinky agents may also act as executors when their advertised capabilities satisfy an [A-Skill's](wiki.html#definition-a-skill) requirements. Standalone ALA operation must not depend on Ploinky.
+As a Ploinky agent, ALA may expose the same operations through Ploinky CLI, router, and [WebChat](wiki.html#definition-webchat) integrations. Ploinky agents may also act as executors when their advertised capabilities satisfy a task skill's requirements. Standalone ALA operation must not depend on Ploinky.
 
 [Routing evaluation](wiki.html#definition-routing-evaluation) must compare explicit selection, default [MainAgent](wiki.html#definition-main-agent)-compatible detection, and [symbolic routing](wiki.html#definition-symbolic-routing) before fallback. The same corpus must include canonical instructions, paraphrases, multilingual requests, spelling errors, ambiguous requests, multi-step tasks, missing parameters, and unsupported tasks.
 

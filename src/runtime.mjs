@@ -97,7 +97,7 @@ export async function createRuntime({
       if (options.agent) return mainAgent.executeSkill('coding-agent', prompt, common);
       if (options.skill) {
         const record = mainAgent.getSkillRecord(options.skill);
-        if (!record) throw new ALAError(`A-Skill not found: ${options.skill}`, EXIT_CODES.repository);
+        if (!record) throw new ALAError(`Task skill not found: ${options.skill}`, EXIT_CODES.repository);
         return mainAgent.executeSkill(record.name, prompt, common);
       }
       if (this.symbolicDetectionEnabled) {

@@ -15,10 +15,10 @@
   <main class="page"><article class="page__panel">
     <p class="breadcrumbs"><a href="index.html">Documentation</a> / Execution</p>
     <h1>Execution backends, workspaces, and feedback</h1>
-    <p class="lead"><a href="index.html">ALA</a> executes general requests without requiring an <a href="wiki.html#definition-a-skill">A-Skill</a>. When routing selects a skill, ALA chooses an executor that can meet its quality and capability requirements while the task method remains independent from a provider or authenticated tool.</p>
+    <p class="lead"><a href="index.html">ALA</a> executes general requests without requiring a task skill. When routing selects a task skill, ALA chooses an executor that can meet its quality and capability requirements while the task method remains independent from a provider or authenticated tool.</p>
 
     <h2>Generic execution capabilities</h2>
-    <p>Straightforward work normally uses direct model execution through <a href="wiki.html#definition-llm-agent">LLMAgent</a>. The complete set of <a href="wiki.html#definition-generic-execution-capability">generic execution capabilities</a> separates execution methods from domain procedures. Cost and latency may be optimized only among executors considered capable of meeting the A-Skill's requirements.</p>
+    <p>Straightforward work normally uses direct model execution through <a href="wiki.html#definition-llm-agent">LLMAgent</a>. The complete set of <a href="wiki.html#definition-generic-execution-capability">generic execution capabilities</a> separates execution methods from domain procedures. Cost and latency may be optimized only among executors considered capable of meeting the task skill's requirements.</p>
     <div class="table-wrap">
       <table class="spec-table">
         <thead><tr><th>Capability</th><th>Execution responsibility</th></tr></thead>
@@ -57,7 +57,7 @@
         class Select,Workspace,Run,Escalate runtime</pre>
       <figcaption><em>Bounded correction cycle: feedback becomes a new constraint and may select a stronger executor.</em></figcaption>
     </figure>
-    <p>An A-Skill may request a task workspace for explicit input, retrieved sources, intermediate artifacts, verification results, and final output. Coding-agent execution always creates its own private temporary workspace and never receives the caller's working directory as its project directory. The task workspace is not an implicit copy of the caller's repository.</p>
+    <p>A task skill may request a task workspace for explicit input, retrieved sources, intermediate artifacts, verification results, and final output. Coding-agent execution always creates its own private temporary workspace and never receives the caller's working directory as its project directory. The task workspace is not an implicit copy of the caller's repository.</p>
     <p>Running <code>ala</code> without an instruction in a terminal or using <code>--interactive</code> starts an interactive session. <a href="wiki.html#definition-main-agent">MainAgent</a> retains its conversation across prompts. With explicit <code>--skill</code> selection, the runtime retains the selected method and supplies the previous result with corrective feedback. With explicit coding-agent execution, ALA retains the agent's native continuation identifier, pins the conversation to that backend, and reuses its temporary workspace until the session closes. <code>:quit</code> and <code>:exit</code> close the session and remove temporary state.</p>
 
     <h2>Configuration discipline</h2>

@@ -5,7 +5,7 @@ summary: Defines source layout, AchillesAgentLib conventions, file limits, docum
 
 ## Introduction
 
-This specification is the canonical source for [ALA](index.html) coding style, source layout, file-size rules, and test organization. [AchillesAgentLib](wiki.html#definition-achilles-agent-lib) is an authorized external dependency. Code owned by a [task repository](wiki.html#definition-task-repository) must remain portable with its [A-Skill](wiki.html#definition-a-skill).
+This specification is the canonical source for [ALA](index.html) coding style, source layout, file-size rules, and test organization. [AchillesAgentLib](wiki.html#definition-achilles-agent-lib) is an authorized external dependency. Code owned by a [task repository](wiki.html#definition-task-repository) must remain portable with its task skill definitions.
 
 ## Core Content
 

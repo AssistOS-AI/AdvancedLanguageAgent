@@ -65,14 +65,14 @@ test('aggregates independent task repositories for an actual Achilles MainAgent'
   assert.equal(result.result, 'HELLO');
 });
 
-test('rejects duplicate canonical A-Skill names across repositories', async (context) => {
+test('rejects duplicate canonical task-skill names across repositories', async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-duplicate-test-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const first = join(root, 'first');
   const second = join(root, 'second');
   await writeCodeSkill(first, 'echo');
   await writeCodeSkill(second, 'echo');
-  await assert.rejects(() => createSkillRegistry([first, second], achillesModule), /Duplicate A-Skill/);
+  await assert.rejects(() => createSkillRegistry([first, second], achillesModule), /Duplicate task-skill/);
 });
 
 test('uses MainAgent prompt routing when no explicit skill is selected', async (context) => {

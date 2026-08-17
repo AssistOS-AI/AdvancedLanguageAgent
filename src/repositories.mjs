@@ -74,7 +74,7 @@ export async function createSkillRegistry(repositoryPaths, achillesModule, { bui
     validations.push(validation);
     const discovered = achillesModule.discoverSkills(repositoryPath, { logger: silentLogger });
     if (discovered.length === 0) {
-      throw new ALAError(`AchillesAgentLib discovered no A-Skills in ${repositoryPath}.`, EXIT_CODES.repository);
+      throw new ALAError(`Task repository contains no task skills: ${repositoryPath}`, EXIT_CODES.repository);
     }
     records.push(...discovered.map((record) => ({ ...record, repositoryPath })));
   }
@@ -83,7 +83,7 @@ export async function createSkillRegistry(repositoryPaths, achillesModule, { bui
   for (const record of records) {
     if (names.has(record.name)) {
       throw new ALAError(
-        `Duplicate A-Skill name "${record.name}" in ${names.get(record.name)} and ${record.repositoryPath}.`,
+        `Duplicate task-skill name "${record.name}" in ${names.get(record.name)} and ${record.repositoryPath}.`,
         EXIT_CODES.repository
       );
     }
@@ -91,7 +91,7 @@ export async function createSkillRegistry(repositoryPaths, achillesModule, { bui
   }
 
   if (builtInSkillsDirectories.length > 0 && names.has('coding-agent-cskill')) {
-    throw new ALAError('A-Skill name is reserved by ALA: coding-agent-cskill', EXIT_CODES.repository);
+    throw new ALAError('Task-skill name is reserved by ALA: coding-agent-cskill', EXIT_CODES.repository);
   }
 
   const registryPath = await mkdtemp(join(tmpdir(), 'ala-skills-'));

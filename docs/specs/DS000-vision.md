@@ -11,16 +11,16 @@ summary: Defines the purpose, user-visible result, and product boundary of Advan
 
 ALA must support interactive and single-shot requests. A caller must be able to provide an instruction and optional input through command arguments, standard input, a URL, or a file. ALA must write the requested result to standard output or a file and must keep diagnostics and routing information separate from that result.
 
-The distribution executable is `ala`. It must accept positional instructions, explicit payload-source options, explicit [A-Skill](wiki.html#definition-a-skill) selection through `--skill`, explicit [coding-agent](wiki.html#definition-coding-agent) delegation through `--agent`, and automatic selection when those options are absent. It must protect an existing output file unless the caller explicitly supplies `--force`.
+The distribution executable is `ala`. It must accept positional instructions, explicit payload-source options, explicit [task skill](wiki.html#definition-a-skill) selection through `--skill`, explicit [coding-agent](wiki.html#definition-coding-agent) delegation through `--agent`, and automatic selection when those options are absent. It must protect an existing output file unless the caller explicitly supplies `--force`.
 
 ALA must execute general language requests without requiring a [task repository](wiki.html#definition-task-repository). It must also own [generic execution capabilities](wiki.html#definition-generic-execution-capability) for task and skill discovery, task routing, model and agent execution, research access, temporary workspaces, sessions, verification support, and bounded retries. Specialized task methodology and task-specific verification rules must remain in independently versioned task repositories.
 
-An A-Skill is a reusable AchillesAgentLib skill supplied by a task repository. It packages instructions and optional code for one coherent task. The term identifies an AchillesAgentLib skill in ALA's task-facing role and does not establish a second skill representation.
+A task skill is a declaration supplied by a task repository through `SKILL.md`. It packages instructions and optional code for one coherent task. The term identifies a repository-owned skill declaration and does not establish a separate runtime representation.
 
-ALA is not a general repository-owning coding agent. An A-Skill may request bounded code generation or an authenticated coding agent, but language processing, planning, research, documentation, transformation, and verification define ALA's primary domain.
+ALA is not a general repository-owning coding agent. A task skill may request bounded code generation or an authenticated coding agent, but language processing, planning, research, documentation, transformation, and verification define ALA's primary domain.
 
-The npm package is `advanced-language-agent`, uses ECMAScript modules on Node.js 20 or newer, and exposes `ala` through its `bin` mapping. Exit codes must distinguish success, usage and configuration errors, input errors, repository or A-Skill errors, execution errors, and interruption without writing diagnostics to the result stream.
+The npm package is `advanced-language-agent`, uses ECMAScript modules on Node.js 20 or newer, and exposes `ala` through its `bin` mapping. Exit codes must distinguish success, usage and configuration errors, input errors, repository or task-skill errors, execution errors, and interruption without writing diagnostics to the result stream.
 
 ## Conclusion
 
-ALA provides a stable language-task interface and shared execution services while independent AchillesAgentLib A-Skills retain ownership of domain methods.
+ALA provides a stable language-task interface and shared execution services while independent task skills retain ownership of domain methods.

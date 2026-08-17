@@ -45,7 +45,7 @@ ala --interactive</code></pre>
       <table class="spec-table">
         <thead><tr><th>Option</th><th>Behavior</th></tr></thead>
         <tbody>
-          <tr><td><code>--skill &lt;name&gt;</code></td><td>Executes the named <a href="wiki.html#definition-a-skill">A-Skill</a> explicitly. An unknown skill name produces repository exit code <code>4</code>.</td></tr>
+          <tr><td><code>--skill &lt;name&gt;</code></td><td>Executes the named task skill explicitly. Task skills are Anthropic-style declarations in <code>SKILL.md</code>. An unknown skill name produces repository exit code <code>4</code>.</td></tr>
           <tr><td><code>--agent &lt;name&gt;</code></td><td>Delegates the request through an installed <a href="wiki.html#definition-coding-agent">coding agent</a>. Accepted values are <code>auto</code>, <code>codex</code>, <code>opencode</code>, and <code>pi</code>. This option cannot be combined with <code>--skill</code> or ALA model overrides because the selected agent owns its model configuration.</td></tr>
           <tr><td><code>--task-repo &lt;path&gt;</code></td><td>Adds one task repository for this invocation without saving it. The option may be repeated.</td></tr>
           <tr><td><code>--text &lt;text&gt;</code></td><td>Adds a labeled text payload. Repeated payload options retain their argument order.</td></tr>
@@ -70,7 +70,7 @@ ala --interactive</code></pre>
 
     <h2>Add a task repository</h2>
     <pre><code>ala repo add &lt;path&gt; [--config &lt;path&gt;] [--help]</code></pre>
-    <p>This command resolves the repository to a canonical path, verifies that it contains at least one supported AchillesAgentLib skill descriptor, and stores it in the selected ALA configuration. Adding the same canonical path again is idempotent. The command prints the registered path and does not copy the repository.</p>
+    <p>This command resolves the repository to a canonical path, verifies that it contains at least one task skill manifest under <code>SKILL.md</code>, and stores it in the selected ALA configuration. Adding the same canonical path again is idempotent. The command prints the registered path and does not copy the repository.</p>
 
     <h2>List task repositories</h2>
     <pre><code>ala repo list [--config &lt;path&gt;] [--json] [--help]</code></pre>
@@ -86,8 +86,8 @@ ala --interactive</code></pre>
     <p>This command detects Codex, OpenCode, and Pi without starting AchillesAgentLib or an LLM session. Text output prints only the names of available backends, one per line. <code>--json</code> returns an ordered JSON array containing those names. Empty output or an empty array means that no supported backend was detected.</p>
 
     <h2>Symbolic detection</h2>
-    <p>Symbolic detection is disabled by default and is enabled only inside an interactive session with <code>/symbolic detection on</code>. It examines the instruction, never payload contents, and compares its extracted evidence with the optional <code>## Symbolic Routing</code> metadata section in each A-Skill descriptor. The section accepts comma-separated <code>actions</code>, <code>objects</code>, <code>targets</code>, <code>modifiers</code>, <code>phrases</code>, <code>required</code>, and <code>conflicts</code> values.</p>
-    <p>A confident <code>DETERMINISTIC</code> or <code>HIGH</code> match executes the selected A-Skill directly. <code>AMBIGUOUS</code> and <code>UNKNOWN</code> results abstain and use the normal MainAgent route. Explicit <code>--skill</code> and <code>--agent</code> selections always take precedence.</p>
+    <p>Symbolic detection is disabled by default and is enabled only inside an interactive session with <code>/symbolic detection on</code>. It examines the instruction, never payload contents, and compares its extracted evidence with the optional <code>## Symbolic Routing</code> metadata section in each task skill definition. The section accepts comma-separated <code>actions</code>, <code>objects</code>, <code>targets</code>, <code>modifiers</code>, <code>phrases</code>, <code>required</code>, and <code>conflicts</code> values.</p>
+    <p>A confident <code>DETERMINISTIC</code> or <code>HIGH</code> match executes the selected task skill directly. <code>AMBIGUOUS</code> and <code>UNKNOWN</code> results abstain and use the normal MainAgent route. Explicit <code>--skill</code> and <code>--agent</code> selections always take precedence.</p>
 
     <h2>Configuration precedence</h2>
     <p>The ALA configuration path resolves in this order: <code>--config</code>, <code>ALA_CONFIG_PATH</code>, <code>$XDG_CONFIG_HOME/ala/config.json</code>, then <code>~/.config/ala/config.json</code>. Model selection resolves command-line values before <code>ALA_MODEL</code>, <code>ALA_TAGS</code>, and <code>ALA_REASONING_EFFORT</code>, after which AchillesAgentLib applies its configured defaults.</p>
@@ -102,7 +102,7 @@ ala --interactive</code></pre>
           <tr><td><code>0</code></td><td>The command completed successfully.</td></tr>
           <tr><td><code>2</code></td><td>An option, command, or configuration value was invalid.</td></tr>
           <tr><td><code>3</code></td><td>ALA could not read an input or safely write the requested output.</td></tr>
-          <tr><td><code>4</code></td><td>A task repository, A-Skill, or AchillesAgentLib dependency could not be resolved or validated.</td></tr>
+          <tr><td><code>4</code></td><td>A task repository, task skill, or AchillesAgentLib dependency could not be resolved or validated.</td></tr>
           <tr><td><code>5</code></td><td>Runtime execution failed.</td></tr>
           <tr><td><code>130</code></td><td>The active execution was interrupted.</td></tr>
         </tbody>

@@ -5,15 +5,15 @@ summary: Defines isolated multi-stage work, interactive correction, verification
 
 ## Introduction
 
-Some [A-Skills](wiki.html#definition-a-skill) require several stages, retained conversational context, or independent verification. [ALA](index.html) provides those generic facilities without taking ownership of the caller's software repository.
+Some task skills require several stages, retained conversational context, or independent verification. [ALA](index.html) provides those generic facilities without taking ownership of the caller's software repository.
 
 ## Core Content
 
-An A-Skill may request an isolated temporary [task workspace](wiki.html#definition-task-workspace). The workspace may hold explicit input material, retrieved sources, intermediate outputs, verification results, and final artifacts. It must not become an implicit copy of the caller's repository or a general persistent project directory.
+A task skill may request an isolated temporary [task workspace](wiki.html#definition-task-workspace). The workspace may hold explicit input material, retrieved sources, intermediate outputs, verification results, and final artifacts. It must not become an implicit copy of the caller's repository or a general persistent project directory.
 
 Every [coding-agent](wiki.html#definition-coding-agent) execution must create its task workspace lazily and must use it as the agent's project directory. The public CLI must not accept the caller's repository or another persistent directory for this path. A runtime must reuse one workspace during native agent continuation and must remove it when the runtime closes.
 
-Running `ala` without an instruction in a terminal or supplying `--interactive` must start an interactive session. A [MainAgent](wiki.html#definition-main-agent)-selected session must retain its [AchillesAgentLib](wiki.html#definition-achilles-agent-lib) conversation, while a session using `--skill` must retain the selected A-Skill and include the previous result with each corrective instruction. `:quit` and `:exit` must close the session, and interruption must cancel the active AchillesAgentLib session.
+Running `ala` without an instruction in a terminal or supplying `--interactive` must start an interactive session. A [MainAgent](wiki.html#definition-main-agent)-selected session must retain its [AchillesAgentLib](wiki.html#definition-achilles-agent-lib) conversation, while a session using `--skill` must retain the selected task skill and include the previous result with each corrective instruction. `:quit` and `:exit` must close the session, and interruption must cancel the active AchillesAgentLib session.
 
 An interactive session using `--agent` must retain the backend's opaque native continuation identifier and pin later prompts to that backend. A request to change the backend after continuation begins must fail instead of creating an unrelated conversation. Interruption must terminate the active child process and retain exit code `130` semantics.
 
@@ -25,7 +25,7 @@ Interactive correction must preserve the task method unless the caller explicitl
 
 Retries must have a finite configured limit. Workspace cleanup, retention, and sensitive-data handling must follow a documented deployment policy. Until that policy selects persistence guarantees, implementations must keep workspace scope isolated to one request and must not promise artifact retention.
 
-[Task repositories](wiki.html#definition-task-repository) may include instructions intended for coding agents. Those instructions must define task methodology, required checks, and acceptance conditions. The coding agent supplies general planning and execution; the A-Skill continues to own domain procedure.
+[Task repositories](wiki.html#definition-task-repository) may include instructions intended for coding agents. Those instructions must define task methodology, required checks, and acceptance conditions. The coding agent supplies general planning and execution; the task skill continues to own domain procedure.
 
 ## Conclusion
 

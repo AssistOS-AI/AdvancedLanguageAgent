@@ -155,7 +155,7 @@ Usage:
   ala agent list [--config <path>] [--json]
 
 Execution options:
-  --skill <name>             Execute an A-Skill explicitly
+  --skill <name>             Execute a task skill explicitly
   --agent <name>             Delegate explicitly: auto, codex, opencode, or pi
   --task-repo <path>         Add a task repository for this invocation
   --text <text>              Add a text payload

@@ -2,7 +2,7 @@
 
 ## Scope
 
-This repository defines [Advanced Language Agent](docs/index.html) (ALA), a CLI that exposes generic language-task execution infrastructure. [AchillesAgentLib](docs/wiki.html#definition-achilles-agent-lib) is authorized as the library for skill discovery, `MainAgent`-compatible routing, `LLMAgent` execution, model selection, sessions, and supported agent backends. An [A-Skill](docs/wiki.html#definition-a-skill) is a reusable AchillesAgentLib skill supplied by an independently versioned [task repository](docs/wiki.html#definition-task-repository).
+This repository defines [Advanced Language Agent](docs/index.html) (ALA), a CLI that exposes generic language-task execution infrastructure. [AchillesAgentLib](docs/wiki.html#definition-achilles-agent-lib) is authorized as the library for `MainAgent`-compatible routing, `LLMAgent` execution, model selection, sessions, and supported agent backends. A task repository supplies Anthropic-style task skills declared in `SKILL.md` and consumed through [task skill](docs/wiki.html#definition-a-skill) selection.
 
 ## Mandatory Reading Order
 
@@ -15,7 +15,7 @@ This repository defines [Advanced Language Agent](docs/index.html) (ALA), a CLI 
 
 ## Current Skill Catalog
 
-ALA does not implement or distribute task-specific A-Skills in its core repository. The product [skill catalog](docs/wiki.html#definition-skill-catalog) is assembled from independently installed task repositories. ALA does distribute the generic `coding-agent` Code Skill as runtime infrastructure; it is registered only when Codex, OpenCode, or Pi is detected and is not a task-specific A-Skill. Update this section whenever the repository begins to implement or distribute an A-Skill as a product artifact. Internal repository tooling is not part of this catalog.
+ALA does not implement or distribute task-specific task skills in its core repository. The product [skill catalog](docs/wiki.html#definition-skill-catalog) is assembled from independently installed task repositories. ALA does distribute the generic `coding-agent` Code Skill as runtime infrastructure; it is registered only when Codex, OpenCode, or Pi is detected and is not a task-specific skill. Update this section whenever the repository begins to implement or distribute a task skill as a product artifact. Internal repository tooling is not part of this catalog.
 
 ## Repository Rules
 
@@ -32,17 +32,17 @@ ALA does not implement or distribute task-specific A-Skills in its core reposito
 - Keep `docs/commands.html` synchronized with every CLI command, option, input rule, output rule, configuration precedence rule, and exit code exposed by the implementation.
 - Keep interactive slash commands synchronized with the CLI: `/agent list`, `/agent help`, `/agent auto <prompt>`, `/agent <codex|opencode|pi> <prompt>`, `/quit`, and `/exit` are local commands and must never be routed to an LLM.
 - When source changes behavior, interfaces, architecture, workflows, or constraints, update both the HTML documentation and affected specifications.
-- Keep imported A-Skills and their specifications in their owning task repositories or skill folders. A downstream consumer must not copy their DS files or standalone pages into the host project's `docs/` tree.
+- Keep imported task skills and their specifications in their owning task repositories or skill folders. A downstream consumer must not copy their DS files or standalone pages into the host project's `docs/` tree.
 
 ## Runtime Defaults
 
 The executable is `ala`. User configuration resolves from `--config`, `ALA_CONFIG_PATH`, `$XDG_CONFIG_HOME/ala/config.json`, or `~/.config/ala/config.json`, in that order. Persistent task repositories are managed through `ala repo add`, `ala repo remove`, and `ala repo list`; `--task-repo` adds a repository for one invocation.
 
-The default route uses AchillesAgentLib `MainAgent`. With no configured task repositories, `MainAgent` executes the general request without an A-Skill. When A-Skills are available, it may select one from the catalog. `--skill` takes precedence and executes the selected A-Skill directly. Experimental [symbolic routing](docs/wiki.html#definition-symbolic-routing) is enabled only through the interactive `/symbolic detection on|off` command, inspects only the instruction and A-Skill routing metadata, and must abstain or fall back when evidence is uncertain.
+The default route uses AchillesAgentLib `MainAgent`. With no configured task repositories, `MainAgent` executes the general request without a task skill. When task skills are available, it may select one from the catalog. `--skill` takes precedence and executes the selected task skill directly. Experimental [symbolic routing](docs/wiki.html#definition-symbolic-routing) is enabled only through the interactive `/symbolic detection on|off` command, inspects only the instruction and task-skill routing metadata, and must abstain or fall back when evidence is uncertain.
 
 At process startup, ALA detects Codex, OpenCode, and Pi through their binary override variables, standard installation locations, and `PATH`. When at least one is available, ALA registers its generic `coding-agent` Code Skill with MainAgent. `--agent` forces this execution path, `ala agent list` reports detection, and the default priority is Codex, OpenCode, then Pi. Coding-agent execution must use only an ALA-owned temporary workspace, retain native continuation during an interactive session, and remove the workspace at shutdown.
 
-All LLM interactions must use AchillesAgentLib's `LLMAgent` configured through runtime configuration and environment values. Manual configuration overrides must remain available. Routing-sensitive work must carry applicable metadata tags for documentation, specification, orchestration, bootstrap, and testing. Direct LLM execution is normal for straightforward work; stronger models, authenticated agents, research access, and temporary workspaces are selected when an A-Skill requests them and the environment provides them.
+All LLM interactions must use AchillesAgentLib's `LLMAgent` configured through runtime configuration and environment values. Manual configuration overrides must remain available. Routing-sensitive work must carry applicable metadata tags for documentation, specification, orchestration, bootstrap, and testing. Direct LLM execution is normal for straightforward work; stronger models, authenticated agents, research access, and temporary workspaces are selected when a task skill requests them and the environment provides them.
 
 ## Key Paths
 

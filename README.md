@@ -1,8 +1,8 @@
 # Advanced Language Agent
 
-[Advanced Language Agent](docs/index.html) (ALA) is a command-line application for language and documentation tasks. It can execute general requests without [task repositories](docs/wiki.html#definition-task-repository) and can load [A-Skills](docs/wiki.html#definition-a-skill) when specialized task methods are needed. It writes the result to standard output or a file.
+[Advanced Language Agent](docs/index.html) (ALA) is a command-line application for language and documentation tasks. It can execute general requests without [task repositories](docs/wiki.html#definition-task-repository) and can load [task skills](docs/wiki.html#definition-a-skill) from them when specialized methods are needed. Task skills are declared in `SKILL.md`, which acts as the skill manifest. It writes the result to standard output or a file.
 
-An A-Skill is an [AchillesAgentLib](docs/wiki.html#definition-achilles-agent-lib) skill supplied by an independent task repository. ALA provides the CLI and execution runtime; the task repository provides the method for translation, research, writing, verification, or another language task.
+A task skill is a procedure defined in an independent task repository through an Anthropic-style `SKILL.md`. ALA provides the CLI and execution runtime; the task repository provides the specialized method for translation, research, writing, verification, or another language task.
 
 ## Install
 
@@ -77,7 +77,7 @@ Run a general request without a task repository:
 ala "Summarize the supplied report" --file report.md
 ```
 
-When task repositories are configured, ALA can select a matching A-Skill automatically. Select an A-Skill explicitly when its name is known:
+When task repositories are configured, ALA can select a matching task skill automatically. Select a skill explicitly when its name is known:
 
 ```sh
 ala --skill translate "Translate this document to Romanian" --file document.md
@@ -106,7 +106,7 @@ Start an interactive session. This works without a task repository:
 ala
 ```
 
-Start an interactive session with a specific A-Skill:
+Start an interactive session with a specific task skill:
 
 ```sh
 ala --interactive --skill translate

@@ -134,7 +134,7 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"s
   assert.match(stderr.read(), /symbolic detection on/);
 });
 
-test('executes an explicitly selected A-Skill from the persistent registry', async (context) => {
+test('executes an explicitly selected task skill from the persistent registry', async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-cli-execute-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const repository = join(root, 'tasks');
