@@ -1,7 +1,8 @@
 import { fileURLToPath } from 'node:url';
 
+import { catalogSelectionPrompt, selectedSkillPrompt } from './anthropic-skills.mjs';
 import { createCodingAgentService } from './coding-agents/service.mjs';
-import { createSkillRegistry } from './repositories.mjs';
+import { createSkillRegistry, discoverTaskSkills } from './repositories.mjs';
 import { ALAError, EXIT_CODES } from './errors.mjs';
 import { normalizeResult } from './output.mjs';
 import { createSymbolicRouter } from './routing/symbolic.mjs';
@@ -43,11 +44,12 @@ export async function createRuntime({
     );
   }
   const logger = createDiagnosticLogger(diagnostics, env);
-  const codingAgentService = createCodingAgentService({ agents: codingAgents, env, logger });
-  const registry = await createSkillRegistry(repositories, achillesModule, {
+  const registry = await createSkillRegistry(repositories, {
     builtInSkillsDirectories: codingAgents.some((record) => record.available) ? [internalSkillsDirectory] : []
   });
-  const symbolicRouter = await createSymbolicRouter(registry.skills);
+  let skills = registry.skills;
+  let codingAgentService = createCodingAgentService({ agents: codingAgents, skills, env, logger });
+  let symbolicRouter = await createSymbolicRouter(skills);
   const selected = runtimeOptions(options, env);
   let mainAgent;
   try {
@@ -65,13 +67,23 @@ export async function createRuntime({
   }
 
   return {
-    skills: registry.skills,
+    skills,
     codingAgents,
     symbolicDetectionEnabled: false,
     setSymbolicDetection(enabled) { this.symbolicDetectionEnabled = Boolean(enabled); },
     getSymbolicDetection() { return this.symbolicDetectionEnabled; },
     listCodingAgents() {
       return codingAgents.filter((record) => record.available).map((record) => record.name);
+    },
+    async refreshRepositories(nextRepositories) {
+      const nextSkills = await discoverTaskSkills(nextRepositories);
+      const nextSymbolicRouter = await createSymbolicRouter(nextSkills);
+      const nextCodingAgentService = createCodingAgentService({ agents: codingAgents, skills: nextSkills, env, logger });
+      await codingAgentService.close();
+      skills = nextSkills;
+      symbolicRouter = nextSymbolicRouter;
+      codingAgentService = nextCodingAgentService;
+      this.skills = nextSkills;
     },
     async executeAgent(prompt, { agent = 'auto', signal = null } = {}) {
       const selected = agent === 'auto'
@@ -96,15 +108,22 @@ export async function createRuntime({
       };
       if (options.agent) return mainAgent.executeSkill('coding-agent', prompt, common);
       if (options.skill) {
-        const record = mainAgent.getSkillRecord(options.skill);
+        const record = skills.find((skill) => skill.name === options.skill);
         if (!record) throw new ALAError(`Task skill not found: ${options.skill}`, EXIT_CODES.repository);
-        return mainAgent.executeSkill(record.name, prompt, common);
+        if (!codingAgents.some((agent) => agent.available)) {
+          throw new ALAError('Anthropic task skills require an available coding agent.', EXIT_CODES.execution);
+        }
+        return mainAgent.executeSkill('coding-agent', selectedSkillPrompt(record, prompt), common);
       }
       if (this.symbolicDetectionEnabled) {
         const decision = symbolicRouter.route(executionOptions.instruction || prompt);
         if (decision.skill && ['DETERMINISTIC', 'HIGH'].includes(decision.state)) {
-          return mainAgent.executeSkill(decision.skill, prompt, common);
+          const record = skills.find((skill) => skill.name === decision.skill);
+          return mainAgent.executeSkill('coding-agent', selectedSkillPrompt(record, prompt), common);
         }
+      }
+      if (skills.length > 0 && codingAgents.some((agent) => agent.available)) {
+        return mainAgent.executeSkill('coding-agent', catalogSelectionPrompt(skills, prompt), common);
       }
       return mainAgent.executePrompt(prompt, common);
     },

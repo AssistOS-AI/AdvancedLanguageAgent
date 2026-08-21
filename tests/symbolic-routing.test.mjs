@@ -1,20 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { appendFile, mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createRuntime } from '../src/runtime.mjs';
 import { createSymbolicRouter, extractRepresentation } from '../src/routing/symbolic.mjs';
-import { captureStream, writeCodeSkill } from './helpers.mjs';
+import { captureStream, writeAnthropicSkill } from './helpers.mjs';
 
 test('extracts instruction-only symbolic evidence and supports safe abstention', async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-symbolic-'));
   context.after(() => rm(root, { recursive: true, force: true }));
-  const skillDir = await writeCodeSkill(root, 'translate');
-  const descriptor = join(skillDir, 'cskill.md');
-  await appendFile(descriptor, '\n## Symbolic Routing\nactions: translate\nobjects: document, text\ntargets: romanian\nphrases: translate document\nconflicts: summarize\n');
-  const records = [{ name: 'translate-cskill', filePath: descriptor }];
+  const skillDir = await writeAnthropicSkill(root, 'translate', {
+    body: '# Translate\n\n## Symbolic Routing\nactions: translate\nobjects: document, text\ntargets: romanian\nphrases: translate document\nconflicts: summarize'
+  });
+  const descriptor = join(skillDir, 'SKILL.md');
+  const records = [{ name: 'translate', filePath: descriptor }];
   const router = await createSymbolicRouter(records);
   const representation = extractRepresentation('Translate this document to Romanian');
   assert.deepEqual(representation.targets, ['romanian']);
@@ -22,12 +23,12 @@ test('extracts instruction-only symbolic evidence and supports safe abstention',
   assert.equal(router.route('Summarize this document').state, 'UNKNOWN');
 });
 
-test('symbolic detection routes confident matches and falls back to MainAgent', async (context) => {
+test('symbolic detection selects a skill while unknown requests use coding-agent catalog selection', async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-symbolic-runtime-'));
   context.after(() => rm(root, { recursive: true, force: true }));
-  const skillDir = await writeCodeSkill(root, 'translate');
-  const descriptor = join(skillDir, 'cskill.md');
-  await appendFile(descriptor, '\n## Symbolic Routing\nactions: translate\nphrases: translate document\n');
+  const skillDir = await writeAnthropicSkill(root, 'translate', {
+    body: '# Translate\n\n## Symbolic Routing\nactions: translate\nphrases: translate document'
+  });
   const calls = [];
   class FakeMainAgent {
     constructor() {}
@@ -41,16 +42,19 @@ test('symbolic detection routes confident matches and falls back to MainAgent', 
   const runtime = await createRuntime({
     achillesModule: {
       MainAgent: FakeMainAgent,
-      discoverSkills() { return [{ name: 'translate-cskill', filePath: descriptor }]; }
+      discoverSkills() { return []; }
     },
     repositories: [root],
+    codingAgents: [{ name: 'codex', available: true, binary: '/fake/codex' }],
     options: { tags: [] },
     diagnostics: captureStream()
   });
   context.after(() => runtime.close());
-  assert.equal((await runtime.execute('Translate this document', { instruction: 'Translate this document' })).result, 'main');
+  assert.equal((await runtime.execute('Translate this document', { instruction: 'Translate this document' })).result, 'skill');
   runtime.setSymbolicDetection(true);
   assert.equal((await runtime.execute('Translate this document', { instruction: 'Translate this document' })).result, 'skill');
-  assert.equal((await runtime.execute('Summarize this document', { instruction: 'Summarize this document' })).result, 'main');
-  assert.deepEqual(calls.map((call) => call[0]), ['main', 'skill', 'main']);
+  assert.equal((await runtime.execute('Summarize this document', { instruction: 'Summarize this document' })).result, 'skill');
+  assert.deepEqual(calls.map((call) => call[0]), ['skill', 'skill', 'skill']);
+  assert.equal(calls[1][1], 'coding-agent');
+  assert.match(calls[1][2], /\.agents\/skills\/translate\/SKILL\.md/u);
 });

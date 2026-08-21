@@ -1,8 +1,8 @@
 # Advanced Language Agent
 
-[Advanced Language Agent](docs/index.html) (ALA) is a command-line application for language and documentation tasks. It can execute general requests without [task repositories](docs/wiki.html#definition-task-repository) and can load [task skills](docs/wiki.html#definition-a-skill) from them when specialized methods are needed. Task skills are declared in `SKILL.md`, which acts as the skill manifest. It writes the result to standard output or a file.
+[Advanced Language Agent](docs/index.html) (ALA) is a command-line application for language and documentation tasks. It can execute general requests without [task repositories](docs/wiki.html#definition-task-repository) and can load [task skills](docs/wiki.html#definition-a-skill) from them when specialized methods are needed. Task skills use the Anthropic `SKILL.md` format and are executed by an installed coding agent. ALA writes the result to standard output or a file.
 
-A task skill is a procedure defined in an independent task repository through an Anthropic-style `SKILL.md`. ALA provides the CLI and execution runtime; the task repository provides the specialized method for translation, research, writing, verification, or another language task.
+A task skill is a procedure defined in an independent task repository through an Anthropic-style `SKILL.md` with `name` and `description` frontmatter. ALA discovers these descriptors recursively and makes them available to Codex, OpenCode, or Pi in an isolated workspace. ALA does not require or search task repositories for AchillesAgentLib `cskill.md`, `oskill.md`, `tskill.md`, or `dcgskill.md` descriptors.
 
 ## Install
 
@@ -57,11 +57,12 @@ export ALA_MODEL=fast
 No task repository is required for general use. To add specialized task methods, register a task repository:
 
 ```sh
-ala repo add /absolute/path/to/task-repository
+ala repo add https://example.com/owner/task-repository.git
 ala repo list
+ala repo remove task-repository
 ```
 
-ALA saves registered repositories in `$XDG_CONFIG_HOME/ala/config.json`, or in `~/.config/ala/config.json` when `XDG_CONFIG_HOME` is not set.
+ALA accepts only a Git URL for persistent `repo add` operations and saves the resulting registration in `$XDG_CONFIG_HOME/ala/config.json`, or in `~/.config/ala/config.json` when `XDG_CONFIG_HOME` is not set. The repository is cloned into `$XDG_DATA_HOME/ala/repositories`, or `~/.local/share/ala/repositories` when `XDG_DATA_HOME` is not set. `repo remove` accepts the Git repository name without `.git`, its registered path, or the original Git URL. Removing its registration does not delete the managed clone. Use `--task-repo` or `ALA_TASK_REPOSITORIES` when a local repository is needed for an invocation without persistent registration.
 
 ALA also detects authenticated Codex, OpenCode, and Pi installations. Inspect the detected backend names with:
 
@@ -77,7 +78,7 @@ Run a general request without a task repository:
 ala "Summarize the supplied report" --file report.md
 ```
 
-When task repositories are configured, ALA can select a matching task skill automatically. Select a skill explicitly when its name is known:
+When task repositories are configured and a coding agent is available, that agent can select a matching task skill automatically. Select a skill explicitly when its name is known:
 
 ```sh
 ala --skill translate "Translate this document to Romanian" --file document.md
@@ -96,7 +97,7 @@ ala --agent codex "Research this topic and produce a verified summary"
 ala --agent auto "Plan and validate this multi-step language task"
 ```
 
-The selected coding-agent CLI must already be authenticated through its own login mechanism. ALA runs it in a temporary workspace and removes that workspace when the command or interactive session closes.
+The selected coding-agent CLI must already be authenticated through its own login mechanism. ALA does not pass a model identifier or model-selection option to Codex, OpenCode, or Pi; the selected CLI uses its own configured default model. ALA's `--model`, `--tag`, `--reasoning-effort`, and `--model-config` settings apply only to direct LLMAgent execution and do not override coding-agent model selection. Anthropic task-skill execution also requires one detected coding agent. ALA runs it in a temporary workspace, mounts the discovered task-skill directories under `.agents/skills`, and removes the workspace when the command or interactive session closes.
 
 ## Run interactively
 
@@ -115,15 +116,19 @@ ala --interactive --skill translate
 Interactive sessions also accept local slash commands. `/agent ...` commands are handled by ALA and are never sent to the LLM:
 
 ```text
+/help
 /agent list
 /agent codex Review this task
 /agent auto Produce a verified multi-step summary
+/repo add https://example.com/owner/task-repository.git
+/repo list
+/repo remove task-repository
 /symbolic detection on
 /symbolic detection off
 /quit
 ```
 
-`/agent list` reports detected backends, `/agent auto <prompt>` follows the configured priority, and `/agent <codex|opencode|pi> <prompt>` selects a backend. Symbolic detection is off by default for each session; `/symbolic detection on` enables instruction-only symbolic task routing with safe fallback to MainAgent, and `off` disables it again. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
+`/help` lists every interactive command and explains what it does; `/agent` and `/agent help` display the same list. `/agent list` reports detected backends, `/agent auto <prompt>` follows the configured priority, and `/agent <codex|opencode|pi> <prompt>` selects a backend. While a terminal waits for a MainAgent or coding-agent response, ALA cycles through `Thinking.`, `Thinking..`, and `Thinking...`, then clears the line before printing the result or an error. The animation is disabled when the interactive input or diagnostic output is not a terminal, so redirected output remains clean. `/repo add`, `/repo list`, and `/repo remove` manage persistent task repository registrations locally. Removal accepts the Git repository name without `.git`, such as `task-repository`, while the registered path and original Git URL remain supported. In a terminal, press TAB after `/repo remove ` or after a partial name to complete matching registered repository names. An addition or removal refreshes the active skill catalog immediately, so the next prompt in the same session sees the change. Refreshing closes an existing coding-agent workspace and native continuation while preserving the MainAgent conversation and symbolic-detection setting. Symbolic detection is off by default for each session; `/symbolic detection on` enables instruction-only symbolic task routing, while uncertain matches remain available for coding-agent catalog selection, and `off` disables it again. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
 
 ## More information
 

@@ -1,4 +1,5 @@
 import { ALAError, EXIT_CODES } from './errors.mjs';
+import { isGitRepositoryUrl } from './repository-sources.mjs';
 
 const valueOptions = new Map([
   ['--skill', 'skill'],
@@ -56,7 +57,10 @@ function parseRepoCommand(argv) {
   };
 
   if (!['add', 'remove', 'list'].includes(options.action)) {
-    throw new ALAError('Usage: ala repo <add|remove|list> [path] [--config <path>] [--json].', EXIT_CODES.usage);
+    throw new ALAError(
+      'Usage: ala repo add <git-url> | ala repo remove <name-or-path-or-git-url> | ala repo list.',
+      EXIT_CODES.usage
+    );
   }
 
   for (let index = 2; index < argv.length; index += 1) {
@@ -78,10 +82,14 @@ function parseRepoCommand(argv) {
   }
 
   if (['add', 'remove'].includes(options.action) && !options.target && !options.help) {
-    throw new ALAError(`ala repo ${options.action} requires a repository path.`, EXIT_CODES.usage);
+    const targetDescription = options.action === 'add' ? 'a Git URL' : 'a repository name, path, or Git URL';
+    throw new ALAError(`ala repo ${options.action} requires ${targetDescription}.`, EXIT_CODES.usage);
+  }
+  if (options.action === 'add' && options.target && !options.help && !isGitRepositoryUrl(options.target)) {
+    throw new ALAError('ala repo add requires a Git URL.', EXIT_CODES.usage);
   }
   if (options.action === 'list' && options.target) {
-    throw new ALAError('ala repo list does not accept a repository path.', EXIT_CODES.usage);
+    throw new ALAError('ala repo list does not accept a repository name, path, or Git URL.', EXIT_CODES.usage);
   }
   return options;
 }
@@ -149,8 +157,8 @@ export const HELP_TEXT = `Advanced Language Agent
 
 Usage:
   ala [options] [instruction...]
-  ala repo add <path> [--config <path>]
-  ala repo remove <path> [--config <path>]
+  ala repo add <git-url> [--config <path>]
+  ala repo remove <name-or-path-or-git-url> [--config <path>]
   ala repo list [--config <path>] [--json]
   ala agent list [--config <path>] [--json]
 
@@ -171,6 +179,8 @@ Execution options:
   --model-config <path>      Override AchillesAgentLib model configuration
   --achilles-path <path>     Override AchillesAgentLib resolution
   --config <path>            Override the ALA configuration file
+  Interactive: /help         Show every interactive command and its behavior
+  Interactive: /repo <add|remove|list>  Manage persistent task repositories
   Interactive: /symbolic detection on|off  Toggle symbolic routing in a session
   --help, -h                 Show help
   --version, -v              Show version`;

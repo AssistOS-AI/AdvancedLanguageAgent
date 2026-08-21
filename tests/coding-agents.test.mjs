@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, chmod, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -12,7 +12,7 @@ import { buildPiArguments, parsePiOutput } from '../src/coding-agents/pi.mjs';
 import { runProcess } from '../src/coding-agents/process.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
 import { createRuntime } from '../src/runtime.mjs';
-import { captureStream } from './helpers.mjs';
+import { captureStream, writeAnthropicSkill } from './helpers.mjs';
 
 async function executable(root, name, source = '#!/bin/sh\nexit 0\n') {
   const filePath = join(root, name);
@@ -88,6 +88,24 @@ test('pins continuation to one agent and removes its temporary workspace', async
   const workspace = calls[0].workspace;
   await service.close();
   await assert.rejects(() => access(workspace));
+});
+
+test('mounts Anthropic skill directories in the coding-agent workspace', async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-agent-skills-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const directoryPath = await writeAnthropicSkill(root, 'echo');
+  const service = createCodingAgentService({
+    agents: [{ name: 'codex', available: true, binary: '/fake/codex' }],
+    skills: [{ name: 'echo', directoryPath }],
+    runners: {
+      codex: async ({ workspace }) => ({
+        outputText: await readFile(join(workspace, '.agents', 'skills', 'echo', 'SKILL.md'), 'utf8'),
+        continuation: null
+      })
+    }
+  });
+  context.after(() => service.close());
+  assert.match(await service.execute('use echo'), /name: echo/u);
 });
 
 test('does not switch backends after a delegated process fails', async () => {

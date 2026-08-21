@@ -1,11 +1,11 @@
 ---
 title: DS002-execution-and-model-strategy
-summary: Defines generic execution capabilities, capability-based model resolution, and authenticated agent boundaries.
+summary: Defines LLMAgent general execution, coding-agent task-skill execution, backend selection, and authentication boundaries.
 ---
 
 ## Introduction
 
-[ALA](index.html) resolves the requirements of general requests and task skills against configured models, agents, research facilities, and workspace support. A [task repository](wiki.html#definition-task-repository) requests capabilities for its specialized methods and must not bind those methods to one provider.
+[ALA](index.html) executes general requests through configured models and executes Anthropic task skills through detected coding agents. A [task repository](wiki.html#definition-task-repository) defines portable methodology without declaring an AchillesAgentLib skill family.
 
 ## Core Content
 
@@ -13,14 +13,14 @@ ALA must provide seven [generic execution capabilities](wiki.html#definition-gen
 
 All direct model work must pass through [AchillesAgentLib's](wiki.html#definition-achilles-agent-lib) [LLMAgent](wiki.html#definition-llm-agent) and runtime configuration. ALA must reuse compatible model tags and configured defaults. The generic model tiers are fast for inexpensive low-latency work, standard for ordinary language tasks, and premium or deep for quality-sensitive reasoning. Planning, coding, research, and long-context tags may add eligibility requirements.
 
-Quality is a mandatory eligibility constraint. ALA may optimize latency and cost only among executors capable of meeting the selected task skill's requirements. Straightforward tasks should use direct model execution. Multi-step synthesis, iterative validation, complex research, and long transformations may use agentic execution or an authenticated coding-agent CLI.
+Quality is a mandatory eligibility constraint. Straightforward general tasks should use direct model execution. Every selected Anthropic task skill must use an authenticated coding-agent CLI, which may perform multi-step synthesis, validation, research, transformation, or tool use as directed by `SKILL.md`.
 
 The standalone runtime must support Codex, OpenCode, and Pi through a generic [coding-agent](wiki.html#definition-coding-agent) Code Skill. Each process must detect the supported executables through `CODEX_BIN`, `OPENCODE_BIN`, and `PI_BIN`, then standard user installation locations and `PATH`. The skill must be registered only when at least one backend is executable. Automatic backend choice must follow `ALA_CODING_AGENT_PRIORITY` before the persistent `codingAgents.priority` array and must otherwise use Codex, OpenCode, then Pi.
 
-ALA must use supported non-interactive and native continuation interfaces and must not extract, copy, or reuse credentials. Agent authentication and agent-native model configuration remain owned by the selected CLI. A subscription-backed agent may satisfy a task when direct provider API keys are unavailable. Failure after a backend process starts must not cause automatic failover because the temporary workspace may already contain partial work.
+ALA must use supported non-interactive and native continuation interfaces and must not extract, copy, or reuse credentials. ALA must not pass a model identifier or model-selection option when invoking Codex, OpenCode, or Pi; each selected CLI must use its own configured default model. Agent authentication and agent-native model configuration remain owned by the selected CLI. A subscription-backed agent may satisfy a task when direct provider API keys are unavailable. Failure after a backend process starts must not cause automatic failover because the temporary workspace may already contain partial work.
 
-Provider names, model identifiers, and mappings from tags to concrete executors are runtime configuration. Manual overrides must be possible without changing a task skill. Escalation may occur after a bounded failed attempt when the task skill's quality checks justify it; the scoring policy and numeric bounds must be configured and must never permit unlimited retries.
+Provider names, model identifiers, and mappings from tags to concrete executors are runtime configuration for direct model work. Manual overrides must remain available without changing a task skill. Coding-agent authentication and model selection remain owned by the agent CLI, and `--model`, `--tag`, `--reasoning-effort`, `--model-config`, and their environment-derived LLMAgent values must not be forwarded or reinterpreted as coding-agent configuration.
 
 ## Conclusion
 
-ALA selects execution backends by capability and required quality while preserving portable task skills and secure use of authenticated agents.
+ALA preserves portable Anthropic task skills by executing them through authenticated coding agents while keeping general model work inside configured AchillesAgentLib components.

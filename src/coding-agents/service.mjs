@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -9,11 +9,25 @@ import { runPi } from './pi.mjs';
 
 const adapters = Object.freeze({ codex: runCodex, opencode: runOpenCode, pi: runPi });
 
-export function createCodingAgentService({ agents, env = process.env, logger = null, runners = adapters }) {
+export function createCodingAgentService({ agents, skills = [], env = process.env, logger = null, runners = adapters }) {
   const available = agents.filter((record) => record.available);
   let workspace = null;
   let activeName = null;
   let continuation = null;
+
+  async function prepareWorkspace() {
+    workspace = await mkdtemp(join(tmpdir(), 'ala-agent-'));
+    if (skills.length === 0) return;
+    const skillsPath = join(workspace, '.agents', 'skills');
+    await mkdir(skillsPath, { recursive: true, mode: 0o700 });
+    for (const skill of skills) {
+      await symlink(
+        skill.directoryPath,
+        join(skillsPath, skill.name),
+        process.platform === 'win32' ? 'junction' : 'dir'
+      );
+    }
+  }
 
   function select(requested = 'auto') {
     if (activeName) {
@@ -35,7 +49,7 @@ export function createCodingAgentService({ agents, env = process.env, logger = n
     agents,
     async execute(prompt, { agent = 'auto', signal = null } = {}) {
       const selected = select(agent);
-      if (!workspace) workspace = await mkdtemp(join(tmpdir(), 'ala-agent-'));
+      if (!workspace) await prepareWorkspace();
       activeName = selected.name;
       logger?.debug?.(`coding-agent: backend=${selected.name}, workspace=${workspace}`);
       const result = await runners[selected.name]({

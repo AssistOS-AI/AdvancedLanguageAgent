@@ -18,44 +18,45 @@
     <p class="lead"><a href="index.html">ALA</a> can execute a general request with an empty <a href="wiki.html#definition-skill-catalog">skill catalog</a>. When a task skill is available, ALA first selects what specialized work must be performed, then selects how that work will run.</p>
 
     <h2>Selection precedence</h2>
-    <p><code>--skill &lt;name&gt;</code> selects a task skill explicitly and calls its <a href="wiki.html#definition-achilles-agent-lib">AchillesAgentLib</a> subsystem without intent classification. <code>--agent &lt;name&gt;</code> instead forces the generic <a href="wiki.html#definition-coding-agent">coding-agent</a> path, and the two explicit choices are mutually exclusive. Without either option, ALA passes the instruction to <a href="wiki.html#definition-main-agent">MainAgent</a>. An empty task catalog produces general model-backed execution while a detected coding agent remains available as a generic runtime tool. The experimental <a href="wiki.html#definition-symbolic-routing">symbolic routing</a> path is disabled by default and is enabled for an interactive session with <code>/symbolic detection on</code>; <code>off</code> disables it again.</p>
+    <p><code>--skill &lt;name&gt;</code> selects one Anthropic task skill explicitly and sends its instructions to the first available <a href="wiki.html#definition-coding-agent">coding agent</a>. <code>--agent &lt;name&gt;</code> forces the same generic agent path without selecting a task skill, and the two explicit choices are mutually exclusive. Without either option, a populated catalog is offered to a coding agent for selection; an empty catalog or unavailable coding agent leaves general model-backed execution with <a href="wiki.html#definition-main-agent">MainAgent</a>. The experimental <a href="wiki.html#definition-symbolic-routing">symbolic routing</a> path is disabled by default and is enabled for an interactive session with <code>/symbolic detection on</code>; <code>off</code> disables it again.</p>
     <h2>Task-selection detail</h2>
-    <p>The task-method stage contains the precedence decisions hidden by the overview. Explicit choices bypass automatic selection; otherwise ALA uses MainAgent, with the optional symbolic path able to select a confident match first.</p>
+    <p>The task-method stage contains the precedence decisions hidden by the overview. Explicit choices bypass automatic selection; otherwise the optional symbolic path may select a confident match before the coding agent receives the full catalog.</p>
     <figure class="diagram">
       <pre class="mermaid">flowchart LR
         Instruction[Instruction] --> Choice{Explicit selection?}
         Choice -->|--skill| Skill[Selected task skill]
-        Choice -->|none| Main[MainAgent]
-        Main -->|skill match| Skill
-        Main -->|general request| General[General method]
+        Choice -->|catalog available| Agent[Coding agent catalog selection]
+        Choice -->|no usable catalog| Main[MainAgent general execution]
+        Agent -->|skill match| Skill
+        Agent -->|no match| General[General agent execution]
         classDef decision fill:#fff1db,stroke:#9a641d
         classDef route fill:#e8f5eb,stroke:#367a46,font-weight:bold
         class Choice decision
-        class Skill,General,Main route</pre>
-      <figcaption><em>Task-method detail: explicit task-skill selection takes precedence over MainAgent routing.</em></figcaption>
+        class Skill,General,Main,Agent route</pre>
+      <figcaption><em>Task-method detail: explicit task-skill selection takes precedence over coding-agent catalog selection.</em></figcaption>
     </figure>
 
     <h2>Symbolic-routing detail</h2>
-    <p>When `/symbolic detection on` is active, the symbolic router makes a bounded decision from instruction evidence and task-skill metadata. It does not inspect payloads. Only a clear result bypasses MainAgent.</p>
+    <p>When <code>/symbolic detection on</code> is active, the symbolic router makes a bounded decision from instruction evidence and task-skill metadata. It does not inspect payloads. Only a clear result bypasses coding-agent catalog selection.</p>
     <figure class="diagram">
       <pre class="mermaid">flowchart LR
         Instruction[Instruction only] --> Symbolic[Symbolic router]
         Symbolic --> Decision{Confidence state}
-        Decision -->|DETERMINISTIC or HIGH| Direct[Direct task skill]
-        Decision -->|AMBIGUOUS or UNKNOWN| Fallback[MainAgent fallback]
+        Decision -->|DETERMINISTIC or HIGH| Direct[Selected skill for coding agent]
+        Decision -->|AMBIGUOUS or UNKNOWN| Fallback[Coding-agent catalog selection]
         classDef decision fill:#fff1db,stroke:#9a641d
         classDef route fill:#e8f5eb,stroke:#367a46,font-weight:bold
         class Decision decision
         class Symbolic,Direct,Fallback route</pre>
-      <figcaption><em>Symbolic detail: uncertain evidence abstains and returns to the default MainAgent path.</em></figcaption>
+      <figcaption><em>Symbolic detail: uncertain evidence abstains and returns to coding-agent catalog selection.</em></figcaption>
     </figure>
 
     <h2>Symbolic routing and abstention</h2>
     <p>When enabled, symbolic routing extracts actions, objects, targets, modifiers, structural markers, and explicit relationships from the instruction only. A <a href="wiki.html#definition-task-repository">task repository</a> supplies optional <code>## Symbolic Routing</code> metadata in task-skill definitions, including characteristic phrases, required parameters, and conflicting evidence. Supplied payloads cannot increase routing confidence.</p>
-    <p>The result states are <code>DETERMINISTIC</code>, <code>HIGH</code>, <code>AMBIGUOUS</code>, and <code>UNKNOWN</code>. Deterministic and sufficiently strong high-confidence results may execute directly. Ambiguous and unknown results must use <a href="wiki.html#definition-abstention">abstention</a> and return the request to the MainAgent-compatible path. This policy treats a false confident match as more harmful than a safe fallback.</p>
+    <p>The result states are <code>DETERMINISTIC</code>, <code>HIGH</code>, <code>AMBIGUOUS</code>, and <code>UNKNOWN</code>. Deterministic and sufficiently strong high-confidence results identify one skill before coding-agent execution. Ambiguous and unknown results must use <a href="wiki.html#definition-abstention">abstention</a> and let the coding agent inspect the full catalog. This policy treats a false confident match as more harmful than a safe fallback.</p>
 
     <h2>Execution routing</h2>
-    <p>After task selection, <a href="wiki.html#definition-execution-routing">execution routing</a> maps the task skill's requirements to direct model execution, stronger reasoning, an authenticated agent, research access, multi-step execution, or an isolated workspace. Automatic coding-agent selection uses the available backend priority, defaulting to Codex, OpenCode, then Pi. The task repository continues to own the method and acceptance conditions.</p>
+    <p>After task selection, <a href="wiki.html#definition-execution-routing">execution routing</a> chooses an available coding agent, defaulting to Codex, OpenCode, then Pi. ALA mounts the selected skill and its resources in the temporary workspace, while the task repository continues to own the method and acceptance conditions. Direct LLMAgent execution remains the path for general requests without a usable task catalog.</p>
     <p>Model and tag overrides use command-line values before <code>ALA_MODEL</code>, <code>ALA_TAGS</code>, and <code>ALA_REASONING_EFFORT</code>. Unknown explicit task skills and invalid repositories stop before execution with diagnostics on standard error.</p>
 
   </article></main>

@@ -90,6 +90,12 @@ pre.mermaid { margin: 0; padding: .25rem 0; background: transparent; }
 .loader-heading { display: flex; justify-content: space-between; gap: 1rem; }
 .kicker { color: var(--muted); margin: 0 0 .35rem; }
 .table-wrap { overflow-x: auto; }
+.documentation-map table { width: 100%; border-collapse: separate; border-spacing: .75rem; }
+.documentation-map th { padding: 0 .25rem; text-align: left; }
+.documentation-map td { min-width: 14rem; padding: .75rem; vertical-align: top; }
+.documentation-map td:empty { padding: 0; }
+.documentation-map a { display: block; font-weight: 700; }
+.documentation-map span { display: block; margin-top: .25rem; color: var(--muted); }
 .spec-table { width: 100%; border-collapse: collapse; }
 .spec-table th, .spec-table td { border: 1px solid var(--border); padding: .55rem; text-align: left; }
 .spec-meta__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: .6rem; }

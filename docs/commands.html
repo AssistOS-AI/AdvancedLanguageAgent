@@ -19,22 +19,26 @@
 
     <h2>Execute a request</h2>
     <pre><code>ala [options] [instruction...]</code></pre>
-    <p>Positional words form the instruction. With no instruction in a terminal, <a href="index.html">ALA</a> starts an interactive session. In a non-interactive pipeline with no positional instruction, standard input becomes the instruction. The command sends the composed prompt to <a href="wiki.html#definition-main-agent">MainAgent</a> and writes the normalized result to standard output unless <code>--output</code> selects a file.</p>
+    <p>Positional words form the instruction. With no instruction in a terminal, <a href="index.html">ALA</a> starts an interactive session. In a non-interactive pipeline with no positional instruction, standard input becomes the instruction. A populated Anthropic skill catalog is handled by a coding agent; otherwise the command sends the composed prompt to <a href="wiki.html#definition-main-agent">MainAgent</a>. The normalized result is written to standard output unless <code>--output</code> selects a file.</p>
     <pre><code>ala "Summarize the report" --file report.md
 printf 'Summarize this text' | ala
 ala --interactive</code></pre>
 
     <h2>Interactive slash commands</h2>
-    <p>When an interactive session is active, a line beginning with <code>/</code> is handled locally before ALA calls <a href="wiki.html#definition-main-agent">MainAgent</a>. These commands therefore do not consume an LLM prompt.</p>
+    <p>When an interactive session is active, a line beginning with <code>/</code> is handled locally before ALA calls <a href="wiki.html#definition-main-agent">MainAgent</a>. These commands therefore do not consume an LLM prompt. While a terminal waits for a MainAgent or coding-agent response, ALA animates <code>Thinking.</code>, <code>Thinking..</code>, and <code>Thinking...</code> on the diagnostic stream and clears that line before the result or error appears. The indicator is disabled when interactive input or diagnostic output is redirected.</p>
     <div class="table-wrap">
       <table class="spec-table">
         <thead><tr><th>Command</th><th>Behavior</th></tr></thead>
         <tbody>
+          <tr><td><code>/help</code></td><td>Prints the complete interactive command list and explains what each command does.</td></tr>
           <tr><td><code>/agent list</code></td><td>Prints only the names of detected backends, one per line.</td></tr>
           <tr><td><code>/agent auto &lt;prompt&gt;</code></td><td>Delegates the prompt to the first available backend in configured priority order.</td></tr>
           <tr><td><code>/agent codex &lt;prompt&gt;</code></td><td>Delegates the prompt directly to Codex. OpenCode and Pi use the same form with their names.</td></tr>
-          <tr><td><code>/agent help</code></td><td>Prints the local interactive command summary to standard error.</td></tr>
-          <tr><td><code>/symbolic detection on|off</code></td><td>Enables or disables the experimental instruction-only symbolic router for the remainder of the session. Uncertain matches fall back to MainAgent.</td></tr>
+          <tr><td><code>/agent</code>, <code>/agent help</code></td><td>Prints the same complete interactive command list as <code>/help</code>.</td></tr>
+          <tr><td><code>/repo add &lt;git-url&gt;</code></td><td>Clones and registers a Git task repository, then refreshes the active skill catalog. Local paths are rejected, and the next prompt in the same session can use the new skills.</td></tr>
+          <tr><td><code>/repo list</code></td><td>Prints registered persistent task repository paths.</td></tr>
+          <tr><td><code>/repo remove &lt;name&gt;</code></td><td>Removes a persistent registration by repository name without <code>.git</code>, then refreshes the active skill catalog before the next prompt. The registered path and Git URL remain supported, and TAB completes matching registered names.</td></tr>
+          <tr><td><code>/symbolic detection on|off</code></td><td>Enables or disables the experimental instruction-only symbolic router for the remainder of the session. Uncertain matches let the coding agent select from a populated catalog; an empty catalog or unavailable coding agent falls back to MainAgent.</td></tr>
           <tr><td><code>/quit</code>, <code>/exit</code></td><td>Closes the interactive session. The existing <code>:quit</code> and <code>:exit</code> aliases remain supported.</td></tr>
         </tbody>
       </table>
@@ -45,8 +49,8 @@ ala --interactive</code></pre>
       <table class="spec-table">
         <thead><tr><th>Option</th><th>Behavior</th></tr></thead>
         <tbody>
-          <tr><td><code>--skill &lt;name&gt;</code></td><td>Executes the named task skill explicitly. Task skills are Anthropic-style declarations in <code>SKILL.md</code>. An unknown skill name produces repository exit code <code>4</code>.</td></tr>
-          <tr><td><code>--agent &lt;name&gt;</code></td><td>Delegates the request through an installed <a href="wiki.html#definition-coding-agent">coding agent</a>. Accepted values are <code>auto</code>, <code>codex</code>, <code>opencode</code>, and <code>pi</code>. This option cannot be combined with <code>--skill</code> or ALA model overrides because the selected agent owns its model configuration.</td></tr>
+          <tr><td><code>--skill &lt;name&gt;</code></td><td>Selects the named Anthropic-style <code>SKILL.md</code> descriptor and executes it through the first available coding agent. An unknown skill produces exit code <code>4</code>; no available coding agent produces exit code <code>5</code>.</td></tr>
+          <tr><td><code>--agent &lt;name&gt;</code></td><td>Delegates the request through an installed <a href="wiki.html#definition-coding-agent">coding agent</a>. Accepted values are <code>auto</code>, <code>codex</code>, <code>opencode</code>, and <code>pi</code>. ALA passes no model identifier or model-selection option, so the selected CLI uses its own configured default model. This option cannot be combined with <code>--skill</code> or ALA model overrides because the selected agent owns its model configuration.</td></tr>
           <tr><td><code>--task-repo &lt;path&gt;</code></td><td>Adds one task repository for this invocation without saving it. The option may be repeated.</td></tr>
           <tr><td><code>--text &lt;text&gt;</code></td><td>Adds a labeled text payload. Repeated payload options retain their argument order.</td></tr>
           <tr><td><code>--file &lt;path&gt;</code></td><td>Reads one UTF-8 file relative to the current working directory and adds it as a payload.</td></tr>
@@ -69,16 +73,18 @@ ala --interactive</code></pre>
     <p>Each file or URL payload is limited to 10 MiB, and all explicit payloads together are limited to 32 MiB. Diagnostics and interactive prompts use standard error so standard output remains usable by another program.</p>
 
     <h2>Add a task repository</h2>
-    <pre><code>ala repo add &lt;path&gt; [--config &lt;path&gt;] [--help]</code></pre>
-    <p>This command resolves the repository to a canonical path, verifies that it contains at least one task skill manifest under <code>SKILL.md</code>, and stores it in the selected ALA configuration. Adding the same canonical path again is idempotent. The command prints the registered path and does not copy the repository.</p>
+    <pre><code>ala repo add &lt;git-url&gt; [--config &lt;path&gt;] [--help]</code></pre>
+    <p>This command rejects local paths and clones a Git URL into <code>$XDG_DATA_HOME/ala/repositories</code>, with <code>~/.local/share/ala/repositories</code> as the fallback. It removes the clone's <code>origin</code> remote so a credential-bearing URL is not retained, recursively discovers Anthropic <code>SKILL.md</code> descriptors with valid <code>name</code> and <code>description</code> frontmatter, stores the managed local path in the selected ALA configuration, and prints that path. It does not search for AchillesAgentLib skill descriptors. Adding the same Git URL again is idempotent and does not update an existing clone. Local repositories may instead be supplied for one invocation through <code>--task-repo</code> or <code>ALA_TASK_REPOSITORIES</code>.</p>
 
     <h2>List task repositories</h2>
     <pre><code>ala repo list [--config &lt;path&gt;] [--json] [--help]</code></pre>
     <p>This command prints persistent repository paths from the selected configuration. The default output contains one path per line. <code>--json</code> writes a JSON array, including an empty array when no repository is registered.</p>
 
     <h2>Remove a task repository</h2>
-    <pre><code>ala repo remove &lt;path&gt; [--config &lt;path&gt;] [--help]</code></pre>
-    <p>This command removes the matching canonical or lexical path from ALA configuration and prints the removed path. It does not delete the task repository or any files inside it. An unregistered path produces repository exit code <code>4</code>.</p>
+    <pre><code>ala repo remove &lt;name-or-path-or-git-url&gt; [--config &lt;path&gt;] [--help]</code></pre>
+    <p>This command removes the matching repository name, canonical path, lexical path, or managed Git URL path from ALA configuration and prints the removed path. The short name is the final Git URL component without <code>.git</code>; for example, <code>https://github.com/example/claude-skills.git</code> is removed with <code>ala repo remove claude-skills</code>. If more than one registration has the same short name, ALA reports ambiguity and requires the registered path or Git URL. Removal does not delete the task repository, including a clone created by ALA. An unregistered source produces repository exit code <code>4</code>.</p>
+    <p>In an interactive terminal, TAB completion is available for <code>/repo remove </code>. A partial name such as <code>/repo remove clau</code> completes or lists matching names from the current persistent configuration, and the candidates update after each successful interactive addition or removal.</p>
+    <p>Inside an interactive session, an addition or removal reloads all active repository sources immediately. Reloading preserves the MainAgent conversation and symbolic-detection setting, but closes the coding-agent workspace and native continuation so the next delegated request receives only the refreshed <code>.agents/skills</code> catalog. If the combined catalog cannot be validated, ALA restores the previous repository registration and leaves the active catalog unchanged.</p>
     <p>Each repository command accepts <code>--help</code> and prints the common command reference without reading or changing configuration.</p>
 
     <h2>List coding agents</h2>
@@ -87,7 +93,7 @@ ala --interactive</code></pre>
 
     <h2>Symbolic detection</h2>
     <p>Symbolic detection is disabled by default and is enabled only inside an interactive session with <code>/symbolic detection on</code>. It examines the instruction, never payload contents, and compares its extracted evidence with the optional <code>## Symbolic Routing</code> metadata section in each task skill definition. The section accepts comma-separated <code>actions</code>, <code>objects</code>, <code>targets</code>, <code>modifiers</code>, <code>phrases</code>, <code>required</code>, and <code>conflicts</code> values.</p>
-    <p>A confident <code>DETERMINISTIC</code> or <code>HIGH</code> match executes the selected task skill directly. <code>AMBIGUOUS</code> and <code>UNKNOWN</code> results abstain and use the normal MainAgent route. Explicit <code>--skill</code> and <code>--agent</code> selections always take precedence.</p>
+    <p>A confident <code>DETERMINISTIC</code> or <code>HIGH</code> match sends the selected task skill to the coding agent. <code>AMBIGUOUS</code> and <code>UNKNOWN</code> results abstain from deterministic selection and let the coding agent choose from the full catalog. Explicit <code>--skill</code> and <code>--agent</code> selections always take precedence.</p>
 
     <h2>Configuration precedence</h2>
     <p>The ALA configuration path resolves in this order: <code>--config</code>, <code>ALA_CONFIG_PATH</code>, <code>$XDG_CONFIG_HOME/ala/config.json</code>, then <code>~/.config/ala/config.json</code>. Model selection resolves command-line values before <code>ALA_MODEL</code>, <code>ALA_TAGS</code>, and <code>ALA_REASONING_EFFORT</code>, after which AchillesAgentLib applies its configured defaults.</p>

@@ -19,38 +19,38 @@
 
     <section class="wiki-entry" id="definition-achilles-agent-lib">
       <h2>AchillesAgentLib</h2>
-      <p>AchillesAgentLib is the external JavaScript library installed under the package identity <code>ploinky-agent-lib</code>. <a href="index.html">ALA</a> uses it for skill discovery, <a href="#definition-main-agent">MainAgent</a>, <a href="#definition-llm-agent">LLMAgent</a>, model tags, sessions, cancellation, and the execution subsystems associated with supported skill families.</p>
+      <p>AchillesAgentLib is the external JavaScript library installed under the package identity <code>ploinky-agent-lib</code>. <a href="index.html">ALA</a> uses it for <a href="#definition-main-agent">MainAgent</a>, <a href="#definition-llm-agent">LLMAgent</a>, model tags, sessions, cancellation, and the internal <a href="#definition-code-skill">Code Skill</a> that bridges MainAgent to coding-agent execution. AchillesAgentLib does not discover task-repository <code>SKILL.md</code> files.</p>
       <p>ALA resolves the library from an explicit path, the <code>ACHILLES_AGENT_LIB_PATH</code> environment value, a sibling checkout, or the package dependency. Model providers and concrete model identifiers remain AchillesAgentLib configuration. ALA passes supported overrides to the library and does not reimplement provider credentials or model invocation.</p>
     </section>
 
     <section class="wiki-entry" id="definition-a-skill">
       <h2>Task skill (SKILL.md)</h2>
       <p>A task skill is an Anthropic-style declaration defined in <code>SKILL.md</code> inside an independently versioned <a href="#definition-task-repository">task repository</a>. The repository owner defines the methodology, required checks, and acceptance conditions.</p>
-      <p>A task skill owns domain procedure and is selected by name through <code>--skill</code>. It is not copied into ALA's core and may request model, agent, research, or workspace services from the runtime as part of its declared execution requirements.</p>
+      <p>A task skill owns domain procedure and is selected by name through <code>--skill</code> or by a coding agent from the available catalog. Its frontmatter supplies a lowercase hyphenated <code>name</code> and a non-empty <code>description</code>. ALA mounts the skill directory and its relative resources in an isolated coding-agent workspace; it does not convert the descriptor into an AchillesAgentLib skill.</p>
     </section>
 
     <section class="wiki-entry" id="definition-task-repository">
       <h2>Task repository</h2>
-      <p>A task repository is an independently installed and versioned directory that packages one coherent family of specialized work and its <a href="#definition-a-skill">task skills</a>, each declared in <code>SKILL.md</code>. Operators register persistent repositories with <code>ala repo add</code> or supply them through <code>ALA_TASK_REPOSITORIES</code> and <code>--task-repo</code>.</p>
-      <p><a href="index.html">ALA</a> validates <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> skill descriptors, combines canonical repository paths, and rejects duplicate canonical skill names. Removing a registration changes only ALA's configuration and does not delete repository files. Task repositories are optional because general requests remain available with an empty catalog.</p>
+      <p>A task repository is an independently installed and versioned directory that packages one coherent family of specialized work and its <a href="#definition-a-skill">task skills</a>, each declared in <code>SKILL.md</code>. Operators register persistent repositories from Git URLs with <code>ala repo add</code> or interactive <code>/repo add</code>, and may supply local repositories only for an invocation through <code>ALA_TASK_REPOSITORIES</code> and <code>--task-repo</code>.</p>
+      <p><a href="index.html">ALA</a> recursively discovers Anthropic <code>SKILL.md</code> descriptors, validates their required frontmatter, combines canonical repository paths, and rejects duplicate skill names. It does not search task repositories for AchillesAgentLib descriptors. A Git URL passed to a persistent add command is cloned into the ALA data directory and represented in configuration by its managed local path. A registration can be removed by its Git repository name without <code>.git</code>, registered path, or original Git URL; duplicate short names require an exact path or URL. Interactive TAB completion suggests short names for <code>/repo remove</code>. Removing a registration changes only ALA's configuration and does not delete local files or managed clones. Interactive additions and removals refresh the catalog before the next prompt, preserve the MainAgent conversation and symbolic-detection setting, and discard the prior coding-agent workspace and continuation. Task repositories are optional because general requests remain available with an empty catalog.</p>
     </section>
 
     <section class="wiki-entry" id="definition-skill-catalog">
       <h2>Skill catalog</h2>
-      <p>The skill catalog is the set of enabled <a href="#definition-a-skill">task skills</a> that one <a href="index.html">ALA</a> runtime presents to <a href="#definition-main-agent">MainAgent</a>. ALA builds it from persistent, environment-provided, and invocation-specific <a href="#definition-task-repository">task repositories</a> after canonical path deduplication and manifest validation.</p>
-      <p>The catalog may be empty. In that state MainAgent performs general model-backed execution and may still use generic runtime skills supplied by ALA. A populated task catalog permits automatic task skill selection, while <code>--skill</code> requests one named task entry explicitly.</p>
+      <p>The skill catalog is the set of enabled <a href="#definition-a-skill">task skills</a> that one <a href="index.html">ALA</a> runtime discovers from persistent, environment-provided, and invocation-specific <a href="#definition-task-repository">task repositories</a> after canonical path deduplication and Anthropic manifest validation.</p>
+      <p>The catalog may be empty. In that state <a href="#definition-main-agent">MainAgent</a> performs general model-backed execution. When a catalog and coding agent are available, ALA mounts the skill directories under <code>.agents/skills</code> and asks the agent to select a matching descriptor; <code>--skill</code> selects one named entry before agent execution.</p>
     </section>
 
     <section class="wiki-entry" id="definition-discovery-registry">
       <h2>Discovery registry</h2>
-      <p>The discovery registry is a process-scoped temporary directory created by <a href="index.html">ALA</a> to present multiple task-repository <code>skills</code> directories and available generic runtime skills to one <a href="#definition-main-agent">MainAgent</a>. It contains links to owning task repositories rather than copied <a href="#definition-a-skill">task skill</a> content.</p>
-      <p>ALA removes the registry when runtime creation fails or when execution closes. This arrangement lets independently owned repositories participate in one catalog without transferring ownership of their code or documentation to the ALA repository.</p>
+      <p>The discovery registry is a process-scoped temporary directory created by <a href="index.html">ALA</a> for AchillesAgentLib. It exposes only ALA-owned generic runtime skills, including the internal coding-agent bridge, to one <a href="#definition-main-agent">MainAgent</a>. Task-repository <code>SKILL.md</code> descriptors remain outside this registry.</p>
+      <p>ALA removes the registry when runtime creation fails or when execution closes. Anthropic task skills use separate links inside the coding-agent <a href="#definition-task-workspace">task workspace</a>, which keeps AchillesAgentLib discovery isolated from the task catalog.</p>
     </section>
 
     <section class="wiki-entry" id="definition-main-agent">
       <h2>MainAgent</h2>
       <p>MainAgent is the <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> coordinator that <a href="index.html">ALA</a> creates for each runtime. It receives the discovery-registry path, prepares available skills, retains the active conversation, and executes prompts through its configured <a href="#definition-llm-agent">LLMAgent</a> and supported skill subsystems.</p>
-      <p>When no <a href="#definition-a-skill">task skill</a> is available or explicitly selected, MainAgent still executes a general request. ALA forwards cancellation to MainAgent and shuts it down before removing the temporary registry.</p>
+      <p>MainAgent executes general requests and invokes ALA's internal coding-agent bridge. It does not discover Anthropic task skills; ALA selects or catalogs those descriptors before it calls the bridge. ALA forwards cancellation to MainAgent and shuts it down before removing the temporary registry.</p>
     </section>
 
     <section class="wiki-entry" id="definition-llm-agent">
@@ -62,30 +62,30 @@
     <section class="wiki-entry" id="definition-generic-execution-capability">
       <h2>Generic execution capability</h2>
       <p>A generic execution capability describes how <a href="index.html">ALA</a> can run work without embedding a domain-specific method. The architecture recognizes direct, fast, and deep model execution, authenticated coding-agent execution, multi-step <a href="#definition-agentic-execution">agentic execution</a>, web and research access, and temporary workspace creation.</p>
-      <p>A task skill may request these services while retaining ownership of its procedure and acceptance conditions. Availability depends on configured providers and installed executors; the capability name does not guarantee that every deployment supplies a matching backend.</p>
+      <p>General requests may use direct model services, while Anthropic task skills always use a detected coding agent that can apply its own tools inside the temporary workspace. Availability depends on configured providers and installed executors; a named capability does not guarantee that every deployment supplies a matching backend.</p>
     </section>
 
     <section class="wiki-entry" id="definition-coding-agent">
       <h2>Coding agent</h2>
       <p>A coding agent is a supported authenticated command-line agent that can plan, use tools, validate intermediate work, and return a final response for a bounded ALA request. The standalone runtime supports Codex, OpenCode, and Pi. Although these tools can edit code, ALA uses them as general executors for language, research, planning, verification, transformation, and bounded code-fragment tasks.</p>
-      <p>ALA detects their executables when each process starts and registers a generic <a href="#definition-code-skill">Code Skill</a> when at least one is available. The agent keeps ownership of its authentication and model configuration. ALA passes only the prompt and an ALA-created <a href="#definition-task-workspace">task workspace</a>, retains the agent's opaque native continuation during an interactive session, and removes the workspace at shutdown. This generic runtime skill is not a task skill or a task-specific method.</p>
+      <p>ALA detects their executables when each process starts and registers a generic <a href="#definition-code-skill">Code Skill</a> when at least one is available. The agent keeps ownership of its authentication and model configuration. ALA passes the prompt and an ALA-created <a href="#definition-task-workspace">task workspace</a>, mounts discovered Anthropic skill directories under <code>.agents/skills</code>, retains the agent's opaque native continuation during an interactive session, and removes the workspace at shutdown. This generic runtime skill is not a task skill or a task-specific method.</p>
     </section>
 
     <section class="wiki-entry" id="definition-execution-routing">
       <h2>Execution routing</h2>
-      <p>Execution routing is the decision that maps a general request or selected task skill requirements to an eligible configured model, agent, research facility, or workspace service. It occurs after any task-method decision and must not change the selected method's domain procedure.</p>
-      <p><a href="index.html">ALA</a> forwards model, tag, and reasoning overrides to <a href="#definition-achilles-agent-lib">AchillesAgentLib</a>. MainAgent owns concrete prompt and skill execution under the broader capability-based routing contract.</p>
+      <p>Execution routing chooses between MainAgent model-backed execution for a general request and coding-agent execution for an Anthropic task skill or explicit <code>--agent</code> request. Task-skill execution must not change the selected descriptor's domain procedure.</p>
+      <p><a href="index.html">ALA</a> forwards model, tag, and reasoning overrides to <a href="#definition-achilles-agent-lib">AchillesAgentLib</a> for direct model work. Coding-agent backend selection follows configured priority and remains independent from those model overrides.</p>
     </section>
 
     <section class="wiki-entry" id="definition-symbolic-routing">
       <h2>Symbolic routing</h2>
       <p>Symbolic routing is an experimental instruction-only task-selection path enabled inside an interactive session with <code>/symbolic detection on</code>. It extracts actions, objects, targets, modifiers, structural markers, and relationships, then compares that evidence with optional routing metadata in task-skill declarations supplied by <a href="#definition-task-repository">task repositories</a>.</p>
-      <p>The router permits direct execution only for deterministic or sufficiently strong high-confidence matches. Ambiguous and unknown requests use <a href="#definition-abstention">abstention</a> and return to the default MainAgent path. <code>/symbolic detection off</code> disables the experimental path for the remainder of the session.</p>
+      <p>The router selects one skill before coding-agent execution only for deterministic or sufficiently strong high-confidence matches. Ambiguous and unknown requests use <a href="#definition-abstention">abstention</a> and let the coding agent inspect the full catalog. <code>/symbolic detection off</code> disables the experimental path for the remainder of the session.</p>
     </section>
 
     <section class="wiki-entry" id="definition-abstention">
       <h2>Abstention</h2>
-      <p>Abstention is the symbolic router's decision not to force a task match when its instruction evidence is ambiguous or unknown. The request returns to the <a href="#definition-main-agent">MainAgent</a>-compatible default path so uncertainty does not select an unrelated specialized method.</p>
+      <p>Abstention is the symbolic router's decision not to force a task match when its instruction evidence is ambiguous or unknown. The coding agent receives the full catalog and may select a skill after reading its description, so symbolic uncertainty does not force an unrelated specialized method.</p>
       <p>The routing design treats a false confident selection as more harmful than abstention. Concrete confidence thresholds remain deployment configuration and are not fixed by the current CLI.</p>
     </section>
 
@@ -98,31 +98,13 @@
     <section class="wiki-entry" id="definition-task-workspace">
       <h2>Task workspace</h2>
       <p>A task workspace is an isolated temporary directory for one multi-stage request. It may contain explicit input, retrieved sources, intermediate artifacts, verification results, and final output needed by a task skill or <a href="#definition-agentic-execution">agentic execution</a> path.</p>
-      <p>A task workspace is not an implicit copy of the caller's source repository and does not give <a href="index.html">ALA</a> general ownership of that repository. A task skill may request one, while coding-agent execution creates one automatically. The public CLI does not accept a real project directory for coding-agent work, and the runtime removes its temporary workspace when execution closes.</p>
+      <p>A task workspace is not an implicit copy of the caller's source repository and does not give <a href="index.html">ALA</a> general ownership of that repository. Coding-agent execution creates one automatically and links discovered task-skill directories under <code>.agents/skills</code>. The public CLI does not accept a real project directory for coding-agent work, and the runtime removes its temporary workspace when execution closes.</p>
     </section>
 
     <section class="wiki-entry" id="definition-code-skill">
       <h2>Code Skill</h2>
       <p>A Code Skill in this documentation refers to ALA's core runtime skill for authenticated coding-agent delegation. It is not a task-skill and is not defined in a task repository.</p>
       <p><a href="index.html">ALA</a> discovers the descriptor and delegates execution to AchillesAgentLib. The component that distributes the skill remains responsible for its module, contract, and verification rules. A generic core Code Skill does not become a task skill.</p>
-    </section>
-
-    <section class="wiki-entry" id="definition-orchestration-skill">
-      <h2>Orchestration Skill</h2>
-      <p>An Orchestration Skill is a task-skill pattern that coordinates multiple capabilities, tools, or agents for a multi-step request.</p>
-      <p><a href="index.html">ALA</a> supplies the shared runtime and available executors, while the owning <a href="#definition-task-repository">task repository</a> defines the orchestration procedure, constraints, and completion checks.</p>
-    </section>
-
-    <section class="wiki-entry" id="definition-dbtable-skill">
-      <h2>DBTable Skill</h2>
-      <p>A DBTable Skill is a task-skill pattern for workflows that include structured table data.</p>
-      <p><a href="index.html">ALA</a> treats these declarations as task skills and does not assume ownership of the referenced data model. The <a href="#definition-task-repository">task repository</a> remains responsible for its database contract and permitted operations.</p>
-    </section>
-
-    <section class="wiki-entry" id="definition-dynamic-code-generation-skill">
-      <h2>Dynamic Code Generation Skill</h2>
-      <p>A Dynamic Code Generation Skill is a task-skill pattern in which code is produced dynamically as part of task execution, while the repository-defined procedure remains the source of truth.</p>
-      <p>The <a href="#definition-task-repository">task repository</a> defines when generation is appropriate and which checks apply. <a href="index.html">ALA</a> provides access to execution services but does not convert the skill into a core domain method.</p>
     </section>
 
     <section class="wiki-entry" id="definition-soul-gateway">
@@ -145,7 +127,7 @@
 
     <section class="wiki-entry" id="definition-routing-evaluation">
       <h2>Routing evaluation</h2>
-      <p>Routing evaluation compares explicit skill selection, <a href="#definition-main-agent">MainAgent</a>-compatible default selection, and experimental symbolic-first selection against one request corpus. It measures whether each path selects the expected method and ultimately produces the correct result.</p>
+      <p>Routing evaluation compares explicit Anthropic skill selection, coding-agent catalog selection, and experimental symbolic-first selection against one request corpus. It measures whether each path selects the expected method and ultimately produces the correct result.</p>
       <p>The corpus includes canonical requests, paraphrases, multilingual input, spelling errors, ambiguity, multi-step work, missing parameters, and unsupported tasks. False confident symbolic selection receives a greater penalty than abstention because it bypasses the safe default path.</p>
     </section>
   </article></main>

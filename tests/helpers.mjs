@@ -28,3 +28,14 @@ export async function writeCodeSkill(root, name, actionSource = 'return args.pro
   await writeFile(join(skillDir, 'src', 'index.mjs'), `export async function action(args) { ${actionSource} }\n`);
   return skillDir;
 }
+
+export async function writeAnthropicSkill(root, name, {
+  description = `${name} test skill.`,
+  body = `# ${name}\n\n## Instructions\nFollow the user request.`
+} = {}) {
+  const skillDir = join(root, 'skills', name);
+  await mkdir(skillDir, { recursive: true });
+  const descriptor = `---\nname: ${name}\ndescription: ${description}\n---\n\n${body}\n`;
+  await writeFile(join(skillDir, 'SKILL.md'), descriptor);
+  return skillDir;
+}

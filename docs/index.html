@@ -17,10 +17,10 @@
       <p class="breadcrumbs"><a href="index.html">Documentation</a> / Overview</p>
       <h1>Advanced Language Agent Documentation</h1>
       <p class="lead">Advanced Language Agent (ALA) is a system-installed CLI for language and documentation tasks. A human or agent submits an instruction and optional input; the CLI selects a reusable task method, runs it through an eligible backend, and returns the requested result.</p>
-      <p>ALA uses <a href="wiki.html#definition-achilles-agent-lib">AchillesAgentLib</a> to execute general requests and to discover and execute optional task skills. Each skill is declared in <code>SKILL.md</code> inside a registered task repository. ALA owns reusable routing, model, <a href="wiki.html#definition-coding-agent">coding-agent</a>, research, workspace, session, and retry services.</p>
+      <p>ALA uses <a href="wiki.html#definition-achilles-agent-lib">AchillesAgentLib</a> for general model-backed requests and its internal coding-agent adapter. Optional task skills are independent Anthropic-style <code>SKILL.md</code> descriptors discovered directly by ALA and executed by Codex, OpenCode, or Pi. Task repositories do not need AchillesAgentLib skill descriptors.</p>
 
       <h2>From instruction to result</h2>
-      <p>A request may carry input through command arguments, standard input, a URL, or a file. With no configured <a href="wiki.html#definition-task-repository">task repository</a>, the runtime executes the general request through <a href="wiki.html#definition-main-agent">MainAgent</a>. When task skills are installed, it may select a matching task skill and resolve its requested <a href="wiki.html#definition-generic-execution-capability">generic execution capabilities</a>. At startup ALA also detects supported authenticated agent CLIs and makes its generic delegation skill available when at least one is installed. The runtime writes the requested result to standard output or a file, while diagnostics use a separate channel.</p>
+      <p>A request may carry input through command arguments, standard input, a URL, or a file. With no configured <a href="wiki.html#definition-task-repository">task repository</a>, the runtime executes the general request through <a href="wiki.html#definition-main-agent">MainAgent</a>. When task skills and an authenticated <a href="wiki.html#definition-coding-agent">coding agent</a> are available, the agent selects a matching descriptor, reads its <code>SKILL.md</code>, and follows its methodology. The runtime writes the requested result to standard output or a file, while diagnostics use a separate channel.</p>
       <figure class="diagram">
         <pre class="mermaid">flowchart LR
           Caller[Human or agent] --> Request[Instruction and optional input]
@@ -39,8 +39,8 @@
       </figure>
 
       <h2>CLI and user configuration</h2>
-      <p>The executable is <code>ala</code>, and general requests require no task repository. Register optional persistent task repositories with <code>ala repo add &lt;path&gt;</code>, inspect them with <code>ala repo list</code>, and unregister them with <code>ala repo remove &lt;path&gt;</code>. The versioned JSON configuration uses <code>$XDG_CONFIG_HOME/ala/config.json</code> or <code>~/.config/ala/config.json</code>; <code>--config</code> selects another file.</p>
-      <p>Use <code>--skill</code> for explicit task-skill execution or omit it for MainAgent general execution and optional skill selection. <code>--task-repo</code> adds a repository for one invocation. Payloads use <code>--text</code>, <code>--file</code>, <code>--url</code>, or <code>--stdin</code>, and <code>--output</code> writes the clean result to a protected file. The <a href="commands.html">command reference</a> documents every command and option.</p>
+      <p>The executable is <code>ala</code>, and general requests require no task repository. Register optional persistent task repositories with <code>ala repo add &lt;git-url&gt;</code>, inspect them with <code>ala repo list</code>, and unregister them by repository name with <code>ala repo remove &lt;name&gt;</code>. The registered path and original Git URL remain valid removal identifiers. Persistent additions are cloned into the ALA data directory; local repository paths are available only for an invocation through <code>--task-repo</code> or <code>ALA_TASK_REPOSITORIES</code>. Interactive <code>/repo add</code> and <code>/repo remove</code> commands refresh the active skill catalog before the next prompt, and TAB completes registered names after <code>/repo remove </code>. The versioned JSON configuration uses <code>$XDG_CONFIG_HOME/ala/config.json</code> or <code>~/.config/ala/config.json</code>; <code>--config</code> selects another file.</p>
+      <p>Use <code>--skill</code> to select an Anthropic task skill for coding-agent execution. Without it, a coding agent selects from a populated catalog; when no task catalog or coding agent is available, MainAgent performs general execution. <code>--task-repo</code> adds a repository for one invocation. Payloads use <code>--text</code>, <code>--file</code>, <code>--url</code>, or <code>--stdin</code>, and <code>--output</code> writes the clean result to a protected file. The <a href="commands.html">command reference</a> documents every command and option.</p>
       <p><code>ala agent list</code> reports the names of detected Codex, OpenCode, and Pi backends. <code>--agent auto</code> forces delegation using the configured priority, while <code>--agent codex</code>, <code>--agent opencode</code>, or <code>--agent pi</code> selects one backend explicitly.</p>
 
       <h2>Product and repository boundaries</h2>
@@ -49,14 +49,41 @@
       <p>This repository defines the core runtime contract. Imported task skills and their design specifications stay in their owning task repositories. The core documentation therefore describes how those repositories integrate with the runtime without copying their skill-specific documentation.</p>
 
       <h2>Runtime defaults and verification</h2>
-      <p>Explicit task-skill selection takes precedence. Otherwise the runtime uses MainAgent to execute the request, with or without available skills. Experimental <a href="wiki.html#definition-symbolic-routing">symbolic routing</a> is off by default and can be enabled for an interactive session with <code>/symbolic detection on</code>; uncertain results return to the default path. Direct model work uses <a href="wiki.html#definition-llm-agent">LLMAgent</a>; stronger models, authenticated agents, research access, and temporary workspaces are selected only when the request and deployed executor support require them.</p>
+      <p>Explicit task-skill selection takes precedence and always uses a coding agent. Otherwise a populated task catalog is offered to the first available coding agent; an empty or unavailable catalog leaves general execution with MainAgent. Experimental <a href="wiki.html#definition-symbolic-routing">symbolic routing</a> is off by default and can be enabled for an interactive session with <code>/symbolic detection on</code>. Direct model work uses <a href="wiki.html#definition-llm-agent">LLMAgent</a>.</p>
       <p>Coding style, source layout, file-size limits, and modular test organization are defined by <a href="specsLoader.html?spec=DS001-coding-style.md">DS001</a>. Tests are grouped by concern and independently cover argument parsing, input handling, configuration persistence and precedence, repository aggregation, explicit and default routing, AchillesAgentLib integration, output separation, and result-file protection.</p>
 
       <h2 id="task-skills">Task skill availability</h2>
-      <p>The core repository does not implement or distribute task-specific SKILL.md-defined skills. General execution remains available with an empty <a href="wiki.html#definition-skill-catalog">skill catalog</a>. The generic coding-agent Code Skill is core execution infrastructure and does not add a domain method to that catalog. A deployment obtains optional specialized task methods from configured task repositories, so the catalog can vary independently from the core installation.</p>
+      <p>The core repository does not implement or distribute task-specific SKILL.md-defined skills. General execution remains available with an empty <a href="wiki.html#definition-skill-catalog">skill catalog</a>. ALA validates only Anthropic <code>SKILL.md</code> descriptors in task repositories and mounts each discovered skill into the coding-agent workspace. The generic coding-agent Code Skill is internal execution infrastructure and does not add a domain method to the task catalog.</p>
 
       <h2>Documentation map</h2>
-      <p>The Design submenu explains architecture, routing, execution, and integration. This overview is the canonical introduction to ALA, the <a href="wiki.html">wiki</a> defines specialized project terminology, and the <a href="specsLoader.html?spec=matrix.md">specification matrix</a> contains the authoritative contracts.</p>
+      <div class="table-wrap documentation-map">
+        <table>
+          <thead><tr><th scope="col">Guide</th><th scope="col">Design</th><th scope="col">Reference</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><a href="index.html">Overview</a><span>The product purpose, request lifecycle, runtime defaults, and repository boundaries.</span></td>
+              <td><a href="architecture.html">Architecture</a><span>The ownership boundary between the core runtime, task repositories, and execution services.</span></td>
+              <td><a href="wiki.html">Wiki</a><span>The canonical definitions for specialized ALA terminology.</span></td>
+            </tr>
+            <tr>
+              <td><a href="commands.html">Commands</a><span>Every CLI command, interactive command, option, input rule, output rule, and exit code.</span></td>
+              <td><a href="routing.html">Routing</a><span>Task-method selection, symbolic abstention, and backend resolution.</span></td>
+              <td><a href="specsLoader.html?spec=matrix.md">Specifications</a><span>The authoritative design contracts and their generated matrix.</span></td>
+            </tr>
+            <tr>
+              <td></td>
+              <td><a href="execution.html">Execution</a><span>Execution backends, request input, temporary workspaces, sessions, and feedback.</span></td>
+              <td></td>
+            </tr>
+            <tr>
+              <td></td>
+              <td><a href="integration.html">Integration</a><span>Deployment configuration, Ploinky integration, routing evaluation, and distribution contracts.</span></td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>Start with Guide pages for the overview and complete command surface. Continue through Design for architecture, routing, execution, and integration, then use Reference for canonical terminology and authoritative specifications.</p>
     </article>
   </main>
   <div data-include="partials/footer.html"></div>

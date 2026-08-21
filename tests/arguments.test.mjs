@@ -18,10 +18,11 @@ test('parses ordered payload sources and repeatable runtime options', () => {
 });
 
 test('parses repository management commands', () => {
-  assert.deepEqual(parseArguments(['repo', 'add', './tasks', '--config', './ala.json']), {
-    command: 'repo', action: 'add', target: './tasks', configPath: './ala.json', json: false, help: false
+  assert.deepEqual(parseArguments(['repo', 'add', 'https://example.test/tasks.git', '--config', './ala.json']), {
+    command: 'repo', action: 'add', target: 'https://example.test/tasks.git', configPath: './ala.json', json: false, help: false
   });
   assert.equal(parseArguments(['repo', 'list', '--json']).json, true);
+  assert.equal(parseArguments(['repo', 'remove', 'tasks']).target, 'tasks');
 });
 
 test('parses coding-agent discovery and explicit delegation options', () => {
@@ -37,5 +38,7 @@ test('parses coding-agent discovery and explicit delegation options', () => {
 test('rejects unknown options and missing values', () => {
   assert.throws(() => parseArguments(['--unknown']), /Unknown option/);
   assert.throws(() => parseArguments(['--skill']), /requires a value/);
-  assert.throws(() => parseArguments(['repo', 'remove']), /requires a repository path/);
+  assert.throws(() => parseArguments(['repo', 'add']), /requires a Git URL/);
+  assert.throws(() => parseArguments(['repo', 'add', './tasks']), /requires a Git URL/);
+  assert.throws(() => parseArguments(['repo', 'remove']), /requires a repository name, path, or Git URL/);
 });
