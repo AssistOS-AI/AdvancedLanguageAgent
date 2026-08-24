@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { loadConfig, resolveActiveRepositories, resolveConfigPath, saveConfig } from '../src/config.mjs';
@@ -15,7 +15,10 @@ test('resolves configuration location using documented precedence', () => {
     resolveConfigPath({ env: { ALA_CONFIG_PATH: '/selected/config.json' }, cwd: '/work' }),
     '/selected/config.json'
   );
-  assert.equal(resolveConfigPath({ env: { XDG_CONFIG_HOME: '/xdg' } }), '/xdg/ala/config.json');
+  assert.equal(
+    resolveConfigPath({ env: { XDG_CONFIG_HOME: '/ignored' } }),
+    join(homedir(), '.config', 'ala', 'config.json')
+  );
 });
 
 test('saves and loads versioned configuration atomically with restrictive mode', async (context) => {
@@ -25,7 +28,7 @@ test('saves and loads versioned configuration atomically with restrictive mode',
   const config = {
     version: 1,
     taskRepositories: [{ path: '/tasks/one' }],
-    codingAgents: { priority: ['codex', 'opencode', 'pi'] }
+    codingAgents: { priority: ['codex', 'opencode', 'pi'], models: { codex: 'gpt-test' } }
   };
   await saveConfig(configPath, config);
   assert.deepEqual(await loadConfig(configPath), config);
@@ -33,7 +36,7 @@ test('saves and loads versioned configuration atomically with restrictive mode',
   assert.match(await readFile(configPath, 'utf8'), /"version": 1/);
 });
 
-test('combines persistent, environment, and temporary repositories with canonical deduplication', async (context) => {
+test('combines persistent and environment repositories with canonical deduplication', async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-active-repos-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const one = join(root, 'one');
@@ -43,8 +46,7 @@ test('combines persistent, environment, and temporary repositories with canonica
   await mkdir(two);
   const repositories = await resolveActiveRepositories({
     config: { version: 1, taskRepositories: [{ path: one }] },
-    env: { ALA_TASK_REPOSITORIES: `${one}:${two}` },
-    temporary: [two]
+    env: { ALA_TASK_REPOSITORIES: `${one}:${two}` }
   });
   assert.deepEqual(repositories, [one, two]);
 });
@@ -75,4 +77,23 @@ test('validates and completes coding-agent priority', async (context) => {
     codingAgents: { priority: ['invalid'] }
   }));
   await assert.rejects(() => loadConfig(configPath), /codingAgents\.priority/);
+});
+
+test('defaults and validates per-agent coding models', async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-model-config-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const configPath = join(root, 'config.json');
+  const { writeFile } = await import('node:fs/promises');
+  await writeFile(configPath, JSON.stringify({
+    version: 1,
+    taskRepositories: [],
+    codingAgents: { priority: ['codex', 'opencode', 'pi'] }
+  }));
+  assert.deepEqual((await loadConfig(configPath)).codingAgents.models, {});
+  await writeFile(configPath, JSON.stringify({
+    version: 1,
+    taskRepositories: [],
+    codingAgents: { priority: ['codex'], models: { unknown: 'model' } }
+  }));
+  await assert.rejects(() => loadConfig(configPath), /codingAgents\.models/);
 });

@@ -3,16 +3,15 @@ import assert from 'node:assert/strict';
 
 import { parseArguments } from '../src/arguments.mjs';
 
-test('parses ordered payload sources and repeatable runtime options', () => {
+test('parses ordered payload sources and repeatable tag options', () => {
   const options = parseArguments([
     '--text', 'alpha', '--file', 'input.md', '--url', 'https://example.test/input',
-    '--stdin', '--task-repo', 'one', '--task-repo', 'two', '--tag', 'documentation',
+    '--stdin', '--tag', 'documentation',
     '--skill', 'writer', 'Rewrite', 'this'
   ]);
   assert.equal(options.command, 'execute');
   assert.deepEqual(options.instructionParts, ['Rewrite', 'this']);
   assert.deepEqual(options.sources.map((source) => source.type), ['text', 'file', 'url', 'stdin']);
-  assert.deepEqual(options.taskRepositories, ['one', 'two']);
   assert.deepEqual(options.tags, ['documentation']);
   assert.equal(options.skill, 'writer');
 });
@@ -37,6 +36,7 @@ test('parses coding-agent discovery and explicit delegation options', () => {
 
 test('rejects unknown options and missing values', () => {
   assert.throws(() => parseArguments(['--unknown']), /Unknown option/);
+  assert.throws(() => parseArguments(['--task-repo', 'tasks']), /Unknown option/);
   assert.throws(() => parseArguments(['--skill']), /requires a value/);
   assert.throws(() => parseArguments(['repo', 'add']), /requires a Git URL/);
   assert.throws(() => parseArguments(['repo', 'add', './tasks']), /requires a Git URL/);

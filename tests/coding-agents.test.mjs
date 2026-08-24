@@ -7,8 +7,8 @@ import { join } from 'node:path';
 import * as achillesModule from 'ploinky-agent-lib';
 import { buildCodexArguments, parseCodexOutput } from '../src/coding-agents/codex.mjs';
 import { discoverCodingAgents } from '../src/coding-agents/discovery.mjs';
-import { buildOpenCodeArguments, parseOpenCodeOutput } from '../src/coding-agents/opencode.mjs';
-import { buildPiArguments, parsePiOutput } from '../src/coding-agents/pi.mjs';
+import { buildOpenCodeArguments, parseOpenCodeModels, parseOpenCodeOutput } from '../src/coding-agents/opencode.mjs';
+import { buildPiArguments, parsePiModels, parsePiOutput } from '../src/coding-agents/pi.mjs';
 import { runProcess } from '../src/coding-agents/process.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
 import { createRuntime } from '../src/runtime.mjs';
@@ -37,9 +37,12 @@ test('discovers configured and PATH coding-agent executables in configured prior
 });
 
 test('builds and parses native coding-agent protocols', () => {
-  assert.deepEqual(buildCodexArguments({ prompt: 'continue', continuation: { threadId: 'thread-1' } }).slice(-5), [
+  const defaultCodexArguments = buildCodexArguments({ prompt: 'continue', continuation: { threadId: 'thread-1' } });
+  assert.equal(defaultCodexArguments.includes('--model'), false);
+  assert.deepEqual(defaultCodexArguments.slice(-5), [
     'resume', '--json', '--skip-git-repo-check', 'thread-1', 'continue'
   ]);
+  assert.deepEqual(buildCodexArguments({ prompt: 'run', model: 'gpt-test' }).slice(0, 2), ['--model', 'gpt-test']);
   const codex = parseCodexOutput([
     JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }),
     JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'done' } })
@@ -49,12 +52,45 @@ test('builds and parses native coding-agent protocols', () => {
   assert.deepEqual(buildOpenCodeArguments({
     prompt: 'next', workspace: '/tmp/work', sessionId: 'session-1'
   }).slice(-3), ['--session', 'session-1', 'next']);
+  assert.deepEqual(buildOpenCodeArguments({
+    prompt: 'next', workspace: '/tmp/work', model: 'provider/model'
+  }).slice(-3), ['--model', 'provider/model', 'next']);
   assert.equal(parsePiOutput(JSON.stringify({
     type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'pi' }] }
   })), 'pi');
   assert.deepEqual(buildPiArguments({
     prompt: 'next', sessionId: 'session-1', sessionDir: '/tmp/sessions'
   }).slice(0, 6), ['--mode', 'json', '--session-id', 'session-1', '--session-dir', '/tmp/sessions']);
+  assert.deepEqual(buildPiArguments({
+    prompt: 'next', sessionId: 'session-1', sessionDir: '/tmp/sessions', model: 'provider/model'
+  }).slice(-4), ['--model', 'provider/model', '--approve', 'next']);
+  assert.deepEqual(parseOpenCodeModels('\u001b[32mopenai/gpt-test\u001b[0m\nlocal/model'), [
+    'openai/gpt-test', 'local/model'
+  ]);
+  assert.deepEqual(parsePiModels([
+    'provider  model  context  max-out  thinking  images',
+    'openai    gpt-test  200K  32K      yes       yes'
+  ].join('\n')), ['openai/gpt-test']);
+});
+
+test('passes configured models to subsequent coding-agent invocations', async () => {
+  const calls = [];
+  const service = createCodingAgentService({
+    agents: [{ name: 'codex', available: true, binary: '/fake/codex' }],
+    models: { codex: 'gpt-configured' },
+    runners: {
+      codex: async (input) => {
+        calls.push(input);
+        return { outputText: 'done', continuation: null };
+      }
+    }
+  });
+  await service.execute('first');
+  service.setModel('codex', 'gpt-updated');
+  await service.execute('second');
+  assert.equal(calls[0].model, 'gpt-configured');
+  assert.equal(calls[1].model, 'gpt-updated');
+  await service.close();
 });
 
 test('forwards cancellation to an active coding-agent process', async () => {
@@ -106,6 +142,48 @@ test('mounts Anthropic skill directories in the coding-agent workspace', async (
   });
   context.after(() => service.close());
   assert.match(await service.execute('use echo'), /name: echo/u);
+});
+
+test('refreshes skill links while preserving workspace artifacts and native continuation', async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-agent-refresh-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const firstDirectory = await writeAnthropicSkill(join(root, 'first'), 'first-skill');
+  const secondDirectory = await writeAnthropicSkill(join(root, 'second'), 'second-skill');
+  const calls = [];
+  const service = createCodingAgentService({
+    agents: [{ name: 'codex', available: true, binary: '/fake/codex' }],
+    skills: [{ name: 'first-skill', directoryPath: firstDirectory }],
+    runners: {
+      codex: async (input) => {
+        calls.push(input);
+        return { outputText: 'done', continuation: { threadId: 'thread-1' } };
+      }
+    }
+  });
+  context.after(() => service.close());
+
+  await service.execute('first');
+  const workspace = calls[0].workspace;
+  await writeFile(join(workspace, 'artifact.txt'), 'preserved');
+  await service.refreshSkills([{ name: 'second-skill', directoryPath: secondDirectory }]);
+
+  assert.equal(await readFile(join(workspace, 'artifact.txt'), 'utf8'), 'preserved');
+  await assert.rejects(() => access(join(workspace, '.agents', 'skills', 'first-skill')));
+  assert.match(await readFile(join(workspace, '.agents', 'skills', 'second-skill', 'SKILL.md'), 'utf8'), /second-skill/u);
+  await service.execute('second');
+  assert.equal(calls[1].workspace, workspace);
+  assert.deepEqual(calls[1].continuation, { threadId: 'thread-1' });
+  await assert.rejects(() => service.refreshSkills([
+    { name: 'duplicate', directoryPath: firstDirectory },
+    { name: 'duplicate', directoryPath: secondDirectory }
+  ]));
+  assert.match(await readFile(join(workspace, '.agents', 'skills', 'second-skill', 'SKILL.md'), 'utf8'), /second-skill/u);
+  await service.refreshSkills([]);
+  await assert.rejects(() => access(join(workspace, '.agents', 'skills', 'second-skill')));
+  assert.equal(await readFile(join(workspace, 'artifact.txt'), 'utf8'), 'preserved');
+  await service.execute('third');
+  assert.equal(calls[2].workspace, workspace);
+  assert.deepEqual(calls[2].continuation, { threadId: 'thread-1' });
 });
 
 test('does not switch backends after a delegated process fails', async () => {

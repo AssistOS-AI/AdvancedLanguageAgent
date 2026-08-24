@@ -125,7 +125,9 @@ test('keeps help output separate from diagnostics', async () => {
   const stderr = captureStream();
   const code = await runCli({ argv: ['--help'], env: {}, stdin: inputStream(), stdout, stderr, cwd: process.cwd() });
   assert.equal(code, 0);
-  assert.match(stdout.read(), /Usage:/);
+  const help = stdout.read();
+  assert.match(help, /Usage:/);
+  assert.doesNotMatch(help, /--task-repo/);
   assert.equal(stderr.read(), '');
 });
 
@@ -134,6 +136,17 @@ test('returns the usage exit code for invalid arguments', async () => {
   const code = await runCli({ argv: ['--missing'], env: {}, stdin: inputStream(), stdout: captureStream(), stderr });
   assert.equal(code, 2);
   assert.match(stderr.read(), /Unknown option/);
+
+  const removedOptionStderr = captureStream();
+  const removedOptionCode = await runCli({
+    argv: ['--task-repo', './tasks', 'Run this task'],
+    env: {},
+    stdin: inputStream(),
+    stdout: captureStream(),
+    stderr: removedOptionStderr
+  });
+  assert.equal(removedOptionCode, 2);
+  assert.match(removedOptionStderr.read(), /Unknown option: --task-repo/);
 });
 
 test('lists detected coding agents without loading AchillesAgentLib', async (context) => {
@@ -196,10 +209,31 @@ test('handles slash agent commands locally in interactive mode', async (context)
   const root = await mkdtemp(join(tmpdir(), 'ala-cli-interactive-agent-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const binary = join(root, 'codex');
+  const agentLog = join(root, 'agent-calls.log');
   const { chmod, writeFile } = await import('node:fs/promises');
   await writeFile(binary, `#!/bin/sh
+if [ "$1" = 'app-server' ]; then
+  while IFS= read -r request; do
+    case "$request" in
+      *'"method":"initialize"'*) printf '%s\n' '{"id":1,"result":{"userAgent":"test"}}' ;;
+      *'"method":"model/list"'*) printf '%s\n' '{"id":2,"result":{"data":[{"id":"gpt-test"}],"nextCursor":null}}' ;;
+    esac
+  done
+  exit 0
+fi
 last=''
-for argument in "$@"; do last="$argument"; done
+resume='no'
+thread=''
+model=''
+previous=''
+for argument in "$@"; do
+  last="$argument"
+  if [ "$argument" = 'resume' ]; then resume='yes'; fi
+  if [ "$argument" = 'thread-interactive' ]; then thread="$argument"; fi
+  if [ "$previous" = '--model' ]; then model="$argument"; fi
+  previous="$argument"
+done
+printf '%s|%s|%s|%s\n' "$PWD" "$resume" "$thread" "$model" >> "$ALA_TEST_AGENT_LOG"
 result='slash result'
 case "$last" in *interactive-task*) result='refreshed skill catalog' ;; esac
 printf '%s\n' '{"type":"thread.started","thread_id":"thread-interactive"}'
@@ -217,7 +251,8 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
       HOME: join(root, 'home'),
       PATH: `${root}:/usr/bin`,
       XDG_DATA_HOME: join(root, 'data'),
-      CODEX_BIN: binary
+      CODEX_BIN: binary,
+      ALA_TEST_AGENT_LOG: agentLog
     },
     stdin: inputStream([
       '/help',
@@ -228,6 +263,8 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
       '/repo remove interactive-repository',
       '/symbolic detection on',
       '/agent list',
+      '/agent codex models',
+      '/agent codex model gpt-test',
       '/agent codex do this',
       '/quit',
       ''
@@ -238,18 +275,21 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
   });
   assert.equal(code, 0, stderr.read());
   const outputLines = stdout.read().trim().split('\n');
-  assert.equal(outputLines.length, 6);
+  assert.equal(outputLines.length, 7);
   assert.equal(outputLines[1], 'refreshed skill catalog');
   assert.equal(outputLines[0], outputLines[2]);
   assert.equal(outputLines[3], outputLines[0]);
   assert.equal(outputLines[4], 'codex');
-  assert.equal(outputLines[5], 'slash result');
+  assert.equal(outputLines[5], 'gpt-test');
+  assert.equal(outputLines[6], 'slash result');
   const diagnostics = stderr.read();
   assert.equal(diagnostics.match(/Interactive commands:/g)?.length, 2);
   assert.match(diagnostics, /Interactive commands:/);
   assert.match(diagnostics, /\/help\s+Show this complete command list/);
   assert.match(diagnostics, /\/agent \| \/agent help\s+Show this complete command list/);
   assert.match(diagnostics, /\/agent list\s+List detected coding-agent backends/);
+  assert.match(diagnostics, /\/agent <name> models\s+List models available/);
+  assert.match(diagnostics, /\/agent <name> model <model>\s+Persist the model/);
   assert.match(diagnostics, /\/agent auto <prompt>\s+Delegate to the first available backend/);
   assert.match(diagnostics, /\/agent codex <prompt>\s+Delegate to Codex/);
   assert.match(diagnostics, /\/agent opencode <prompt>\s+Delegate to OpenCode/);
@@ -264,6 +304,15 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
   assert.equal(diagnostics.match(/repository catalog refreshed \(1 skills\)/g)?.length, 1);
   assert.equal(diagnostics.match(/repository catalog refreshed \(0 skills\)/g)?.length, 1);
   assert.match(diagnostics, /symbolic detection on/);
+  assert.match(diagnostics, /codex model set to gpt-test/);
+  const agentCalls = (await readFile(agentLog, 'utf8')).trim().split('\n');
+  assert.equal(agentCalls.length, 2);
+  const firstWorkspace = agentCalls[0].split('|')[0];
+  const secondWorkspace = agentCalls[1].split('|')[0];
+  assert.equal(secondWorkspace, firstWorkspace);
+  assert.equal(agentCalls[0], `${firstWorkspace}|no||`);
+  assert.equal(agentCalls[1], `${firstWorkspace}|yes|thread-interactive|gpt-test`);
+  assert.equal(JSON.parse(await readFile(join(root, 'missing.json'), 'utf8')).codingAgents.models.codex, 'gpt-test');
 });
 
 test('executes an explicitly selected task skill from the persistent registry', async (context) => {

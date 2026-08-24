@@ -34,6 +34,8 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
   /help                          Show this complete command list
   /agent | /agent help           Show this complete command list
   /agent list                    List detected coding-agent backends
+  /agent <name> models           List models available to a coding-agent backend
+  /agent <name> model <model>    Persist the model used by a coding-agent backend
   /agent auto <prompt>           Delegate to the first available backend
   /agent codex <prompt>          Delegate to Codex
   /agent opencode <prompt>       Delegate to OpenCode
@@ -147,8 +149,8 @@ async function runAgentCommand(options, io, env) {
 
 async function interactiveLoop(runtime, initialPrompt, initialInstruction, options, io, env, signal) {
   const configPath = resolveConfigPath({ cliPath: options.configPath, env, cwd: io.cwd });
-  const initialConfig = await loadConfig(configPath);
-  let repositoryPaths = initialConfig.taskRepositories.map((entry) => entry.path);
+  let activeConfig = await loadConfig(configPath);
+  let repositoryPaths = activeConfig.taskRepositories.map((entry) => entry.path);
   const thinking = createThinkingIndicator(io.stderr, {
     enabled: Boolean(io.stdin.isTTY && io.stderr.isTTY)
   });
@@ -182,6 +184,24 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
             } else if (action === 'list') {
               const names = runtime.listCodingAgents();
               io.stdout.write(names.map((name) => `${name}\n`).join(''));
+            } else if (['codex', 'opencode', 'pi'].includes(action) && parts[2] === 'models') {
+              if (parts.length !== 3) throw new ALAError(`Usage: /agent ${action} models`, EXIT_CODES.usage);
+              const models = await runtime.listCodingAgentModels(action, { signal });
+              io.stdout.write(models.map((model) => `${model}\n`).join(''));
+            } else if (['codex', 'opencode', 'pi'].includes(action) && parts[2] === 'model') {
+              const model = parts.slice(3).join(' ').trim();
+              if (!model) throw new ALAError(`Usage: /agent ${action} model <model-name>`, EXIT_CODES.usage);
+              const nextConfig = {
+                ...activeConfig,
+                codingAgents: {
+                  ...activeConfig.codingAgents,
+                  models: { ...activeConfig.codingAgents.models, [action]: model }
+                }
+              };
+              await saveConfig(configPath, nextConfig);
+              activeConfig = nextConfig;
+              runtime.setCodingAgentModel(action, model);
+              io.stderr.write(`ala: ${action} model set to ${model}\n`);
             } else if (['auto', 'codex', 'opencode', 'pi'].includes(action)) {
               const prompt = parts.slice(2).join(' ').trim();
               if (!prompt) throw new ALAError(`/agent ${action} requires a prompt.`, EXIT_CODES.usage);
@@ -210,10 +230,10 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
               const repositories = await resolveActiveRepositories({
                 config,
                 env,
-                temporary: options.taskRepositories,
                 cwd: io.cwd
               });
               await runtime.refreshRepositories(repositories);
+              activeConfig = config;
               repositoryPaths = config.taskRepositories.map((entry) => entry.path);
             };
             await runRepositoryCommand({
@@ -272,7 +292,6 @@ async function runExecution(options, io, env) {
   const repositories = await resolveActiveRepositories({
     config,
     env,
-    temporary: options.taskRepositories,
     cwd: io.cwd
   });
   const achilles = await loadAchillesAgentLib({
@@ -292,6 +311,8 @@ async function runExecution(options, io, env) {
     achillesModule: achilles.module,
     repositories,
     codingAgents,
+    codingAgentModels: config.codingAgents.models,
+    cwd: io.cwd,
     options,
     env,
     diagnostics: io.stderr

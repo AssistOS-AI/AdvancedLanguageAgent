@@ -33,6 +33,8 @@ export async function createRuntime({
   achillesModule,
   repositories,
   codingAgents = [],
+  codingAgentModels = {},
+  cwd = process.cwd(),
   options,
   env = process.env,
   diagnostics = process.stderr
@@ -48,7 +50,14 @@ export async function createRuntime({
     builtInSkillsDirectories: codingAgents.some((record) => record.available) ? [internalSkillsDirectory] : []
   });
   let skills = registry.skills;
-  let codingAgentService = createCodingAgentService({ agents: codingAgents, skills, env, logger });
+  const codingAgentService = createCodingAgentService({
+    agents: codingAgents,
+    skills,
+    models: codingAgentModels,
+    cwd,
+    env,
+    logger
+  });
   let symbolicRouter = await createSymbolicRouter(skills);
   const selected = runtimeOptions(options, env);
   let mainAgent;
@@ -75,14 +84,18 @@ export async function createRuntime({
     listCodingAgents() {
       return codingAgents.filter((record) => record.available).map((record) => record.name);
     },
+    listCodingAgentModels(name, options = {}) {
+      return codingAgentService.listModels(name, options);
+    },
+    setCodingAgentModel(name, model) {
+      codingAgentService.setModel(name, model);
+    },
     async refreshRepositories(nextRepositories) {
       const nextSkills = await discoverTaskSkills(nextRepositories);
       const nextSymbolicRouter = await createSymbolicRouter(nextSkills);
-      const nextCodingAgentService = createCodingAgentService({ agents: codingAgents, skills: nextSkills, env, logger });
-      await codingAgentService.close();
+      await codingAgentService.refreshSkills(nextSkills);
       skills = nextSkills;
       symbolicRouter = nextSymbolicRouter;
-      codingAgentService = nextCodingAgentService;
       this.skills = nextSkills;
     },
     async executeAgent(prompt, { agent = 'auto', signal = null } = {}) {

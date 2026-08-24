@@ -3,7 +3,6 @@ import { isGitRepositoryUrl } from './repository-sources.mjs';
 
 const valueOptions = new Map([
   ['--skill', 'skill'],
-  ['--task-repo', 'taskRepositories'],
   ['--text', 'text'],
   ['--file', 'file'],
   ['--url', 'url'],
@@ -17,7 +16,7 @@ const valueOptions = new Map([
   ['--agent', 'agent']
 ]);
 
-const repeatableOptions = new Set(['taskRepositories', 'tags']);
+const repeatableOptions = new Set(['tags']);
 const sourceOptions = new Map([
   ['--text', 'text'],
   ['--file', 'file'],
@@ -37,7 +36,6 @@ function defaultExecutionOptions() {
     command: 'execute',
     instructionParts: [],
     sources: [],
-    taskRepositories: [],
     tags: [],
     interactive: false,
     force: false,
@@ -165,7 +163,6 @@ Usage:
 Execution options:
   --skill <name>             Execute a task skill explicitly
   --agent <name>             Delegate explicitly: auto, codex, opencode, or pi
-  --task-repo <path>         Add a task repository for this invocation
   --text <text>              Add a text payload
   --file <path>              Add a UTF-8 file payload
   --url <url>                Add an HTTP(S) UTF-8 payload

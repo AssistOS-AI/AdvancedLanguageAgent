@@ -24,21 +24,39 @@ export function parsePiOutput(stdout) {
   return outputText.trim();
 }
 
-export function buildPiArguments({ prompt, sessionId, sessionDir }) {
-  return [
+export function buildPiArguments({ prompt, sessionId, sessionDir, model = null }) {
+  const args = [
     '--mode', 'json', '--session-id', sessionId, '--session-dir', sessionDir,
-    '--no-context-files', '--approve', prompt
+    '--no-context-files'
   ];
+  if (model) args.push('--model', model);
+  args.push('--approve', prompt);
+  return args;
 }
 
-export async function runPi({ binary, prompt, workspace, continuation, env, signal }) {
+export async function runPi({ binary, prompt, workspace, continuation, model, env, signal }) {
   const sessionId = continuation?.sessionId || randomUUID();
   const sessionDir = join(workspace, '.ala-pi-sessions');
   await mkdir(sessionDir, { recursive: true, mode: 0o700 });
-  const args = buildPiArguments({ prompt, sessionId, sessionDir });
+  const args = buildPiArguments({ prompt, sessionId, sessionDir, model });
   const result = await runProcess({ binary, args, cwd: workspace, env, signal });
   if (result.code !== 0) throw executionError('Pi', result);
   const outputText = parsePiOutput(result.stdout);
   if (!outputText) throw new Error('Pi completed without a final assistant message.');
   return { outputText, continuation: { sessionId } };
+}
+
+export function parsePiModels(stdout) {
+  const lines = stdout.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+  if (lines[0]?.startsWith('provider')) lines.shift();
+  return lines.map((line) => {
+    const [provider, model] = line.split(/\s+/u);
+    return provider && model ? `${provider}/${model}` : '';
+  }).filter(Boolean);
+}
+
+export async function listPiModels({ binary, cwd, env, signal }) {
+  const result = await runProcess({ binary, args: ['--list-models'], cwd, env, signal });
+  if (result.code !== 0) throw executionError('Pi model listing', result);
+  return parsePiModels(result.stdout);
 }

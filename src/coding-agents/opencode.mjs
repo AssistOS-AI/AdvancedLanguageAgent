@@ -22,8 +22,9 @@ export function parseOpenCodeOutput(stdout) {
   return outputText.trim();
 }
 
-export function buildOpenCodeArguments({ prompt, workspace, sessionId = null, title = null }) {
+export function buildOpenCodeArguments({ prompt, workspace, sessionId = null, title = null, model = null }) {
   const args = ['run', '--auto', '--format', 'json', '--dir', workspace];
+  if (model) args.push('--model', model);
   if (sessionId) args.push('--session', sessionId);
   if (title) args.push('--title', title);
   args.push(prompt);
@@ -47,9 +48,9 @@ async function findSession(binary, workspace, title, env, signal) {
   }
 }
 
-export async function runOpenCode({ binary, prompt, workspace, continuation, env, signal }) {
+export async function runOpenCode({ binary, prompt, workspace, continuation, model, env, signal }) {
   const title = continuation?.sessionId ? null : `ala-${randomUUID()}`;
-  const args = buildOpenCodeArguments({ prompt, workspace, sessionId: continuation?.sessionId, title });
+  const args = buildOpenCodeArguments({ prompt, workspace, sessionId: continuation?.sessionId, title, model });
   const result = await runProcess({ binary, args, cwd: workspace, env, signal });
   if (result.code !== 0) throw executionError('OpenCode', result);
   const sessionId = continuation?.sessionId || await findSession(binary, workspace, title, env, signal);
@@ -60,4 +61,15 @@ export async function runOpenCode({ binary, prompt, workspace, continuation, env
     outputText,
     continuation: { sessionId }
   };
+}
+
+export function parseOpenCodeModels(stdout) {
+  const ansi = /\x1b\[[0-?]*[ -/]*[@-~]/gu;
+  return stdout.replace(ansi, '').split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
+}
+
+export async function listOpenCodeModels({ binary, cwd, env, signal }) {
+  const result = await runProcess({ binary, args: ['models'], cwd, env, signal });
+  if (result.code !== 0) throw executionError('OpenCode model listing', result);
+  return parseOpenCodeModels(result.stdout);
 }

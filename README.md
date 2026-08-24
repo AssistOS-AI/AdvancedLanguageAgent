@@ -62,7 +62,7 @@ ala repo list
 ala repo remove task-repository
 ```
 
-ALA accepts only a Git URL for persistent `repo add` operations and saves the resulting registration in `$XDG_CONFIG_HOME/ala/config.json`, or in `~/.config/ala/config.json` when `XDG_CONFIG_HOME` is not set. The repository is cloned into `$XDG_DATA_HOME/ala/repositories`, or `~/.local/share/ala/repositories` when `XDG_DATA_HOME` is not set. `repo remove` accepts the Git repository name without `.git`, its registered path, or the original Git URL. Removing its registration does not delete the managed clone. Use `--task-repo` or `ALA_TASK_REPOSITORIES` when a local repository is needed for an invocation without persistent registration.
+ALA accepts only a Git URL for persistent `repo add` operations and saves the resulting registration in `~/.config/ala/config.json`. Set `ALA_CONFIG_PATH` to select another configuration file, or use `--config` for one command. The repository is cloned into `$XDG_DATA_HOME/ala/repositories`, or `~/.local/share/ala/repositories` when `XDG_DATA_HOME` is not set. `repo remove` accepts the Git repository name without `.git`, its registered path, or the original Git URL. Removing its registration does not delete the managed clone. `ALA_TASK_REPOSITORIES` supplies platform-delimited local repository paths through the environment.
 
 ALA also detects authenticated Codex, OpenCode, and Pi installations. Inspect the detected backend names with:
 
@@ -97,7 +97,7 @@ ala --agent codex "Research this topic and produce a verified summary"
 ala --agent auto "Plan and validate this multi-step language task"
 ```
 
-The selected coding-agent CLI must already be authenticated through its own login mechanism. ALA does not pass a model identifier or model-selection option to Codex, OpenCode, or Pi; the selected CLI uses its own configured default model. ALA's `--model`, `--tag`, `--reasoning-effort`, and `--model-config` settings apply only to direct LLMAgent execution and do not override coding-agent model selection. Anthropic task-skill execution also requires one detected coding agent. ALA runs it in a temporary workspace, mounts the discovered task-skill directories under `.agents/skills`, and removes the workspace when the command or interactive session closes.
+The selected coding-agent CLI must already be authenticated through its own login mechanism. By default ALA passes no model option, so each selected CLI uses its own default model. In an interactive session, `/agent <codex|opencode|pi> models` asks that backend for its available model identifiers, and `/agent <codex|opencode|pi> model <model-name>` persists a backend-specific selection in ALA configuration and applies it to every subsequent invocation. ALA's `--model`, `--tag`, `--reasoning-effort`, and `--model-config` settings continue to apply only to direct LLMAgent execution and do not override coding-agent model selection. Anthropic task-skill execution also requires one detected coding agent. ALA runs it in a temporary workspace, mounts the discovered task-skill directories under `.agents/skills`, and removes the workspace when the command or interactive session closes.
 
 ## Run interactively
 
@@ -118,6 +118,8 @@ Interactive sessions also accept local slash commands. `/agent ...` commands are
 ```text
 /help
 /agent list
+/agent codex models
+/agent codex model gpt-5.6-sol
 /agent codex Review this task
 /agent auto Produce a verified multi-step summary
 /repo add https://example.com/owner/task-repository.git
@@ -128,7 +130,7 @@ Interactive sessions also accept local slash commands. `/agent ...` commands are
 /quit
 ```
 
-`/help` lists every interactive command and explains what it does; `/agent` and `/agent help` display the same list. `/agent list` reports detected backends, `/agent auto <prompt>` follows the configured priority, and `/agent <codex|opencode|pi> <prompt>` selects a backend. While a terminal waits for a MainAgent or coding-agent response, ALA cycles through `Thinking.`, `Thinking..`, and `Thinking...`, then clears the line before printing the result or an error. The animation is disabled when the interactive input or diagnostic output is not a terminal, so redirected output remains clean. `/repo add`, `/repo list`, and `/repo remove` manage persistent task repository registrations locally. Removal accepts the Git repository name without `.git`, such as `task-repository`, while the registered path and original Git URL remain supported. In a terminal, press TAB after `/repo remove ` or after a partial name to complete matching registered repository names. An addition or removal refreshes the active skill catalog immediately, so the next prompt in the same session sees the change. Refreshing closes an existing coding-agent workspace and native continuation while preserving the MainAgent conversation and symbolic-detection setting. Symbolic detection is off by default for each session; `/symbolic detection on` enables instruction-only symbolic task routing, while uncertain matches remain available for coding-agent catalog selection, and `off` disables it again. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
+`/help` lists every interactive command and explains what it does; `/agent` and `/agent help` display the same list. `/agent list` reports detected backends, `/agent <name> models` prints the model identifiers returned by that backend, `/agent <name> model <model-name>` saves its model selection, `/agent auto <prompt>` follows the configured priority, and `/agent <codex|opencode|pi> <prompt>` selects a backend. Codex models come from its app-server catalog, OpenCode models come from `opencode models`, and Pi models come from `pi --list-models`; Pi provider and model columns are rendered as `provider/model`. While a terminal waits for a MainAgent or coding-agent response, ALA cycles through `Thinking.`, `Thinking..`, and `Thinking...`, then clears the line before printing the result or an error. The animation is disabled when the interactive input or diagnostic output is not a terminal, so redirected output remains clean. `/repo add`, `/repo list`, and `/repo remove` manage persistent task repository registrations locally. Removal accepts the Git repository name without `.git`, such as `task-repository`, while the registered path and original Git URL remain supported. In a terminal, press TAB after `/repo remove ` or after a partial name to complete matching registered repository names. An addition or removal refreshes the active skill catalog immediately, so the next prompt in the same session sees the change. Refreshing replaces only the `.agents/skills` links in an existing coding-agent workspace and preserves its files, selected backend, native continuation, MainAgent conversation, and symbolic-detection setting. Symbolic detection is off by default for each session; `/symbolic detection on` enables instruction-only symbolic task routing, while uncertain matches remain available for coding-agent catalog selection, and `off` disables it again. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
 
 ## More information
 

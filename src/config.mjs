@@ -11,8 +11,7 @@ const DEFAULT_CODING_AGENT_PRIORITY = ['codex', 'opencode', 'pi'];
 export function resolveConfigPath({ cliPath, env = process.env, cwd = process.cwd() } = {}) {
   if (cliPath) return resolve(cwd, cliPath);
   if (env.ALA_CONFIG_PATH) return resolve(cwd, env.ALA_CONFIG_PATH);
-  const configRoot = env.XDG_CONFIG_HOME ? resolve(env.XDG_CONFIG_HOME) : resolve(homedir(), '.config');
-  return resolve(configRoot, 'ala', 'config.json');
+  return resolve(homedir(), '.config', 'ala', 'config.json');
 }
 
 function validateConfig(value, configPath) {
@@ -44,7 +43,21 @@ function validateConfig(value, configPath) {
     );
   }
   for (const name of DEFAULT_CODING_AGENT_PRIORITY) if (!priority.includes(name)) priority.push(name);
-  return { version: CONFIG_VERSION, taskRepositories, codingAgents: { priority } };
+  const configuredModels = value.codingAgents?.models ?? {};
+  if (!configuredModels || typeof configuredModels !== 'object' || Array.isArray(configuredModels)) {
+    throw new ALAError(`codingAgents.models must be an object in ${configPath}.`, EXIT_CODES.usage);
+  }
+  const models = {};
+  for (const [name, model] of Object.entries(configuredModels)) {
+    if (!validNames.has(name) || typeof model !== 'string' || !model.trim()) {
+      throw new ALAError(
+        `codingAgents.models must map codex, opencode, or pi to non-empty model names in ${configPath}.`,
+        EXIT_CODES.usage
+      );
+    }
+    models[name] = model.trim();
+  }
+  return { version: CONFIG_VERSION, taskRepositories, codingAgents: { priority, models } };
 }
 
 export async function loadConfig(configPath) {
@@ -56,7 +69,7 @@ export async function loadConfig(configPath) {
       return {
         version: CONFIG_VERSION,
         taskRepositories: [],
-        codingAgents: { priority: [...DEFAULT_CODING_AGENT_PRIORITY] }
+        codingAgents: { priority: [...DEFAULT_CODING_AGENT_PRIORITY], models: {} }
       };
     }
     if (error instanceof SyntaxError) {
@@ -93,11 +106,10 @@ export function environmentRepositories(env = process.env) {
   return env.ALA_TASK_REPOSITORIES.split(process.platform === 'win32' ? ';' : ':').filter(Boolean);
 }
 
-export async function resolveActiveRepositories({ config, env = process.env, temporary = [], cwd = process.cwd() }) {
+export async function resolveActiveRepositories({ config, env = process.env, cwd = process.cwd() }) {
   const candidates = [
     ...config.taskRepositories.map((entry) => entry.path),
-    ...environmentRepositories(env),
-    ...temporary
+    ...environmentRepositories(env)
   ];
   const repositories = [];
   const seen = new Set();
