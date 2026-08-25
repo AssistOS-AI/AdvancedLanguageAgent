@@ -36,12 +36,20 @@ test('parses coding-agent discovery and explicit delegation options', () => {
   assert.equal(parseArguments(['--websearch', 'off', 'offline']).websearch, false);
   assert.equal(parseArguments(['--websearch', 'research']).websearch, true);
   assert.deepEqual(parseArguments(['--websearch', 'research']).instructionParts, ['research']);
+  assert.deepEqual(parseArguments([
+    '--folder', './books', '--folder', './drafts', 'write', '--folder', './notes', 'w', 'research'
+  ]).folders, [
+    { path: './books', writable: false },
+    { path: './drafts', writable: true },
+    { path: './notes', writable: true }
+  ]);
 });
 
 test('rejects unknown options and missing values', () => {
   assert.throws(() => parseArguments(['--unknown']), /Unknown option/);
   assert.throws(() => parseArguments(['--task-repo', 'tasks']), /Unknown option/);
   assert.throws(() => parseArguments(['--skill']), /requires a value/);
+  assert.throws(() => parseArguments(['--folder']), /requires a value/);
   assert.throws(() => parseArguments(['repo', 'add']), /requires a Git URL/);
   assert.throws(() => parseArguments(['repo', 'add', './tasks']), /requires a Git URL/);
   assert.throws(() => parseArguments(['repo', 'remove']), /requires a repository name, path, or Git URL/);

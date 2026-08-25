@@ -1,4 +1,4 @@
-import { access } from 'node:fs/promises';
+import { access, realpath } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { delimiter, isAbsolute, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
@@ -27,11 +27,11 @@ async function resolveCandidate(candidate, env) {
   if (!candidate) return null;
   if (isAbsolute(candidate) || candidate.includes('/')) {
     const resolved = resolve(candidate);
-    return await executable(resolved) ? resolved : null;
+    return await executable(resolved) ? realpath(resolved) : null;
   }
   for (const directory of String(env.PATH || '').split(delimiter).filter(Boolean)) {
     const resolved = resolve(directory, candidate);
-    if (await executable(resolved)) return resolved;
+    if (await executable(resolved)) return realpath(resolved);
   }
   return null;
 }

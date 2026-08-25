@@ -34,6 +34,7 @@ export async function createRuntime({
   repositories,
   codingAgents = [],
   codingAgentModels = {},
+  folders = [],
   websearch = false,
   cwd = process.cwd(),
   options,
@@ -54,6 +55,7 @@ export async function createRuntime({
   const codingAgentService = createCodingAgentService({
     agents: codingAgents,
     skills,
+    folders,
     models: codingAgentModels,
     websearch,
     cwd,
@@ -94,6 +96,18 @@ export async function createRuntime({
     },
     setWebsearch(enabled) {
       codingAgentService.setWebsearch(enabled);
+    },
+    setCodingAgentOutputSink(outputSink) {
+      codingAgentService.setOutputSink(outputSink);
+    },
+    listFolders() {
+      return codingAgentService.listFolders();
+    },
+    addFolder(path, writable = false) {
+      return codingAgentService.addFolder(path, writable);
+    },
+    removeFolder(value) {
+      return codingAgentService.removeFolder(value);
     },
     async refreshRepositories(nextRepositories) {
       const nextSkills = await discoverTaskSkills(nextRepositories);
@@ -142,6 +156,12 @@ export async function createRuntime({
       }
       if (skills.length > 0 && codingAgents.some((agent) => agent.available)) {
         return mainAgent.executeSkill('coding-agent', catalogSelectionPrompt(skills, prompt), common);
+      }
+      if (codingAgentService.listFolders().length > 0) {
+        if (!codingAgents.some((agent) => agent.available)) {
+          throw new ALAError('Active folders require an available coding agent.', EXIT_CODES.execution);
+        }
+        return mainAgent.executeSkill('coding-agent', prompt, common);
       }
       return mainAgent.executePrompt(prompt, common);
     },

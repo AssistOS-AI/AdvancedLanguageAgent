@@ -27,6 +27,7 @@ import {
 } from './repository-sources.mjs';
 import { createRuntime, feedbackPrompt } from './runtime.mjs';
 import { discoverCodingAgents } from './coding-agents/discovery.mjs';
+import { resolveFolderRequests } from './coding-agents/folders.mjs';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -47,7 +48,32 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
   /symbolic detection off        Disable symbolic task routing
   /websearch on                  Persist and enable coding-agent web search
   /websearch off                 Persist and disable coding-agent web search
+  /folder add <path> [write|w]   Mount a folder for this session; read-only by default
+  /folder list                   List active folder mounts and access modes
+  /folder remove <alias|path>    Remove a folder from subsequent agent invocations
   /quit | /exit | :quit | :exit  Close the interactive session`;
+
+function unquote(value) {
+  const trimmed = String(value || '').trim();
+  if (trimmed.length >= 2 && (
+    (trimmed.startsWith('"') && trimmed.endsWith('"'))
+    || (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  )) return trimmed.slice(1, -1);
+  return trimmed;
+}
+
+function parseInteractiveFolderAdd(line) {
+  let value = line.slice('/folder add'.length).trim();
+  let writable = false;
+  const mode = value.match(/\s+(write|w)$/u);
+  if (mode) {
+    writable = true;
+    value = value.slice(0, mode.index).trim();
+  }
+  value = unquote(value);
+  if (!value) throw new ALAError('Usage: /folder add <path> [write|w]', EXIT_CODES.usage);
+  return { path: value, writable };
+}
 
 async function packageVersion() {
   const manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'));
@@ -153,9 +179,15 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
   const configPath = resolveConfigPath({ cliPath: options.configPath, env, cwd: io.cwd });
   let activeConfig = await loadConfig(configPath);
   let repositoryPaths = activeConfig.taskRepositories.map((entry) => entry.path);
+  const terminalDiagnostics = Boolean(io.stdin.isTTY && io.stderr.isTTY);
   const thinking = createThinkingIndicator(io.stderr, {
-    enabled: Boolean(io.stdin.isTTY && io.stderr.isTTY)
+    enabled: terminalDiagnostics
   });
+  const liveOutput = terminalDiagnostics ? (text) => {
+    thinking.stop();
+    io.stderr.write(text);
+  } : null;
+  runtime.setCodingAgentOutputSink?.(liveOutput);
   const readline = createInterface({
     input: io.stdin,
     output: io.stderr,
@@ -263,6 +295,28 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
             activeConfig = nextConfig;
             runtime.setWebsearch(enabled);
             io.stderr.write(`ala: websearch ${parts[1]}\n`);
+          } else if (parts[0] === '/folder') {
+            const action = parts[1];
+            if (action === 'add') {
+              const request = parseInteractiveFolderAdd(line);
+              const record = await runtime.addFolder(request.path, request.writable);
+              io.stderr.write(`ala: folder ${record.alias} mounted ${record.access} at ${record.workspacePath}\n`);
+            } else if (action === 'list' && parts.length === 2) {
+              const records = runtime.listFolders();
+              io.stdout.write(records.map((record) => (
+                `${record.alias}\t${record.access}\t${record.sourcePath}\t${record.workspacePath}\n`
+              )).join(''));
+            } else if (action === 'remove') {
+              const value = unquote(line.slice('/folder remove'.length));
+              if (!value) throw new ALAError('Usage: /folder remove <alias-or-path>', EXIT_CODES.usage);
+              await runtime.removeFolder(value);
+              io.stderr.write(`ala: folder removed: ${value}\n`);
+            } else {
+              throw new ALAError(
+                'Usage: /folder add <path> [write|w] | /folder list | /folder remove <alias-or-path>',
+                EXIT_CODES.usage
+              );
+            }
           } else {
             throw new ALAError(`Unknown interactive command: ${line}`, EXIT_CODES.usage);
           }
@@ -287,6 +341,7 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
       }
     }
   } finally {
+    runtime.setCodingAgentOutputSink?.(null);
     readline.close();
   }
 }
@@ -304,6 +359,7 @@ async function runExecution(options, io, env) {
 
   const configPath = resolveConfigPath({ cliPath: options.configPath, env, cwd: io.cwd });
   const config = await loadConfig(configPath);
+  const folders = await resolveFolderRequests(options.folders, io.cwd);
   const repositories = await resolveActiveRepositories({
     config,
     env,
@@ -315,18 +371,20 @@ async function runExecution(options, io, env) {
     cwd: io.cwd
   });
   const codingAgents = await discoverCodingAgents({ env, priority: config.codingAgents.priority });
-  if (options.agent) {
+  if (options.agent || folders.length > 0) {
     const available = codingAgents.filter((agent) => agent.available);
-    const selected = options.agent === 'auto'
+    const requested = options.agent || 'auto';
+    const selected = requested === 'auto'
       ? available[0]
-      : available.find((agent) => agent.name === options.agent);
-    if (!selected) throw new ALAError(`Coding agent is not available: ${options.agent}`, EXIT_CODES.execution);
+      : available.find((agent) => agent.name === requested);
+    if (!selected) throw new ALAError(`Coding agent is not available: ${requested}`, EXIT_CODES.execution);
   }
   const runtime = await createRuntime({
     achillesModule: achilles.module,
     repositories,
     codingAgents,
     codingAgentModels: config.codingAgents.models,
+    folders,
     websearch: options.websearch ?? config.codingAgents.websearch,
     cwd: io.cwd,
     options,

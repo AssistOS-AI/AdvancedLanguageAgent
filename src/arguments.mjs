@@ -37,6 +37,7 @@ function defaultExecutionOptions() {
     instructionParts: [],
     sources: [],
     tags: [],
+    folders: [],
     interactive: false,
     websearch: null,
     force: false,
@@ -132,6 +133,13 @@ export function parseArguments(argv) {
         options.websearch = true;
       }
     }
+    else if (token === '--folder') {
+      const path = optionValue(argv, index, token);
+      const accessMode = argv[index + 2];
+      const writable = accessMode === 'write' || accessMode === 'w';
+      options.folders.push({ path, writable });
+      index += writable ? 2 : 1;
+    }
     else if (token === '--stdin') options.sources.push({ type: 'stdin' });
     else if (valueOptions.has(token)) {
       const key = valueOptions.get(token);
@@ -181,6 +189,7 @@ Execution options:
   --force                    Permit overwriting the output file
   --interactive, -i          Start or retain an interactive session
   --websearch [on|off]       Enable, or override web search for this invocation
+  --folder <path> [write|w]  Mount a folder read-only, or read-write with write/w
   --model <value>            Override the model or model tag
   --tag <tag>                Add a model-selection tag
   --reasoning-effort <value> Override reasoning effort
@@ -191,5 +200,6 @@ Execution options:
   Interactive: /repo <add|remove|list>  Manage persistent task repositories
   Interactive: /symbolic detection on|off  Toggle symbolic routing in a session
   Interactive: /websearch on|off  Persist and toggle coding-agent web search
+  Interactive: /folder <add|list|remove>  Manage session-scoped sandbox folders
   --help, -h                 Show help
   --version, -v              Show version`;

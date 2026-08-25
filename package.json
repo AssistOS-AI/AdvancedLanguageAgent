@@ -7,8 +7,8 @@
     "ala": "bin/ala.mjs"
   },
   "scripts": {
-    "test": "node --test",
-    "check": "npm test && bash fileSizesCheck.sh",
+    "test": "node scripts/run_tests.mjs",
+    "check": "node scripts/run_tests.mjs && bash fileSizesCheck.sh",
     "docs:matrix": "node scripts/generate_specs_matrix.mjs",
     "docs:verify": "node scripts/verify_docs_links.mjs && node scripts/verify_static_site.js docs"
   },

@@ -8,9 +8,11 @@ import { pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 
 import { runCli } from '../src/cli.mjs';
+import { canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
 import { captureStream, inputStream, writeAnthropicSkill } from './helpers.mjs';
 
 const execFileAsync = promisify(execFile);
+const sandboxSupported = canStartBubblewrap();
 
 function io(root, content = '') {
   return { cwd: root, stdin: inputStream(content), stdout: captureStream(), stderr: captureStream(), env: {} };
@@ -180,14 +182,19 @@ test('lists detected coding agents without loading AchillesAgentLib', async (con
   assert.equal(textStdout.read(), 'codex\n');
 });
 
-test('delegates explicitly to a detected coding agent with clean stdout', async (context) => {
+test('delegates explicitly to a detected coding agent with clean stdout', {
+  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+}, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-cli-delegate-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const binary = join(root, 'codex');
-  const agentLog = join(root, 'codex-arguments.log');
+  const authRoot = join(root, 'codex-state');
+  const agentLog = join(authRoot, 'codex-arguments.log');
   const { chmod, writeFile } = await import('node:fs/promises');
+  const { mkdir } = await import('node:fs/promises');
+  await mkdir(authRoot);
   await writeFile(binary, `#!/bin/sh
-printf '%s\n' "$@" > "$ALA_TEST_AGENT_LOG"
+printf '%s\n' "$@" > "$CODEX_HOME/codex-arguments.log"
 printf '%s\n' '{"type":"thread.started","thread_id":"thread-cli"}'
 printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"agent result"}}'
 `);
@@ -196,7 +203,9 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"a
   const stderr = captureStream();
   const code = await runCli({
     argv: ['--agent', 'codex', '--websearch', '--config', join(root, 'missing.json'), 'complete', 'task'],
-    env: { HOME: join(root, 'home'), PATH: root, ALA_TEST_AGENT_LOG: agentLog },
+    env: {
+      HOME: join(root, 'home'), PATH: root, CODEX_HOME: authRoot
+    },
     stdin: inputStream(),
     stdout,
     stderr,
@@ -209,12 +218,17 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"a
   await assert.rejects(() => readFile(join(root, 'missing.json'), 'utf8'));
 });
 
-test('handles slash agent commands locally in interactive mode', async (context) => {
+test('handles slash agent commands locally in interactive mode', {
+  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+}, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-cli-interactive-agent-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const binary = join(root, 'codex');
-  const agentLog = join(root, 'agent-calls.log');
+  const authRoot = join(root, 'codex-state');
+  const agentLog = join(authRoot, 'agent-calls.log');
   const { chmod, writeFile } = await import('node:fs/promises');
+  const { mkdir } = await import('node:fs/promises');
+  await mkdir(authRoot);
   await writeFile(binary, `#!/bin/sh
 if [ "$1" = 'app-server' ]; then
   while IFS= read -r request; do
@@ -239,7 +253,7 @@ for argument in "$@"; do
   if [ "$argument" = '--search' ]; then websearch='on'; fi
   previous="$argument"
 done
-printf '%s|%s|%s|%s|%s\n' "$PWD" "$resume" "$thread" "$model" "$websearch" >> "$ALA_TEST_AGENT_LOG"
+printf '%s|%s|%s|%s|%s\n' "$PWD" "$resume" "$thread" "$model" "$websearch" >> "$CODEX_HOME/agent-calls.log"
 result='slash result'
 case "$last" in *interactive-task*) result='refreshed skill catalog' ;; esac
 printf '%s\n' '{"type":"thread.started","thread_id":"thread-interactive"}'
@@ -258,7 +272,7 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
       PATH: `${root}:/usr/bin`,
       XDG_DATA_HOME: join(root, 'data'),
       CODEX_BIN: binary,
-      ALA_TEST_AGENT_LOG: agentLog
+      CODEX_HOME: authRoot
     },
     stdin: inputStream([
       '/help',
@@ -308,6 +322,9 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
   assert.match(diagnostics, /\/symbolic detection off\s+Disable symbolic task routing/);
   assert.match(diagnostics, /\/websearch on\s+Persist and enable coding-agent web search/);
   assert.match(diagnostics, /\/websearch off\s+Persist and disable coding-agent web search/);
+  assert.match(diagnostics, /\/folder add <path> \[write\|w\]\s+Mount a folder for this session/);
+  assert.match(diagnostics, /\/folder list\s+List active folder mounts/);
+  assert.match(diagnostics, /\/folder remove <alias\|path>\s+Remove a folder/);
   assert.match(diagnostics, /\/quit \| \/exit \| :quit \| :exit\s+Close the interactive session/);
   assert.equal(diagnostics.match(/Close the interactive session/g)?.length, 2);
   assert.equal(diagnostics.match(/repository catalog refreshed \(1 skills\)/g)?.length, 1);
@@ -317,17 +334,66 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
   assert.match(diagnostics, /codex model set to gpt-test/);
   const agentCalls = (await readFile(agentLog, 'utf8')).trim().split('\n');
   assert.equal(agentCalls.length, 2);
-  const firstWorkspace = agentCalls[0].split('|')[0];
-  const secondWorkspace = agentCalls[1].split('|')[0];
-  assert.equal(secondWorkspace, firstWorkspace);
-  assert.equal(agentCalls[0], `${firstWorkspace}|no|||on`);
-  assert.equal(agentCalls[1], `${firstWorkspace}|yes|thread-interactive|gpt-test|on`);
+  assert.equal(agentCalls[0], '/workspace|no|||on');
+  assert.equal(agentCalls[1], '/workspace|yes|thread-interactive|gpt-test|on');
   const persistedConfig = JSON.parse(await readFile(join(root, 'missing.json'), 'utf8'));
   assert.equal(persistedConfig.codingAgents.models.codex, 'gpt-test');
   assert.equal(persistedConfig.codingAgents.websearch, true);
 });
 
-test('executes an explicitly selected task skill from the persistent registry', async (context) => {
+test('manages interactive folders locally and forces sandboxed coding-agent execution', {
+  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+}, async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-cli-folders-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const books = join(root, 'Book Data');
+  const binaryDirectory = join(root, 'bin');
+  const binary = join(binaryDirectory, 'codex');
+  const configPath = join(root, 'missing.json');
+  const { chmod, mkdir, writeFile } = await import('node:fs/promises');
+  await Promise.all([mkdir(books), mkdir(binaryDirectory)]);
+  await writeFile(join(books, 'book.txt'), 'book source');
+  await writeFile(binary, `#!/bin/sh
+test "$PWD" = '/workspace' || exit 10
+test -r /workspace/.ala/folders/*/book.txt || exit 11
+if printf '%s' denied > /workspace/.ala/folders/*/blocked.txt 2>/dev/null; then exit 12; fi
+printf '%s\n' '{"type":"thread.started","thread_id":"thread-folders"}'
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"folder result"}}'
+`);
+  await chmod(binary, 0o700);
+  const stdout = captureStream();
+  const stderr = captureStream();
+  const code = await runCli({
+    argv: ['--interactive', '--config', configPath],
+    env: { HOME: join(root, 'home'), PATH: binaryDirectory, CODEX_BIN: binary },
+    stdin: inputStream([
+      `/folder add "${books}"`,
+      '/folder list',
+      'inspect the mounted folder',
+      `/folder remove "${books}"`,
+      '/folder list',
+      '/quit',
+      ''
+    ].join('\n')),
+    stdout,
+    stderr,
+    cwd: root
+  });
+  assert.equal(code, 0, stderr.read());
+  const lines = stdout.read().trim().split('\n');
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /\tread-only\t/u);
+  assert.match(lines[0], /\/workspace\/\.ala\/folders\//u);
+  assert.equal(lines[1], 'folder result');
+  assert.match(stderr.read(), /folder .* mounted read-only/);
+  assert.match(stderr.read(), /folder removed:/);
+  await assert.rejects(() => readFile(join(books, 'blocked.txt')));
+  await assert.rejects(() => readFile(configPath));
+});
+
+test('executes an explicitly selected task skill from the persistent registry', {
+  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+}, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-cli-execute-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const repository = join(root, 'tasks');

@@ -1,6 +1,5 @@
-import { spawn } from 'node:child_process';
-
-import { executionError, runProcess } from './process.mjs';
+import { executionError, requireSandbox, runProcess, spawnProcess } from './process.mjs';
+import { appendBoundedTail, createLineDecoder } from './streaming.mjs';
 
 export function buildCodexArguments({ prompt, continuation = null, model = null, websearch = false }) {
   const common = [];
@@ -15,41 +14,116 @@ export function buildCodexArguments({ prompt, continuation = null, model = null,
 }
 
 export function parseCodexOutput(stdout, previousThreadId = '') {
-  let threadId = previousThreadId;
-  let outputText = '';
-  for (const line of stdout.split(/\r?\n/u)) {
-    if (!line.trim()) continue;
-    let event;
-    try { event = JSON.parse(line); } catch { continue; }
-    if (event.type === 'thread.started') threadId = String(event.thread_id || event.threadId || '').trim();
-    if (event.type === 'item.completed' && event.item?.type === 'agent_message') {
-      outputText = String(event.item.text || '');
-    }
-  }
-  return { outputText: outputText.trim(), continuation: threadId ? { threadId } : null };
+  const parser = createCodexEventParser({ threadId: previousThreadId });
+  parser.push(Buffer.from(stdout));
+  parser.finish();
+  return parser.result();
 }
 
-export async function runCodex({ binary, prompt, workspace, continuation, model, websearch, env, signal }) {
+function visibleCodexText(event) {
+  if (event?.type === 'item.completed') {
+    const item = event.item;
+    if (item?.type === 'agent_message') return String(item.text || '');
+    if (item?.type === 'command_execution') {
+      return String(item.aggregated_output || item.output || item.stdout || '');
+    }
+  }
+  if (event?.type === 'error') {
+    return String(event.message || event.error?.message || event.error || '');
+  }
+  return '';
+}
+
+export function createCodexEventParser({ threadId = '', onText = () => {} } = {}) {
+  const emit = typeof onText === 'function' ? onText : () => {};
+  let resolvedThreadId = threadId;
+  let outputText = '';
+  let pendingAgentMessage = '';
+  const lines = createLineDecoder((line) => {
+    if (!line.trim()) return;
+    let event;
+    try { event = JSON.parse(line); } catch {
+      emit(`${line}\n`);
+      return;
+    }
+    if (event.type === 'thread.started') {
+      resolvedThreadId = String(event.thread_id || event.threadId || '').trim() || resolvedThreadId;
+    }
+    if (event.type === 'item.completed' && event.item?.type === 'agent_message') {
+      if (pendingAgentMessage) emit(pendingAgentMessage);
+      pendingAgentMessage = String(event.item.text || '');
+      outputText = appendBoundedTail('', pendingAgentMessage);
+      return;
+    }
+    if (pendingAgentMessage && visibleCodexText(event)) {
+      emit(pendingAgentMessage);
+      pendingAgentMessage = '';
+    }
+    const visible = visibleCodexText(event);
+    if (visible) emit(visible);
+  });
+  return {
+    push: lines.push,
+    finish: lines.finish,
+    result() {
+      return {
+        outputText: outputText.trim(),
+        continuation: resolvedThreadId ? { threadId: resolvedThreadId } : null
+      };
+    }
+  };
+}
+
+export function createCodexStderrParser({ onText = () => {} } = {}) {
+  const emit = typeof onText === 'function' ? onText : () => {};
+  const lines = createLineDecoder((line) => {
+    if (line.trim() === 'Reading additional input from stdin...') return;
+    if (line.includes(' ERROR codex_rollout::list: state db returned stale rollout path for thread ')) return;
+    emit(`${line}\n`);
+  });
+  return { push: lines.push, finish: lines.finish };
+}
+
+export async function runCodex({
+  binary, prompt, workspace, continuation, model, websearch, env, signal, sandbox, onVisibleText
+}) {
+  requireSandbox(sandbox);
+  const parser = createCodexEventParser({ threadId: continuation?.threadId, onText: onVisibleText });
+  const stderrParser = createCodexStderrParser({ onText: onVisibleText });
   const result = await runProcess({
     binary,
     args: buildCodexArguments({ prompt, continuation, model, websearch }),
     cwd: workspace,
     env,
-    signal
+    signal,
+    sandbox,
+    onStdout: parser.push,
+    onStderr: stderrParser.push
   });
-  if (result.code !== 0) throw executionError('Codex', result);
-  const parsed = parseCodexOutput(result.stdout, continuation?.threadId);
+  parser.finish();
+  stderrParser.finish();
+  const parsed = parser.result();
+  if (result.code !== 0) {
+    const error = executionError('Codex', result);
+    error.continuation = parsed.continuation;
+    throw error;
+  }
   if (!parsed.outputText) throw new Error('Codex completed without a final agent message.');
   return parsed;
 }
 
-export function listCodexModels({ binary, cwd, env = process.env, signal }) {
+export function listCodexModels({ binary, cwd, env = process.env, signal, sandbox }) {
   return new Promise((resolve, reject) => {
-    const child = spawn(binary, ['app-server'], {
-      cwd,
-      env: { ...process.env, ...env },
-      stdio: ['pipe', 'pipe', 'pipe']
-    });
+    let child;
+    try {
+      requireSandbox(sandbox);
+      child = spawnProcess({
+        binary, args: ['app-server', '--stdio'], cwd, env, sandbox, stdio: ['pipe', 'pipe', 'pipe']
+      });
+    } catch (error) {
+      reject(error);
+      return;
+    }
     let buffer = '';
     let stderr = '';
     let settled = false;

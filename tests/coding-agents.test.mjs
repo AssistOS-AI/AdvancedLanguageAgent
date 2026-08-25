@@ -1,24 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import * as achillesModule from 'ploinky-agent-lib';
-import { buildCodexArguments, parseCodexOutput } from '../src/coding-agents/codex.mjs';
+import {
+  buildCodexArguments,
+  createCodexEventParser,
+  createCodexStderrParser,
+  parseCodexOutput
+} from '../src/coding-agents/codex.mjs';
 import { discoverCodingAgents } from '../src/coding-agents/discovery.mjs';
 import {
   buildOpenCodeArguments,
   configureOpenCodeWebsearch,
   openCodeEnvironment,
   parseOpenCodeModels,
-  parseOpenCodeOutput
+  parseOpenCodeOutput,
+  runOpenCode
 } from '../src/coding-agents/opencode.mjs';
-import { buildPiArguments, parsePiModels, parsePiOutput } from '../src/coding-agents/pi.mjs';
-import { runProcess } from '../src/coding-agents/process.mjs';
+import { buildPiArguments, createPiEventParser, parsePiModels, parsePiOutput } from '../src/coding-agents/pi.mjs';
+import { requireSandbox, runProcess } from '../src/coding-agents/process.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
+import { canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
 import { createRuntime } from '../src/runtime.mjs';
 import { captureStream, writeAnthropicSkill } from './helpers.mjs';
+
+const sandboxSupported = canStartBubblewrap();
 
 async function executable(root, name, source = '#!/bin/sh\nexit 0\n') {
   const filePath = join(root, name);
@@ -103,6 +112,109 @@ test('configures OpenCode web tools and its opt-in search environment', async (c
   assert.equal(openCodeEnvironment({}, false).OPENCODE_ENABLE_EXA, '0');
 });
 
+test('streams supported Codex and Pi events across chunk boundaries', () => {
+  const codexText = [];
+  const codex = createCodexEventParser({ onText: (text) => codexText.push(text) });
+  codex.push(Buffer.from('{"type":"thread.started","thread_id":"thread-stream"}\n{"type":"item.comp'));
+  codex.push(Buffer.from('leted","item":{"type":"command_execution","aggregated_output":"checked"}}\n'));
+  codex.push(Buffer.from('{"type":"item.completed","item":{"type":"agent_message","text":"done"}}'));
+  codex.finish();
+  assert.deepEqual(codex.result(), {
+    outputText: 'done', continuation: { threadId: 'thread-stream' }
+  });
+  assert.deepEqual(codexText, ['checked']);
+
+  const intermediateText = [];
+  const intermediateCodex = createCodexEventParser({ onText: (text) => intermediateText.push(text) });
+  intermediateCodex.push(Buffer.from([
+    JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'I will inspect it.\n' } }),
+    JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', aggregated_output: 'inspected\n' } }),
+    JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'final answer' } })
+  ].join('\n')));
+  intermediateCodex.finish();
+  assert.deepEqual(intermediateText, ['I will inspect it.\n', 'inspected\n']);
+  assert.equal(intermediateCodex.result().outputText, 'final answer');
+
+  const stderrText = [];
+  const codexStderr = createCodexStderrParser({ onText: (text) => stderrText.push(text) });
+  codexStderr.push(Buffer.from('Reading additional input from std'));
+  codexStderr.push(Buffer.from('in...\n2026-08-25T12:00:35Z ERROR codex_rollout::list: state db returned stale '));
+  codexStderr.push(Buffer.from('rollout path for thread old: /home/ala/.codex/sessions/old.jsonl\nimportant diagnostic\n'));
+  codexStderr.finish();
+  assert.deepEqual(stderrText, ['important diagnostic\n']);
+
+  const piText = [];
+  const pi = createPiEventParser({ onText: (text) => piText.push(text) });
+  pi.push(Buffer.from('{"type":"message_start","message":{"role":"assistant"}}\n'));
+  pi.push(Buffer.from('{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"hel'));
+  pi.push(Buffer.from('lo"}}\n{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"hello"}]}}\n'));
+  pi.push(Buffer.from('{"type":"tool_execution_update","toolCallId":"one","partialResult":{"content":"abc"}}\n'));
+  pi.push(Buffer.from('{"type":"tool_execution_end","toolCallId":"one","result":{"content":"abcd"}}'));
+  pi.finish();
+  assert.equal(pi.finalText(), 'hello');
+  assert.deepEqual(piText, ['hello', 'abc', 'd']);
+});
+
+test('uses native OpenCode output while exporting the final assistant message', {
+  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+}, async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-opencode-runner-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const workspace = join(root, 'workspace');
+  const stateRoot = join(root, 'state');
+  const configRoot = join(root, 'config');
+  const dataRoot = join(root, 'data');
+  const cacheRoot = join(root, 'cache');
+  await Promise.all([
+    mkdir(workspace),
+    mkdir(join(stateRoot, 'opencode'), { recursive: true }),
+    mkdir(join(configRoot, 'opencode'), { recursive: true }),
+    mkdir(join(dataRoot, 'opencode'), { recursive: true }),
+    mkdir(join(cacheRoot, 'opencode'), { recursive: true })
+  ]);
+  const binary = await executable(root, 'opencode', `#!/bin/sh
+case "$1" in
+  run)
+    shift
+    title=''
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = '--title' ]; then title="$2"; shift 2; else shift; fi
+    done
+    printf '[{"id":"session-test","title":"%s","directory":"/workspace"}]' "$title" > "$XDG_STATE_HOME/opencode/sessions.json"
+    printf 'native progress\n'
+    ;;
+  session)
+    cat "$XDG_STATE_HOME/opencode/sessions.json"
+    ;;
+  export)
+    printf '%s\n' '{"messages":[{"info":{"role":"assistant"},"parts":[{"type":"text","text":"exported final"}]}]}'
+    ;;
+esac
+`);
+  const visible = [];
+  const result = await runOpenCode({
+    binary,
+    prompt: 'perform task',
+    workspace: '/workspace',
+    hostWorkspace: workspace,
+    continuation: null,
+    model: null,
+    websearch: false,
+    env: {
+      HOME: root,
+      XDG_STATE_HOME: stateRoot,
+      XDG_CONFIG_HOME: configRoot,
+      XDG_DATA_HOME: dataRoot,
+      XDG_CACHE_HOME: cacheRoot
+    },
+    signal: null,
+    sandbox: { hostWorkspace: workspace, backend: 'opencode', mounts: [] },
+    onVisibleText: (text) => visible.push(text)
+  });
+  assert.deepEqual(result, { outputText: 'exported final', continuation: { sessionId: 'session-test' } });
+  assert.equal(visible.join(''), 'native progress\n');
+});
+
 test('passes configured models and mutable websearch state to coding-agent invocations', async () => {
   const calls = [];
   const service = createCodingAgentService({
@@ -127,7 +239,25 @@ test('passes configured models and mutable websearch state to coding-agent invoc
   await service.close();
 });
 
+test('forwards live backend text and terminates an incomplete diagnostic line', async () => {
+  const visible = [];
+  const service = createCodingAgentService({
+    agents: [{ name: 'codex', available: true, binary: '/fake/codex' }],
+    runners: {
+      codex: async ({ onVisibleText }) => {
+        onVisibleText('working');
+        return { outputText: 'done', continuation: { threadId: 'thread-live' } };
+      }
+    }
+  });
+  service.setOutputSink((text) => visible.push(text));
+  assert.equal(await service.execute('task'), 'done');
+  assert.deepEqual(visible, ['working', '\n']);
+  await service.close();
+});
+
 test('forwards cancellation to an active coding-agent process', async () => {
+  assert.throws(() => requireSandbox(null), /must run inside the ALA Bubblewrap sandbox/);
   const controller = new AbortController();
   const running = runProcess({
     binary: process.execPath,
@@ -155,7 +285,7 @@ test('pins continuation to one agent and removes its temporary workspace', async
   assert.equal(await service.execute('second'), 'result-2');
   assert.equal(calls[0].workspace, calls[1].workspace);
   assert.deepEqual(calls[1].continuation, { threadId: 'thread-1' });
-  const workspace = calls[0].workspace;
+  const workspace = calls[0].hostWorkspace;
   await service.close();
   await assert.rejects(() => access(workspace));
 });
@@ -168,10 +298,11 @@ test('mounts Anthropic skill directories in the coding-agent workspace', async (
     agents: [{ name: 'codex', available: true, binary: '/fake/codex' }],
     skills: [{ name: 'echo', directoryPath }],
     runners: {
-      codex: async ({ workspace }) => ({
-        outputText: await readFile(join(workspace, '.agents', 'skills', 'echo', 'SKILL.md'), 'utf8'),
-        continuation: null
-      })
+      codex: async ({ workspace, sandbox }) => {
+        assert.equal(workspace, '/workspace');
+        const mount = sandbox.mounts.find((entry) => entry.target === '/workspace/.agents/skills/echo');
+        return { outputText: await readFile(join(mount.source, 'SKILL.md'), 'utf8'), continuation: null };
+      }
     }
   });
   context.after(() => service.close());
@@ -197,26 +328,27 @@ test('refreshes skill links while preserving workspace artifacts and native cont
   context.after(() => service.close());
 
   await service.execute('first');
-  const workspace = calls[0].workspace;
+  const workspace = calls[0].hostWorkspace;
   await writeFile(join(workspace, 'artifact.txt'), 'preserved');
   await service.refreshSkills([{ name: 'second-skill', directoryPath: secondDirectory }]);
 
   assert.equal(await readFile(join(workspace, 'artifact.txt'), 'utf8'), 'preserved');
   await assert.rejects(() => access(join(workspace, '.agents', 'skills', 'first-skill')));
-  assert.match(await readFile(join(workspace, '.agents', 'skills', 'second-skill', 'SKILL.md'), 'utf8'), /second-skill/u);
   await service.execute('second');
-  assert.equal(calls[1].workspace, workspace);
+  assert.equal(calls[1].hostWorkspace, workspace);
   assert.deepEqual(calls[1].continuation, { threadId: 'thread-1' });
+  assert.deepEqual(calls[1].sandbox.mounts.filter((mount) => mount.purpose === 'task-skill').map((mount) => mount.target), [
+    '/workspace/.agents/skills/second-skill'
+  ]);
   await assert.rejects(() => service.refreshSkills([
     { name: 'duplicate', directoryPath: firstDirectory },
     { name: 'duplicate', directoryPath: secondDirectory }
   ]));
-  assert.match(await readFile(join(workspace, '.agents', 'skills', 'second-skill', 'SKILL.md'), 'utf8'), /second-skill/u);
   await service.refreshSkills([]);
   await assert.rejects(() => access(join(workspace, '.agents', 'skills', 'second-skill')));
   assert.equal(await readFile(join(workspace, 'artifact.txt'), 'utf8'), 'preserved');
   await service.execute('third');
-  assert.equal(calls[2].workspace, workspace);
+  assert.equal(calls[2].hostWorkspace, workspace);
   assert.deepEqual(calls[2].continuation, { threadId: 'thread-1' });
 });
 
@@ -236,7 +368,9 @@ test('does not switch backends after a delegated process fails', async () => {
   await service.close();
 });
 
-test('registers and explicitly executes the built-in coding-agent Code Skill', async (context) => {
+test('registers and explicitly executes the built-in coding-agent Code Skill', {
+  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+}, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-codex-fake-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const binary = await executable(root, 'codex', `#!/bin/sh

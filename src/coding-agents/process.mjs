@@ -1,6 +1,19 @@
 import { spawn } from 'node:child_process';
 
+import { buildSandboxArgs, findBubblewrap } from './sandbox.mjs';
+import { ALAError, EXIT_CODES } from '../errors.mjs';
+
 const OUTPUT_LIMIT = 4 * 1024 * 1024;
+
+export function requireSandbox(sandbox) {
+  if (!sandbox) {
+    throw new ALAError(
+      'Coding-agent processes must run inside the ALA Bubblewrap sandbox.',
+      EXIT_CODES.execution
+    );
+  }
+  return sandbox;
+}
 
 function appendLimited(current, chunk, limit = OUTPUT_LIMIT) {
   const next = Buffer.concat([Buffer.from(current, 'utf8'), Buffer.from(chunk)]);
@@ -10,13 +23,48 @@ function appendLimited(current, chunk, limit = OUTPUT_LIMIT) {
   return next.subarray(start).toString('utf8');
 }
 
-export function runProcess({ binary, args, cwd, env = process.env, signal }) {
+export function spawnProcess({ binary, args, cwd, env = process.env, stdio, sandbox = null }) {
+  const executionEnv = { ...process.env, ...env };
+  delete executionEnv.NODE_TEST_CONTEXT;
+  if (!sandbox) {
+    return spawn(binary, args, { cwd, env: executionEnv, stdio });
+  }
+  const bwrap = sandbox.bwrap || findBubblewrap();
+  return spawn(bwrap || '/usr/bin/bwrap', buildSandboxArgs({
+    workspace: sandbox.hostWorkspace,
+    backend: sandbox.backend,
+    binary,
+    args,
+    mounts: sandbox.mounts,
+    env: executionEnv,
+    bwrap,
+    privateProc: sandbox.privateProc,
+    chdir: cwd
+  }), {
+    cwd: sandbox.hostWorkspace,
+    env: executionEnv,
+    stdio
+  });
+}
+
+export function runProcess({
+  binary,
+  args,
+  cwd,
+  env = process.env,
+  signal,
+  sandbox = null,
+  onStdout = null,
+  onStderr = null
+}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(binary, args, {
-      cwd,
-      env: { ...process.env, ...env },
-      stdio: ['ignore', 'pipe', 'pipe']
-    });
+    let child;
+    try {
+      child = spawnProcess({ binary, args, cwd, env, sandbox, stdio: ['ignore', 'pipe', 'pipe'] });
+    } catch (error) {
+      reject(error);
+      return;
+    }
     let stdout = '';
     let stderr = '';
     let settled = false;
@@ -29,8 +77,23 @@ export function runProcess({ binary, args, cwd, env = process.env, signal }) {
 
     if (signal?.aborted) abort();
     else signal?.addEventListener?.('abort', abort, { once: true });
-    child.stdout.on('data', (chunk) => { stdout = appendLimited(stdout, chunk); });
-    child.stderr.on('data', (chunk) => { stderr = appendLimited(stderr, chunk); });
+    const consume = (channel, chunk) => {
+      if (channel === 'stdout') stdout = appendLimited(stdout, chunk);
+      else stderr = appendLimited(stderr, chunk);
+      try {
+        if (channel === 'stdout') onStdout?.(chunk);
+        else onStderr?.(chunk);
+      } catch (error) {
+        child.kill('SIGTERM');
+        if (!settled) {
+          settled = true;
+          signal?.removeEventListener?.('abort', abort);
+          reject(error);
+        }
+      }
+    };
+    child.stdout.on('data', (chunk) => consume('stdout', chunk));
+    child.stderr.on('data', (chunk) => consume('stderr', chunk));
     child.on('error', (error) => {
       if (settled) return;
       settled = true;
