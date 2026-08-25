@@ -45,6 +45,8 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
   /repo remove <name>             Unregister a task repository; TAB completes names
   /symbolic detection on         Enable symbolic task routing
   /symbolic detection off        Disable symbolic task routing
+  /websearch on                  Persist and enable coding-agent web search
+  /websearch off                 Persist and disable coding-agent web search
   /quit | /exit | :quit | :exit  Close the interactive session`;
 
 async function packageVersion() {
@@ -248,6 +250,19 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
             }
             runtime.setSymbolicDetection(parts[2] === 'on');
             io.stderr.write(`ala: symbolic detection ${parts[2]}\n`);
+          } else if (parts[0] === '/websearch') {
+            if (parts.length !== 2 || !['on', 'off'].includes(parts[1])) {
+              throw new ALAError('Usage: /websearch on|off', EXIT_CODES.usage);
+            }
+            const enabled = parts[1] === 'on';
+            const nextConfig = {
+              ...activeConfig,
+              codingAgents: { ...activeConfig.codingAgents, websearch: enabled }
+            };
+            await saveConfig(configPath, nextConfig);
+            activeConfig = nextConfig;
+            runtime.setWebsearch(enabled);
+            io.stderr.write(`ala: websearch ${parts[1]}\n`);
           } else {
             throw new ALAError(`Unknown interactive command: ${line}`, EXIT_CODES.usage);
           }
@@ -312,6 +327,7 @@ async function runExecution(options, io, env) {
     repositories,
     codingAgents,
     codingAgentModels: config.codingAgents.models,
+    websearch: options.websearch ?? config.codingAgents.websearch,
     cwd: io.cwd,
     options,
     env,

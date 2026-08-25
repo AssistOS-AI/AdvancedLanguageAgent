@@ -34,6 +34,7 @@ export async function createRuntime({
   repositories,
   codingAgents = [],
   codingAgentModels = {},
+  websearch = false,
   cwd = process.cwd(),
   options,
   env = process.env,
@@ -54,6 +55,7 @@ export async function createRuntime({
     agents: codingAgents,
     skills,
     models: codingAgentModels,
+    websearch,
     cwd,
     env,
     logger
@@ -89,6 +91,9 @@ export async function createRuntime({
     },
     setCodingAgentModel(name, model) {
       codingAgentService.setModel(name, model);
+    },
+    setWebsearch(enabled) {
+      codingAgentService.setWebsearch(enabled);
     },
     async refreshRepositories(nextRepositories) {
       const nextSkills = await discoverTaskSkills(nextRepositories);

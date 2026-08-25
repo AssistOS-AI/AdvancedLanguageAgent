@@ -32,6 +32,10 @@ test('parses coding-agent discovery and explicit delegation options', () => {
   assert.throws(() => parseArguments(['--agent', 'unknown', 'task']), /must be auto/);
   assert.throws(() => parseArguments(['--agent', 'pi', '--skill', 'translate']), /cannot be used together/);
   assert.throws(() => parseArguments(['--agent', 'pi', '--model', 'fast', 'task']), /cannot be combined/);
+  assert.equal(parseArguments(['--websearch', 'on', 'research']).websearch, true);
+  assert.equal(parseArguments(['--websearch', 'off', 'offline']).websearch, false);
+  assert.equal(parseArguments(['--websearch', 'research']).websearch, true);
+  assert.deepEqual(parseArguments(['--websearch', 'research']).instructionParts, ['research']);
 });
 
 test('rejects unknown options and missing values', () => {

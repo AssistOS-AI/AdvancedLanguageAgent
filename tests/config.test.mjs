@@ -28,7 +28,7 @@ test('saves and loads versioned configuration atomically with restrictive mode',
   const config = {
     version: 1,
     taskRepositories: [{ path: '/tasks/one' }],
-    codingAgents: { priority: ['codex', 'opencode', 'pi'], models: { codex: 'gpt-test' } }
+    codingAgents: { priority: ['codex', 'opencode', 'pi'], models: { codex: 'gpt-test' }, websearch: true }
   };
   await saveConfig(configPath, config);
   assert.deepEqual(await loadConfig(configPath), config);
@@ -96,4 +96,23 @@ test('defaults and validates per-agent coding models', async (context) => {
     codingAgents: { priority: ['codex'], models: { unknown: 'model' } }
   }));
   await assert.rejects(() => loadConfig(configPath), /codingAgents\.models/);
+});
+
+test('defaults and validates the persistent websearch setting', async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-websearch-config-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const configPath = join(root, 'config.json');
+  const { writeFile } = await import('node:fs/promises');
+  await writeFile(configPath, JSON.stringify({
+    version: 1,
+    taskRepositories: [],
+    codingAgents: { priority: ['codex', 'opencode', 'pi'] }
+  }));
+  assert.equal((await loadConfig(configPath)).codingAgents.websearch, false);
+  await writeFile(configPath, JSON.stringify({
+    version: 1,
+    taskRepositories: [],
+    codingAgents: { priority: ['codex'], websearch: 'yes' }
+  }));
+  await assert.rejects(() => loadConfig(configPath), /codingAgents\.websearch/);
 });

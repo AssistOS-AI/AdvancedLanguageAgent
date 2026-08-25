@@ -57,7 +57,11 @@ function validateConfig(value, configPath) {
     }
     models[name] = model.trim();
   }
-  return { version: CONFIG_VERSION, taskRepositories, codingAgents: { priority, models } };
+  const websearch = value.codingAgents?.websearch ?? false;
+  if (typeof websearch !== 'boolean') {
+    throw new ALAError(`codingAgents.websearch must be a boolean in ${configPath}.`, EXIT_CODES.usage);
+  }
+  return { version: CONFIG_VERSION, taskRepositories, codingAgents: { priority, models, websearch } };
 }
 
 export async function loadConfig(configPath) {
@@ -69,7 +73,7 @@ export async function loadConfig(configPath) {
       return {
         version: CONFIG_VERSION,
         taskRepositories: [],
-        codingAgents: { priority: [...DEFAULT_CODING_AGENT_PRIORITY], models: {} }
+        codingAgents: { priority: [...DEFAULT_CODING_AGENT_PRIORITY], models: {}, websearch: false }
       };
     }
     if (error instanceof SyntaxError) {

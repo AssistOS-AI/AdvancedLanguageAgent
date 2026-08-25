@@ -99,6 +99,17 @@ ala --agent auto "Plan and validate this multi-step language task"
 
 The selected coding-agent CLI must already be authenticated through its own login mechanism. By default ALA passes no model option, so each selected CLI uses its own default model. In an interactive session, `/agent <codex|opencode|pi> models` asks that backend for its available model identifiers, and `/agent <codex|opencode|pi> model <model-name>` persists a backend-specific selection in ALA configuration and applies it to every subsequent invocation. ALA's `--model`, `--tag`, `--reasoning-effort`, and `--model-config` settings continue to apply only to direct LLMAgent execution and do not override coding-agent model selection. Anthropic task-skill execution also requires one detected coding agent. ALA runs it in a temporary workspace, mounts the discovered task-skill directories under `.agents/skills`, and removes the workspace when the command or interactive session closes.
 
+Coding-agent web search is off by default. Use bare `--websearch` to enable it for one invocation, `--websearch on|off` as an explicit invocation-only override, or persist the setting during an interactive session:
+
+```bash
+ala --websearch --agent codex "Find current sources and summarize them"
+ala --interactive
+/websearch on
+/websearch off
+```
+
+The interactive command saves `codingAgents.websearch` in the selected ALA configuration and applies it immediately without resetting the current coding-agent session. ALA maps the setting to Codex live search and OpenCode web search and fetch permissions. Pi has no ALA-managed web-search capability, so the setting does not change Pi arguments or tools. Authentication, provider quotas, site terms, and rate limits remain owned by the selected backend and its search provider.
+
 ## Run interactively
 
 Start an interactive session. This works without a task repository:
@@ -127,10 +138,12 @@ Interactive sessions also accept local slash commands. `/agent ...` commands are
 /repo remove task-repository
 /symbolic detection on
 /symbolic detection off
+/websearch on
+/websearch off
 /quit
 ```
 
-`/help` lists every interactive command and explains what it does; `/agent` and `/agent help` display the same list. `/agent list` reports detected backends, `/agent <name> models` prints the model identifiers returned by that backend, `/agent <name> model <model-name>` saves its model selection, `/agent auto <prompt>` follows the configured priority, and `/agent <codex|opencode|pi> <prompt>` selects a backend. Codex models come from its app-server catalog, OpenCode models come from `opencode models`, and Pi models come from `pi --list-models`; Pi provider and model columns are rendered as `provider/model`. While a terminal waits for a MainAgent or coding-agent response, ALA cycles through `Thinking.`, `Thinking..`, and `Thinking...`, then clears the line before printing the result or an error. The animation is disabled when the interactive input or diagnostic output is not a terminal, so redirected output remains clean. `/repo add`, `/repo list`, and `/repo remove` manage persistent task repository registrations locally. Removal accepts the Git repository name without `.git`, such as `task-repository`, while the registered path and original Git URL remain supported. In a terminal, press TAB after `/repo remove ` or after a partial name to complete matching registered repository names. An addition or removal refreshes the active skill catalog immediately, so the next prompt in the same session sees the change. Refreshing replaces only the `.agents/skills` links in an existing coding-agent workspace and preserves its files, selected backend, native continuation, MainAgent conversation, and symbolic-detection setting. Symbolic detection is off by default for each session; `/symbolic detection on` enables instruction-only symbolic task routing, while uncertain matches remain available for coding-agent catalog selection, and `off` disables it again. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
+`/help` lists every interactive command and explains what it does; `/agent` and `/agent help` display the same list. `/agent list` reports detected backends, `/agent <name> models` prints the model identifiers returned by that backend, `/agent <name> model <model-name>` saves its model selection, `/agent auto <prompt>` follows the configured priority, and `/agent <codex|opencode|pi> <prompt>` selects a backend. Codex models come from its app-server catalog, OpenCode models come from `opencode models`, and Pi models come from `pi --list-models`; Pi provider and model columns are rendered as `provider/model`. `/websearch on|off` persists the coding-agent web-search setting and applies it to subsequent requests in the same session. While a terminal waits for a MainAgent or coding-agent response, ALA cycles through `Thinking.`, `Thinking..`, and `Thinking...`, then clears the line before printing the result or an error. The animation is disabled when the interactive input or diagnostic output is not a terminal, so redirected output remains clean. `/repo add`, `/repo list`, and `/repo remove` manage persistent task repository registrations locally. Removal accepts the Git repository name without `.git`, such as `task-repository`, while the registered path and original Git URL remain supported. In a terminal, press TAB after `/repo remove ` or after a partial name to complete matching registered repository names. An addition or removal refreshes the active skill catalog immediately, so the next prompt in the same session sees the change. Refreshing replaces only the `.agents/skills` links in an existing coding-agent workspace and preserves its files, selected backend, native continuation, MainAgent conversation, symbolic-detection setting, and web-search setting. Symbolic detection is off by default for each session; `/symbolic detection on` enables instruction-only symbolic task routing, while uncertain matches remain available for coding-agent catalog selection, and `off` disables it again. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
 
 ## More information
 

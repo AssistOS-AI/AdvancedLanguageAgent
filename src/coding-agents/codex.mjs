@@ -2,9 +2,11 @@ import { spawn } from 'node:child_process';
 
 import { executionError, runProcess } from './process.mjs';
 
-export function buildCodexArguments({ prompt, continuation = null, model = null }) {
+export function buildCodexArguments({ prompt, continuation = null, model = null, websearch = false }) {
   const common = [];
   if (model) common.push('--model', model);
+  if (websearch) common.push('--search');
+  else common.push('--config', 'web_search="disabled"');
   common.push('--sandbox', 'workspace-write', '--ask-for-approval', 'never', 'exec');
   if (continuation?.threadId) {
     return [...common, 'resume', '--json', '--skip-git-repo-check', continuation.threadId, prompt];
@@ -27,10 +29,10 @@ export function parseCodexOutput(stdout, previousThreadId = '') {
   return { outputText: outputText.trim(), continuation: threadId ? { threadId } : null };
 }
 
-export async function runCodex({ binary, prompt, workspace, continuation, model, env, signal }) {
+export async function runCodex({ binary, prompt, workspace, continuation, model, websearch, env, signal }) {
   const result = await runProcess({
     binary,
-    args: buildCodexArguments({ prompt, continuation, model }),
+    args: buildCodexArguments({ prompt, continuation, model, websearch }),
     cwd: workspace,
     env,
     signal

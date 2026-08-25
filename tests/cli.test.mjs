@@ -184,8 +184,10 @@ test('delegates explicitly to a detected coding agent with clean stdout', async 
   const root = await mkdtemp(join(tmpdir(), 'ala-cli-delegate-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const binary = join(root, 'codex');
+  const agentLog = join(root, 'codex-arguments.log');
   const { chmod, writeFile } = await import('node:fs/promises');
   await writeFile(binary, `#!/bin/sh
+printf '%s\n' "$@" > "$ALA_TEST_AGENT_LOG"
 printf '%s\n' '{"type":"thread.started","thread_id":"thread-cli"}'
 printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"agent result"}}'
 `);
@@ -193,8 +195,8 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"a
   const stdout = captureStream();
   const stderr = captureStream();
   const code = await runCli({
-    argv: ['--agent', 'codex', '--config', join(root, 'missing.json'), 'complete', 'task'],
-    env: { HOME: join(root, 'home'), PATH: root },
+    argv: ['--agent', 'codex', '--websearch', '--config', join(root, 'missing.json'), 'complete', 'task'],
+    env: { HOME: join(root, 'home'), PATH: root, ALA_TEST_AGENT_LOG: agentLog },
     stdin: inputStream(),
     stdout,
     stderr,
@@ -203,6 +205,8 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"a
   assert.equal(code, 0);
   assert.equal(stdout.read(), 'agent result\n');
   assert.equal(stderr.read(), '');
+  assert.match(await readFile(agentLog, 'utf8'), /^--search$/mu);
+  await assert.rejects(() => readFile(join(root, 'missing.json'), 'utf8'));
 });
 
 test('handles slash agent commands locally in interactive mode', async (context) => {
@@ -225,15 +229,17 @@ last=''
 resume='no'
 thread=''
 model=''
+websearch='off'
 previous=''
 for argument in "$@"; do
   last="$argument"
   if [ "$argument" = 'resume' ]; then resume='yes'; fi
   if [ "$argument" = 'thread-interactive' ]; then thread="$argument"; fi
   if [ "$previous" = '--model' ]; then model="$argument"; fi
+  if [ "$argument" = '--search' ]; then websearch='on'; fi
   previous="$argument"
 done
-printf '%s|%s|%s|%s\n' "$PWD" "$resume" "$thread" "$model" >> "$ALA_TEST_AGENT_LOG"
+printf '%s|%s|%s|%s|%s\n' "$PWD" "$resume" "$thread" "$model" "$websearch" >> "$ALA_TEST_AGENT_LOG"
 result='slash result'
 case "$last" in *interactive-task*) result='refreshed skill catalog' ;; esac
 printf '%s\n' '{"type":"thread.started","thread_id":"thread-interactive"}'
@@ -258,6 +264,7 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
       '/help',
       '/agent help',
       `/repo add ${repositoryUrl}`,
+      '/websearch on',
       'use the new task skill',
       '/repo list',
       '/repo remove interactive-repository',
@@ -299,20 +306,25 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
   assert.match(diagnostics, /\/repo remove <name>\s+Unregister a task repository; TAB completes names/);
   assert.match(diagnostics, /\/symbolic detection on\s+Enable symbolic task routing/);
   assert.match(diagnostics, /\/symbolic detection off\s+Disable symbolic task routing/);
+  assert.match(diagnostics, /\/websearch on\s+Persist and enable coding-agent web search/);
+  assert.match(diagnostics, /\/websearch off\s+Persist and disable coding-agent web search/);
   assert.match(diagnostics, /\/quit \| \/exit \| :quit \| :exit\s+Close the interactive session/);
   assert.equal(diagnostics.match(/Close the interactive session/g)?.length, 2);
   assert.equal(diagnostics.match(/repository catalog refreshed \(1 skills\)/g)?.length, 1);
   assert.equal(diagnostics.match(/repository catalog refreshed \(0 skills\)/g)?.length, 1);
   assert.match(diagnostics, /symbolic detection on/);
+  assert.match(diagnostics, /websearch on/);
   assert.match(diagnostics, /codex model set to gpt-test/);
   const agentCalls = (await readFile(agentLog, 'utf8')).trim().split('\n');
   assert.equal(agentCalls.length, 2);
   const firstWorkspace = agentCalls[0].split('|')[0];
   const secondWorkspace = agentCalls[1].split('|')[0];
   assert.equal(secondWorkspace, firstWorkspace);
-  assert.equal(agentCalls[0], `${firstWorkspace}|no||`);
-  assert.equal(agentCalls[1], `${firstWorkspace}|yes|thread-interactive|gpt-test`);
-  assert.equal(JSON.parse(await readFile(join(root, 'missing.json'), 'utf8')).codingAgents.models.codex, 'gpt-test');
+  assert.equal(agentCalls[0], `${firstWorkspace}|no|||on`);
+  assert.equal(agentCalls[1], `${firstWorkspace}|yes|thread-interactive|gpt-test|on`);
+  const persistedConfig = JSON.parse(await readFile(join(root, 'missing.json'), 'utf8'));
+  assert.equal(persistedConfig.codingAgents.models.codex, 'gpt-test');
+  assert.equal(persistedConfig.codingAgents.websearch, true);
 });
 
 test('executes an explicitly selected task skill from the persistent registry', async (context) => {

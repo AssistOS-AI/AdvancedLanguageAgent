@@ -7,7 +7,13 @@ import { join } from 'node:path';
 import * as achillesModule from 'ploinky-agent-lib';
 import { buildCodexArguments, parseCodexOutput } from '../src/coding-agents/codex.mjs';
 import { discoverCodingAgents } from '../src/coding-agents/discovery.mjs';
-import { buildOpenCodeArguments, parseOpenCodeModels, parseOpenCodeOutput } from '../src/coding-agents/opencode.mjs';
+import {
+  buildOpenCodeArguments,
+  configureOpenCodeWebsearch,
+  openCodeEnvironment,
+  parseOpenCodeModels,
+  parseOpenCodeOutput
+} from '../src/coding-agents/opencode.mjs';
 import { buildPiArguments, parsePiModels, parsePiOutput } from '../src/coding-agents/pi.mjs';
 import { runProcess } from '../src/coding-agents/process.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
@@ -43,6 +49,10 @@ test('builds and parses native coding-agent protocols', () => {
     'resume', '--json', '--skip-git-repo-check', 'thread-1', 'continue'
   ]);
   assert.deepEqual(buildCodexArguments({ prompt: 'run', model: 'gpt-test' }).slice(0, 2), ['--model', 'gpt-test']);
+  assert.equal(buildCodexArguments({ prompt: 'research', websearch: true }).includes('--search'), true);
+  assert.deepEqual(buildCodexArguments({ prompt: 'offline' }).slice(0, 2), [
+    '--config', 'web_search="disabled"'
+  ]);
   const codex = parseCodexOutput([
     JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }),
     JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'done' } })
@@ -64,6 +74,11 @@ test('builds and parses native coding-agent protocols', () => {
   assert.deepEqual(buildPiArguments({
     prompt: 'next', sessionId: 'session-1', sessionDir: '/tmp/sessions', model: 'provider/model'
   }).slice(-4), ['--model', 'provider/model', '--approve', 'next']);
+  const webPiArguments = buildPiArguments({
+    prompt: 'research', sessionId: 'session-1', sessionDir: '/tmp/sessions', websearch: true
+  });
+  assert.equal(webPiArguments.includes('--extension'), false);
+  assert.equal(webPiArguments.includes('--exclude-tools'), false);
   assert.deepEqual(parseOpenCodeModels('\u001b[32mopenai/gpt-test\u001b[0m\nlocal/model'), [
     'openai/gpt-test', 'local/model'
   ]);
@@ -73,11 +88,27 @@ test('builds and parses native coding-agent protocols', () => {
   ].join('\n')), ['openai/gpt-test']);
 });
 
-test('passes configured models to subsequent coding-agent invocations', async () => {
+test('configures OpenCode web tools and its opt-in search environment', async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-opencode-websearch-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await configureOpenCodeWebsearch(root, true);
+  assert.deepEqual(JSON.parse(await readFile(join(root, 'opencode.json'), 'utf8')).permission, {
+    websearch: 'allow', webfetch: 'allow'
+  });
+  assert.equal(openCodeEnvironment({ KEEP: 'yes' }, true).OPENCODE_ENABLE_EXA, '1');
+  await configureOpenCodeWebsearch(root, false);
+  assert.deepEqual(JSON.parse(await readFile(join(root, 'opencode.json'), 'utf8')).permission, {
+    websearch: 'deny', webfetch: 'deny'
+  });
+  assert.equal(openCodeEnvironment({}, false).OPENCODE_ENABLE_EXA, '0');
+});
+
+test('passes configured models and mutable websearch state to coding-agent invocations', async () => {
   const calls = [];
   const service = createCodingAgentService({
     agents: [{ name: 'codex', available: true, binary: '/fake/codex' }],
     models: { codex: 'gpt-configured' },
+    websearch: false,
     runners: {
       codex: async (input) => {
         calls.push(input);
@@ -87,9 +118,12 @@ test('passes configured models to subsequent coding-agent invocations', async ()
   });
   await service.execute('first');
   service.setModel('codex', 'gpt-updated');
+  service.setWebsearch(true);
   await service.execute('second');
   assert.equal(calls[0].model, 'gpt-configured');
   assert.equal(calls[1].model, 'gpt-updated');
+  assert.equal(calls[0].websearch, false);
+  assert.equal(calls[1].websearch, true);
   await service.close();
 });
 

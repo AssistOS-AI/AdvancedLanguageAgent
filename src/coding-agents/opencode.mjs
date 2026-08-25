@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import { executionError, runProcess } from './process.mjs';
 
@@ -48,12 +50,26 @@ async function findSession(binary, workspace, title, env, signal) {
   }
 }
 
-export async function runOpenCode({ binary, prompt, workspace, continuation, model, env, signal }) {
+export async function configureOpenCodeWebsearch(workspace, websearch) {
+  const policy = websearch ? 'allow' : 'deny';
+  await writeFile(join(workspace, 'opencode.json'), `${JSON.stringify({
+    $schema: 'https://opencode.ai/config.json',
+    permission: { websearch: policy, webfetch: policy }
+  }, null, 2)}\n`, { mode: 0o600 });
+}
+
+export function openCodeEnvironment(env, websearch) {
+  return { ...env, OPENCODE_ENABLE_EXA: websearch ? '1' : '0' };
+}
+
+export async function runOpenCode({ binary, prompt, workspace, continuation, model, websearch, env, signal }) {
+  await configureOpenCodeWebsearch(workspace, websearch);
+  const executionEnv = openCodeEnvironment(env, websearch);
   const title = continuation?.sessionId ? null : `ala-${randomUUID()}`;
   const args = buildOpenCodeArguments({ prompt, workspace, sessionId: continuation?.sessionId, title, model });
-  const result = await runProcess({ binary, args, cwd: workspace, env, signal });
+  const result = await runProcess({ binary, args, cwd: workspace, env: executionEnv, signal });
   if (result.code !== 0) throw executionError('OpenCode', result);
-  const sessionId = continuation?.sessionId || await findSession(binary, workspace, title, env, signal);
+  const sessionId = continuation?.sessionId || await findSession(binary, workspace, title, executionEnv, signal);
   if (!sessionId) throw new Error('OpenCode completed without a resumable session identifier.');
   const outputText = parseOpenCodeOutput(result.stdout);
   if (!outputText) throw new Error('OpenCode completed without a final response.');

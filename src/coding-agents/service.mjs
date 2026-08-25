@@ -48,6 +48,7 @@ export function createCodingAgentService({
   agents,
   skills = [],
   models = {},
+  websearch = false,
   cwd = process.cwd(),
   env = process.env,
   logger = null,
@@ -60,6 +61,7 @@ export function createCodingAgentService({
   let activeName = null;
   let continuation = null;
   const configuredModels = { ...models };
+  let websearchEnabled = Boolean(websearch);
 
   async function prepareWorkspace() {
     const nextWorkspace = await mkdtemp(join(tmpdir(), 'ala-agent-'));
@@ -101,6 +103,7 @@ export function createCodingAgentService({
         workspace,
         continuation,
         model: configuredModels[selected.name] || null,
+        websearch: websearchEnabled,
         env,
         signal
       });
@@ -117,6 +120,9 @@ export function createCodingAgentService({
         throw new ALAError(`Unknown coding agent: ${name}`, EXIT_CODES.usage);
       }
       configuredModels[name] = model;
+    },
+    setWebsearch(enabled) {
+      websearchEnabled = Boolean(enabled);
     },
     async refreshSkills(nextSkills) {
       if (workspace) await replaceSkillLinks(workspace, nextSkills);

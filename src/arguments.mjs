@@ -38,6 +38,7 @@ function defaultExecutionOptions() {
     sources: [],
     tags: [],
     interactive: false,
+    websearch: null,
     force: false,
     help: false,
     version: false
@@ -122,6 +123,15 @@ export function parseArguments(argv) {
     else if (token === '--version' || token === '-v') options.version = true;
     else if (token === '--interactive' || token === '-i') options.interactive = true;
     else if (token === '--force') options.force = true;
+    else if (token === '--websearch') {
+      const state = argv[index + 1];
+      if (['on', 'off'].includes(state)) {
+        options.websearch = state === 'on';
+        index += 1;
+      } else {
+        options.websearch = true;
+      }
+    }
     else if (token === '--stdin') options.sources.push({ type: 'stdin' });
     else if (valueOptions.has(token)) {
       const key = valueOptions.get(token);
@@ -170,6 +180,7 @@ Execution options:
   --output <path>            Write the result to a file
   --force                    Permit overwriting the output file
   --interactive, -i          Start or retain an interactive session
+  --websearch [on|off]       Enable, or override web search for this invocation
   --model <value>            Override the model or model tag
   --tag <tag>                Add a model-selection tag
   --reasoning-effort <value> Override reasoning effort
@@ -179,5 +190,6 @@ Execution options:
   Interactive: /help         Show every interactive command and its behavior
   Interactive: /repo <add|remove|list>  Manage persistent task repositories
   Interactive: /symbolic detection on|off  Toggle symbolic routing in a session
+  Interactive: /websearch on|off  Persist and toggle coding-agent web search
   --help, -h                 Show help
   --version, -v              Show version`;
