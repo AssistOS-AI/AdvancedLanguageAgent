@@ -5,10 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Advanced Language Agent Documentation</title>
   <link rel="stylesheet" href="styles.css">
-  <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
-  </script>
 </head>
 <body>
   <div data-include="partials/header.html"></div>
@@ -16,6 +12,11 @@
     <p class="breadcrumbs"><a href="index.html">Documentation</a> / Execution</p>
     <h1>Execution backends, workspaces, and feedback</h1>
     <p class="lead"><a href="index.html">ALA</a> executes general requests without requiring a task skill. When routing selects an Anthropic task skill, ALA executes it through an authenticated coding agent while the task repository retains ownership of the method.</p>
+
+    <h2>Execution lifetimes</h2>
+    <figure class="diagram"><img src="assets/execution-flow.svg" alt="ALA execution flow comparing one-shot execution with an interactive session"><figcaption><em>One-shot mode rebuilds and removes runtime state for one request; interactive mode retains the ALA runtime, workspace, pinned coding backend and native continuation until session exit.</em></figcaption></figure>
+    <p>One-shot mode is the ordinary non-interactive CLI lifecycle. ALA loads current configuration and repositories, composes and routes one request, optionally creates a fresh coding-agent workspace, emits one normalized result, closes the runtime, and exits. The next one-shot command repeats startup and does not continue the preceding MainAgent or coding-agent conversation. Persistent caller data remains available only when the caller supplies it again through files, task repositories or explicit folder mounts.</p>
+    <p>Interactive mode keeps the ALA process and runtime alive. MainAgent can retain its conversation, and once coding-agent execution begins the selected backend is pinned and its opaque native continuation is passed to later turns. The same host workspace is reused, although each native backend turn still runs as a separately sandboxed child process. Local slash commands update the retained runtime and apply to later turns; closing the interactive session removes the workspace and continuation.</p>
 
     <h2>Generic execution capabilities</h2>
     <p>Straightforward general work normally uses direct model execution through <a href="wiki.html#definition-llm-agent">LLMAgent</a>. Anthropic task-skill execution uses a detected coding agent, which may apply tools, research, planning, and verification inside its isolated workspace while following the selected <code>SKILL.md</code>.</p>
@@ -41,23 +42,6 @@
     <p>In a non-interactive pipeline without a positional instruction, standard input becomes the instruction. With a positional instruction, standard input is read only when <code>--stdin</code> is present. The result is written to standard output or the file selected by <code>--output</code>; an existing file requires <code>--force</code>. Prompts and diagnostics remain on standard error.</p>
 
     <h2>Task workspaces and feedback</h2>
-    <figure class="diagram">
-      <pre class="mermaid">flowchart LR
-        Input[Instruction and input] --> Select[Select method and executor]
-        Select --> Workspace[Optional isolated directory]
-        Workspace --> Run[Execute and verify]
-        Run --> Result[Return result]
-        Result --> Feedback{Correction supplied?}
-        Feedback -->|No| Complete[Complete]
-        Feedback -->|Yes, retry remains| Escalate[Add constraint and reconsider executor]
-        Escalate --> Run
-        Feedback -->|Limit reached| Stop[Return bounded failure diagnostic]
-        classDef decision fill:#fff1db,stroke:#9a641d
-        classDef runtime fill:#e8f5eb,stroke:#367a46
-        class Feedback decision
-        class Select,Workspace,Run,Escalate runtime</pre>
-      <figcaption><em>Bounded correction cycle: feedback becomes a new constraint and may select a stronger executor.</em></figcaption>
-    </figure>
     <p>Coding-agent execution always creates a private temporary workspace and never receives the caller's working directory as its project directory. Every backend execution and model-catalog process runs through Bubblewrap with that directory bound read-write at <code>/workspace</code>. The sandbox clears its inherited environment, remounts its root read-only, exposes system files and the selected existing backend runtime read-only, isolates temporary and home paths, and mounts only controlled backend authentication/state paths read-write. Codex receives its controlled home, Pi receives only <code>.pi/agent</code> plus its task session directory, and OpenCode receives only its configuration, cache, data, and state directories. The complete host home, host root, unrelated directories, and unrelated environment secrets are absent. ALA fails with execution code <code>5</code> if Bubblewrap is unavailable or cannot create the namespace.</p>
     <p>ALA mounts every discovered Anthropic skill directory strictly read-only under <code>/workspace/.agents/skills</code>. Repeatable <code>--folder &lt;path&gt; [write|w]</code> values authorize additional canonical sources under <code>/workspace/.ala/folders</code>; read-only is the default, and exact <code>write</code> or <code>w</code> grants read-write access subject to host permissions. The generated <code>/workspace/.ala/folders.json</code> records aliases and access modes. Folder mounts are not persistent configuration and force the coding-agent route while active. The selected backend runtime is mounted read-only and preferred in the sandbox path. ALA probes procfs with the same dynamic runtime mounts used by execution, uses a private procfs where permitted, and otherwise leaves <code>/proc</code> empty; it never exposes the host procfs. Codex and OpenCode fail closed on hosts that genuinely block the private procfs they require. Networking remains shared, and when systemd-resolved places the target of <code>/etc/resolv.conf</code> under <code>/run</code>, ALA mounts only that resolver file read-only so DNS works without exposing the rest of the runtime tree.</p>
     <p>Running <code>ala</code> without an instruction in a terminal or using <code>--interactive</code> starts an interactive session. While a terminal waits for MainAgent or coding-agent execution, ALA cycles a three-frame <code>Thinking</code> indicator on standard error. The first supported coding-agent event stops and erases that indicator; Codex intermediate assistant and command events, Pi assistant deltas and deduplicated tool text, or OpenCode native output then appear on the diagnostic stream while the normalized final answer remains the standard-output result. Codex's last completed assistant event is reserved for that final result instead of being rendered twice, and benign stdin or stale-rollout catalog diagnostics are suppressed on successful turns. The indicator and live events do not run when interactive input or standard error is not a terminal, which preserves redirected and machine-readable output. <code>/help</code> lists every local command and its behavior without sending a prompt to an LLM. Local <code>/repo</code> commands rebuild the read-only task-skill mount set, while <code>/folder add</code>, <code>/folder list</code>, and <code>/folder remove</code> manage the active session mount set. <a href="wiki.html#definition-main-agent">MainAgent</a> retains its conversation, and repository or folder updates preserve workspace files, selected backend, native continuation, symbolic-detection state, and web-search state. With explicit <code>--skill</code> selection, the runtime retains the selected method while it remains present and supplies the previous result with corrective feedback. <code>:quit</code> and <code>:exit</code> close the session and remove temporary state.</p>

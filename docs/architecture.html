@@ -5,36 +5,25 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Advanced Language Agent Documentation</title>
   <link rel="stylesheet" href="styles.css">
-  <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({ startOnLoad: true, theme: 'neutral' });
-  </script>
 </head>
 <body>
   <div data-include="partials/header.html"></div>
   <main class="page"><article class="page__panel">
     <p class="breadcrumbs"><a href="index.html">Documentation</a> / Architecture</p>
     <h1>Runtime and task-repository architecture</h1>
-    <p class="lead"><a href="index.html">ALA</a> supplies general language execution and reusable execution services. Independent <a href="wiki.html#definition-task-repository">task repositories</a> may add specialized domain methods through <a href="wiki.html#definition-a-skill">task skills</a>. This boundary lets a task family evolve without extending the central runtime.</p>
+    <p class="lead"><a href="index.html">ALA</a> owns request loading, configuration, task-skill discovery, runtime routing, sandboxed coding-agent delegation, normalized output, and cleanup. Independent <a href="wiki.html#definition-task-repository">task repositories</a> add specialized methods through <a href="wiki.html#definition-a-skill">task skills</a> without becoming part of the core runtime.</p>
+
+    <h2>System architecture</h2>
+    <figure class="diagram"><img src="assets/architecture.svg" alt="Simplified ALA architecture showing the caller, mounted inputs, ALA runtime, direct model path, coding-agent sandbox and native coding agents"><figcaption><em>ALA receives a request and mounted inputs, then routes execution either to a direct model or to a sandboxed native coding agent.</em></figcaption></figure>
+    <p>The CLI and input loader compose one request from command arguments and supported payload sources. Configuration and task-repository discovery establish the current models, backend priority, web-search state and Anthropic task-skill catalog. The runtime passes the request through MainAgent, then either uses direct LLMAgent execution or the internal coding-agent Code Skill. CodingAgentService owns backend discovery, Bubblewrap construction, native CLI invocation, event parsing and temporary workspace cleanup.</p>
 
     <h2>Responsibility boundary</h2>
     <p>A task repository decides which requests it covers, which task skill performs the work, which inputs and outputs are valid, and how the result is checked. ALA discovers the repository's Anthropic descriptors and makes them available to an authenticated <a href="wiki.html#definition-coding-agent">coding agent</a>. The agent reads the selected <code>SKILL.md</code>, uses its relative resources, and returns the result.</p>
-    <figure class="diagram">
-      <pre class="mermaid">flowchart LR
-        subgraph Package[Independent task package]
-          Description[Routing description] --> Method[Task method and checks]
-        end
-        subgraph Runtime[CLI runtime]
-          Resolver[Requirement resolver] --> Backend[Configured backend]
-        end
-        Method -->|requests service| Resolver
-        Backend --> Output[Verified result]
-        classDef package fill:#fff1db,stroke:#9a641d,font-weight:bold
-        classDef runtime fill:#e8f5eb,stroke:#367a46
-        class Description,Method package
-        class Resolver,Backend runtime</pre>
-      <figcaption><em>Method and execution ownership: the independent package owns task procedure; the runtime owns reusable services.</em></figcaption>
-    </figure>
+    <p>ALA does not copy a task repository into its runtime model. It validates each descriptor, exposes the selected skill directory as a strict read-only mount, and lets the coding agent follow that method. Direct provider authentication and installed coding-agent state remain owned by their respective runtimes; ALA exposes only controlled state paths inside the sandbox.</p>
+
+    <h2>Process and workspace lifetime</h2>
+    <p>Single-shot and interactive execution share the same components but have different lifetimes. A single-shot invocation creates one ALA runtime for one request. If the coding-agent route is selected, it creates a fresh temporary workspace, mounts the current skills and explicitly authorized folders, runs the selected backend, returns the normalized result, and removes runtime state when the process exits. A later single-shot invocation starts from current configuration and mounts again; it does not reuse the preceding ALA conversation, selected backend continuation, or temporary workspace.</p>
+    <p>An interactive invocation retains one ALA runtime. Its coding workspace is created lazily and reused until the session exits; the first selected coding backend becomes pinned, and that backend's native continuation remains available to later prompts in the same interactive process. Folder, repository, model and web-search commands can update the retained runtime for subsequent turns. These interactive guarantees do not apply across separate one-shot processes.</p>
 
     <h2>Anthropic task skills</h2>
     <p>A task skill is an <a href="wiki.html#definition-a-skill">Anthropic-style declaration</a> in <code>SKILL.md</code> and is owned by a task repository. Its YAML frontmatter supplies a lowercase hyphenated <code>name</code> and a <code>description</code>; the Markdown body supplies instructions, constraints, examples, and acceptance conditions. Supporting files remain relative to the skill directory.</p>

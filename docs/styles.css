@@ -83,6 +83,7 @@ code { border-radius: .25rem; background: var(--code); padding: .1rem .3rem; }
 .lead { font-size: 1.12rem; }
 .note { border-left: .3rem solid var(--accent); background: #edf5ff; padding: .8rem 1rem; }
 .diagram { margin: 1.8rem 0; }
+.diagram img { display: block; width: 100%; height: auto; margin: 0 auto; }
 .diagram figcaption { margin-top: .5rem; color: var(--muted); text-align: center; font-style: italic; }
 pre { overflow: auto; }
 pre.mermaid { margin: 0; padding: .25rem 0; background: transparent; }

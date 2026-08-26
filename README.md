@@ -72,6 +72,8 @@ ala agent list
 
 ## Run a single task
 
+A single-task command runs in one-shot mode. ALA creates a new runtime for that command and, when coding-agent execution is selected, a fresh temporary workspace. It removes the runtime workspace when the command ends. A later one-shot command reads current configuration, repositories and explicit folder arguments again, but it does not resume the preceding ALA conversation or coding-agent continuation.
+
 Run a general request without a task repository:
 
 ```sh
@@ -127,6 +129,8 @@ Start an interactive session. This works without a task repository:
 ```sh
 ala
 ```
+
+Unlike one-shot execution, this process retains one ALA runtime across prompts. MainAgent conversation state remains available, the coding-agent workspace is reused after its first creation, and the first coding backend used by the session is pinned with its native continuation until the session exits.
 
 Start an interactive session with a specific task skill:
 

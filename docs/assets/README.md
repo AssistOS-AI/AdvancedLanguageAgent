@@ -1,4 +1,5 @@
 # Documentation assets
 
 Static SVG diagrams and other documentation-owned assets belong in this directory.
-Runtime-flow diagrams are maintained as Mermaid source in their owning HTML pages.
+Architecture and execution-flow diagrams are maintained here as standalone SVG files
+and referenced from their owning HTML pages.

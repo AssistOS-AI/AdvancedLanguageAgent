@@ -16,11 +16,12 @@
     <article class="page__panel">
       <p class="breadcrumbs"><a href="index.html">Documentation</a> / Overview</p>
       <h1>Advanced Language Agent Documentation</h1>
-      <p class="lead">Advanced Language Agent (ALA) is a system-installed CLI for language and documentation tasks. A human or agent submits an instruction and optional input; the CLI selects a reusable task method, runs it through an eligible backend, and returns the requested result.</p>
+      <p class="lead">Advanced Language Agent (ALA) is a system-installed CLI for language and documentation tasks. A human or agent submits an instruction and optional input; the CLI selects a reusable task method, runs it through an eligible backend, and returns the requested result in one-shot mode or across an explicitly interactive process.</p>
       <p>ALA uses <a href="wiki.html#definition-achilles-agent-lib">AchillesAgentLib</a> for general model-backed requests and its internal coding-agent adapter. Optional task skills are independent Anthropic-style <code>SKILL.md</code> descriptors discovered directly by ALA and executed by Codex, OpenCode, or Pi. Task repositories do not need AchillesAgentLib skill descriptors.</p>
 
       <h2>From instruction to result</h2>
       <p>A request may carry input through command arguments, standard input, a URL, or a file. With no configured <a href="wiki.html#definition-task-repository">task repository</a>, the runtime executes the general request through <a href="wiki.html#definition-main-agent">MainAgent</a>. When task skills and an authenticated <a href="wiki.html#definition-coding-agent">coding agent</a> are available, the agent selects a matching descriptor, reads its <code>SKILL.md</code>, and follows its methodology. The runtime writes the requested result to standard output or a file, while diagnostics use a separate channel.</p>
+      <p>A one-shot command creates a new runtime for one request and removes any coding-agent workspace when that process exits; a later command does not inherit its ALA conversation or native continuation. An interactive command retains the runtime, lazily created workspace, pinned coding backend and native continuation until the user exits. Explicit folder mounts can expose persistent caller data in either mode, but they do not turn the temporary ALA workspace into persistent storage.</p>
       <figure class="diagram">
         <pre class="mermaid">flowchart LR
           Caller[Human or agent] --> Request[Instruction and optional input]

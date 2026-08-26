@@ -125,14 +125,15 @@ async function verifyHtmlFile(filePath) {
 }
 
 const MERMAID_PATTERN = /mermaid.*?\.esm\.min\.mjs/;
+const LOCAL_SVG_PATTERN = /<img\b[^>]*\bsrc="(?![a-z]+:|\/\/|data:)[^"]+\.svg(?:[?#][^"]*)?"/i;
 
-function checkMermaidInclude(filePath, html) {
+function checkDiagramSupport(filePath, html) {
   const partialsDir = resolve(docsDir, 'partials');
   if (filePath.startsWith(partialsDir)) {
     return [];
   }
-  if (!MERMAID_PATTERN.test(html)) {
-    return [`${filePath}: missing Mermaid ESM module script in <head>.`];
+  if (!MERMAID_PATTERN.test(html) && !LOCAL_SVG_PATTERN.test(html)) {
+    return [`${filePath}: missing Mermaid ESM module script or a local SVG diagram.`];
   }
   return [];
 }
@@ -148,7 +149,7 @@ async function main() {
   for (const htmlFile of htmlFiles) {
     allIssues.push(...(await verifyHtmlFile(htmlFile)));
     const html = await readFile(htmlFile, 'utf8');
-    allIssues.push(...checkMermaidInclude(htmlFile, html));
+    allIssues.push(...checkDiagramSupport(htmlFile, html));
   }
 
   if (allIssues.length > 0) {
