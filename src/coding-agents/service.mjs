@@ -201,7 +201,8 @@ export function createCodingAgentService({
       if (!['codex', 'opencode', 'pi'].includes(name)) {
         throw new ALAError(`Unknown coding agent: ${name}`, EXIT_CODES.usage);
       }
-      configuredModels[name] = model;
+      if (model === null || model === undefined || String(model).trim() === '') delete configuredModels[name];
+      else configuredModels[name] = String(model).trim();
     },
     setWebsearch(enabled) {
       websearchEnabled = Boolean(enabled);

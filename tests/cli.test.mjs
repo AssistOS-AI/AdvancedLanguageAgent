@@ -287,6 +287,7 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
       '/agent codex models',
       '/agent codex model gpt-test',
       '/agent codex do this',
+      '/agent codex model default',
       '/quit',
       ''
     ].join('\n')),
@@ -332,12 +333,13 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
   assert.match(diagnostics, /symbolic detection on/);
   assert.match(diagnostics, /websearch on/);
   assert.match(diagnostics, /codex model set to gpt-test/);
+  assert.match(diagnostics, /codex model reset to agent default/);
   const agentCalls = (await readFile(agentLog, 'utf8')).trim().split('\n');
   assert.equal(agentCalls.length, 2);
   assert.equal(agentCalls[0], '/workspace|no|||on');
   assert.equal(agentCalls[1], '/workspace|yes|thread-interactive|gpt-test|on');
   const persistedConfig = JSON.parse(await readFile(join(root, 'missing.json'), 'utf8'));
-  assert.equal(persistedConfig.codingAgents.models.codex, 'gpt-test');
+  assert.equal(persistedConfig.codingAgents.models.codex, undefined);
   assert.equal(persistedConfig.codingAgents.websearch, true);
 });
 

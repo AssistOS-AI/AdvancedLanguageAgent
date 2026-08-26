@@ -37,6 +37,7 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
   /agent list                    List detected coding-agent backends
   /agent <name> models           List models available to a coding-agent backend
   /agent <name> model <model>    Persist the model used by a coding-agent backend
+  /agent <name> model default    Remove the override and use the agent default
   /agent auto <prompt>           Delegate to the first available backend
   /agent codex <prompt>          Delegate to Codex
   /agent opencode <prompt>       Delegate to OpenCode
@@ -224,18 +225,24 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
               io.stdout.write(models.map((model) => `${model}\n`).join(''));
             } else if (['codex', 'opencode', 'pi'].includes(action) && parts[2] === 'model') {
               const model = parts.slice(3).join(' ').trim();
-              if (!model) throw new ALAError(`Usage: /agent ${action} model <model-name>`, EXIT_CODES.usage);
+              if (!model) throw new ALAError(`Usage: /agent ${action} model <model-name|default>`, EXIT_CODES.usage);
+              const useDefault = model === 'default';
+              const nextModels = { ...activeConfig.codingAgents.models };
+              if (useDefault) delete nextModels[action];
+              else nextModels[action] = model;
               const nextConfig = {
                 ...activeConfig,
                 codingAgents: {
                   ...activeConfig.codingAgents,
-                  models: { ...activeConfig.codingAgents.models, [action]: model }
+                  models: nextModels
                 }
               };
               await saveConfig(configPath, nextConfig);
               activeConfig = nextConfig;
-              runtime.setCodingAgentModel(action, model);
-              io.stderr.write(`ala: ${action} model set to ${model}\n`);
+              runtime.setCodingAgentModel(action, useDefault ? null : model);
+              io.stderr.write(useDefault
+                ? `ala: ${action} model reset to agent default\n`
+                : `ala: ${action} model set to ${model}\n`);
             } else if (['auto', 'codex', 'opencode', 'pi'].includes(action)) {
               const prompt = parts.slice(2).join(' ').trim();
               if (!prompt) throw new ALAError(`/agent ${action} requires a prompt.`, EXIT_CODES.usage);

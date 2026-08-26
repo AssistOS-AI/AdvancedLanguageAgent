@@ -232,10 +232,13 @@ test('passes configured models and mutable websearch state to coding-agent invoc
   service.setModel('codex', 'gpt-updated');
   service.setWebsearch(true);
   await service.execute('second');
+  service.setModel('codex', null);
+  await service.execute('third');
   assert.equal(calls[0].model, 'gpt-configured');
   assert.equal(calls[1].model, 'gpt-updated');
   assert.equal(calls[0].websearch, false);
   assert.equal(calls[1].websearch, true);
+  assert.equal(calls[2].model, null);
   await service.close();
 });
 

@@ -34,6 +34,7 @@ ala --interactive</code></pre>
           <tr><td><code>/agent list</code></td><td>Prints only the names of detected backends, one per line.</td></tr>
           <tr><td><code>/agent &lt;name&gt; models</code></td><td>Queries the named Codex, OpenCode, or Pi backend and prints its native model identifiers, one per line.</td></tr>
           <tr><td><code>/agent &lt;name&gt; model &lt;model-name&gt;</code></td><td>Persists the model identifier for the named backend and applies it to every later invocation in the current and future sessions.</td></tr>
+          <tr><td><code>/agent &lt;name&gt; model default</code></td><td>Deletes the named backend's persisted override and immediately returns subsequent invocations to the coding-agent CLI's own default model.</td></tr>
           <tr><td><code>/agent auto &lt;prompt&gt;</code></td><td>Delegates the prompt to the first available backend in configured priority order.</td></tr>
           <tr><td><code>/agent codex &lt;prompt&gt;</code></td><td>Delegates the prompt directly to Codex. OpenCode and Pi use the same form with their names.</td></tr>
           <tr><td><code>/agent</code>, <code>/agent help</code></td><td>Prints the same complete interactive command list as <code>/help</code>.</td></tr>
