@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { access, realpath, stat } from 'node:fs/promises';
 import { basename, resolve } from 'node:path';
@@ -6,15 +5,23 @@ import { basename, resolve } from 'node:path';
 import { ALAError, EXIT_CODES } from '../errors.mjs';
 
 export const SANDBOX_WORKSPACE = '/workspace';
-export const SANDBOX_FOLDERS_DIRECTORY = `${SANDBOX_WORKSPACE}/.ala/folders`;
+export const SANDBOX_FOLDERS_DIRECTORY = `${SANDBOX_WORKSPACE}/folders`;
 
-function folderAlias(sourcePath) {
-  const base = basename(sourcePath)
+function defaultFolderAlias(sourcePath) {
+  return basename(sourcePath)
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/gu, '-')
-    .replace(/^-+|-+$/gu, '') || 'folder';
-  const hash = createHash('sha256').update(sourcePath).digest('hex').slice(0, 12);
-  return `${base}-${hash}`;
+    .replace(/^[._-]+|[._-]+$/gu, '') || 'folder';
+}
+
+function folderAlias(value, sourcePath) {
+  const alias = value === null || value === undefined || String(value).trim() === ''
+    ? defaultFolderAlias(sourcePath)
+    : String(value).trim();
+  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/u.test(alias)) {
+    throw new ALAError('Folder alias must use 1-64 lowercase letters, digits, dots, underscores, or hyphens and start with a letter or digit.', EXIT_CODES.usage);
+  }
+  return alias;
 }
 
 export async function resolveFolderRequest(request, cwd = process.cwd()) {
@@ -33,7 +40,7 @@ export async function resolveFolderRequest(request, cwd = process.cwd()) {
       cause: error
     });
   }
-  const alias = folderAlias(sourcePath);
+  const alias = folderAlias(request.alias, sourcePath);
   return Object.freeze({
     alias,
     sourcePath,
@@ -44,6 +51,13 @@ export async function resolveFolderRequest(request, cwd = process.cwd()) {
 }
 
 export function upsertFolder(records, record) {
+  const collision = records.find((entry) => entry.alias === record.alias && entry.sourcePath !== record.sourcePath);
+  if (collision) {
+    throw new ALAError(
+      `Folder alias is already used by another source: ${record.alias}. Choose an explicit alias with "as <alias>".`,
+      EXIT_CODES.usage
+    );
+  }
   const index = records.findIndex((entry) => entry.sourcePath === record.sourcePath);
   if (index === -1) return [...records, record];
   const next = [...records];
@@ -72,4 +86,3 @@ export async function removeFolderRecord(records, value, cwd = process.cwd()) {
   if (index === -1) throw new ALAError(`Folder is not active: ${requested}`, EXIT_CODES.input);
   return records.filter((_, recordIndex) => recordIndex !== index);
 }
-

@@ -135,10 +135,16 @@ export function parseArguments(argv) {
     }
     else if (token === '--folder') {
       const path = optionValue(argv, index, token);
-      const accessMode = argv[index + 2];
-      const writable = accessMode === 'write' || accessMode === 'w';
-      options.folders.push({ path, writable });
-      index += writable ? 2 : 1;
+      let cursor = index + 2;
+      const writable = argv[cursor] === 'write' || argv[cursor] === 'w';
+      if (writable) cursor += 1;
+      let alias = null;
+      if (argv[cursor] === 'as') {
+        alias = optionValue(argv, cursor, 'as');
+        cursor += 2;
+      }
+      options.folders.push({ path, writable, alias });
+      index = cursor - 1;
     }
     else if (token === '--stdin') options.sources.push({ type: 'stdin' });
     else if (valueOptions.has(token)) {
@@ -189,7 +195,8 @@ Execution options:
   --force                    Permit overwriting the output file
   --interactive, -i          Start or retain an interactive session
   --websearch [on|off]       Enable, or override web search for this invocation
-  --folder <path> [write|w]  Mount a folder read-only, or read-write with write/w
+  --folder <path> [write|w] [as <alias>]
+                              Mount under /workspace/folders/<alias>; read-only by default
   --model <value>            Override the model or model tag
   --tag <tag>                Add a model-selection tag
   --reasoning-effort <value> Override reasoning effort

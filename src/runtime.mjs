@@ -103,8 +103,8 @@ export async function createRuntime({
     listFolders() {
       return codingAgentService.listFolders();
     },
-    addFolder(path, writable = false) {
-      return codingAgentService.addFolder(path, writable);
+    addFolder(path, writable = false, alias = null) {
+      return codingAgentService.addFolder(path, writable, alias);
     },
     removeFolder(value) {
       return codingAgentService.removeFolder(value);

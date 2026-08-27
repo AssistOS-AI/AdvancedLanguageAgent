@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -41,16 +41,7 @@ async function syncMountPointDirectories(parent, names) {
 async function syncWorkspaceLayout(workspace, skills, folders) {
   await validateSkills(skills);
   await syncMountPointDirectories(join(workspace, '.agents', 'skills'), skills.map((skill) => skill.name));
-  await syncMountPointDirectories(join(workspace, '.ala', 'folders'), folders.map((folder) => folder.alias));
-  const manifest = {
-    version: 1,
-    folders: folders.map(({ alias, sourcePath, workspacePath, access }) => ({
-      alias, sourcePath, workspacePath, access
-    }))
-  };
-  await writeFile(join(workspace, '.ala', 'folders.json'), `${JSON.stringify(manifest, null, 2)}\n`, {
-    mode: 0o600
-  });
+  await syncMountPointDirectories(join(workspace, 'folders'), folders.map((folder) => folder.alias));
 }
 
 function sandboxMounts(skills, folders) {
@@ -73,9 +64,9 @@ function sandboxMounts(skills, folders) {
 function folderPrompt(prompt, folders) {
   if (folders.length === 0) return prompt;
   const entries = folders.map((folder) => (
-    `- ${folder.workspacePath} (${folder.access}; alias ${folder.alias})`
+    `- ${folder.workspacePath} — ${folder.access}`
   )).join('\n');
-  return `ALA mounted the following user-authorized folders inside the Bubblewrap sandbox:\n${entries}\nRead ${SANDBOX_WORKSPACE}/.ala/folders.json for the complete mapping. Treat read-only mounts as immutable and write only to mounts marked read-write. Unmounted host paths are unavailable.\n\nUser request:\n${prompt}`;
+  return `You have access to these mounted folders:\n${entries}\nTreat read-only folders as immutable and write only to folders marked read-write. Unmounted host paths are unavailable.\n\nUser request:\n${prompt}`;
 }
 
 export function createCodingAgentService({
@@ -213,11 +204,11 @@ export function createCodingAgentService({
     listFolders() {
       return activeFolders.map((folder) => ({ ...folder }));
     },
-    async addFolder(path, writable = false) {
+    async addFolder(path, writable = false, alias = null) {
       if (available.length === 0) {
         throw new ALAError('Active folders require an available coding agent.', EXIT_CODES.execution);
       }
-      const record = await resolveFolderRequest({ path, writable }, cwd);
+      const record = await resolveFolderRequest({ path, writable, alias }, cwd);
       const previous = activeFolders;
       activeFolders = upsertFolder(activeFolders, record);
       try {

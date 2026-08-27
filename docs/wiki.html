@@ -98,7 +98,7 @@
     <section class="wiki-entry" id="definition-task-workspace">
       <h2>Task workspace</h2>
       <p>A task workspace is an isolated temporary directory for one multi-stage request. It may contain explicit input, retrieved sources, intermediate artifacts, verification results, and final output needed by a task skill or <a href="#definition-agentic-execution">agentic execution</a> path.</p>
-      <p>A task workspace is not an implicit copy of the caller's source repository and does not give <a href="index.html">ALA</a> general ownership of that repository. Coding-agent execution creates one automatically, binds it at <code>/workspace</code> inside Bubblewrap, mounts discovered task-skill directories strictly read-only under <code>/workspace/.agents/skills</code>, and may expose only caller-authorized folders under <code>/workspace/.ala/folders</code>. The runtime removes its temporary workspace when execution closes, while folder sources remain external and unchanged unless explicitly mounted read-write.</p>
+      <p>A task workspace is not an implicit copy of the caller's source repository and does not give <a href="index.html">ALA</a> general ownership of that repository. Coding-agent execution creates one automatically, binds it at <code>/workspace</code> inside Bubblewrap, mounts discovered task-skill directories strictly read-only under <code>/workspace/.agents/skills</code>, and may expose only caller-authorized folders under the protected <code>/workspace/folders/&lt;alias&gt;</code> namespace. The runtime removes its temporary workspace when execution closes, while folder sources remain external and unchanged unless explicitly mounted read-write.</p>
     </section>
 
     <section class="wiki-entry" id="definition-code-skill">

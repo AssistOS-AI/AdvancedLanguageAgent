@@ -61,7 +61,7 @@ test('builds a fail-closed Bubblewrap namespace with explicit mount access', asy
   const writable = join(root, 'writable');
   const home = join(root, 'home');
   const codexState = join(home, '.codex');
-  await Promise.all([mkdir(workspace), mkdir(skill), mkdir(writable), mkdir(codexState, { recursive: true })]);
+  await Promise.all([mkdir(join(workspace, 'folders'), { recursive: true }), mkdir(skill), mkdir(writable), mkdir(codexState, { recursive: true })]);
   const args = buildSandboxArgs({
     workspace,
     backend: 'codex',
@@ -70,7 +70,7 @@ test('builds a fail-closed Bubblewrap namespace with explicit mount access', asy
     env: { HOME: home },
     mounts: [
       { source: skill, target: '/workspace/.agents/skills/test', writable: false },
-      { source: writable, target: '/workspace/.ala/folders/write', writable: true }
+      { source: writable, target: '/workspace/folders/write', writable: true }
     ],
     bwrap,
     privateProc: true
@@ -80,7 +80,11 @@ test('builds a fail-closed Bubblewrap namespace with explicit mount access', asy
   assert.equal(args.some((value, index) => value === '--remount-ro' && args[index + 1] === '/'), true);
   assert.equal(args.some((value, index) => (
     value === '--bind' && args[index + 1] === writable
-      && args[index + 2] === '/workspace/.ala/folders/write'
+      && args[index + 2] === '/workspace/folders/write'
+  )), true);
+  assert.equal(args.some((value, index) => (
+    value === '--ro-bind' && args[index + 1] === join(workspace, 'folders')
+      && args[index + 2] === '/workspace/folders'
   )), true);
   assert.equal(args.some((value, index) => value === '--ro-bind' && args[index + 1] === skill), true);
   assert.equal(args.some((value, index) => value === '--bind' && args[index + 2] === '/workspace'), true);
@@ -156,8 +160,8 @@ test('enforces read-only skills and folders while preserving explicit writable m
   const outside = join(root, 'outside.txt');
   await Promise.all([
     mkdir(join(workspace, '.agents', 'skills', 'test'), { recursive: true }),
-    mkdir(join(workspace, '.ala', 'folders', 'read'), { recursive: true }),
-    mkdir(join(workspace, '.ala', 'folders', 'write'), { recursive: true }),
+    mkdir(join(workspace, 'folders', 'read'), { recursive: true }),
+    mkdir(join(workspace, 'folders', 'write'), { recursive: true }),
     mkdir(skill), mkdir(readOnly), mkdir(writable)
   ]);
   await Promise.all([
@@ -170,12 +174,12 @@ const fs = require('node:fs');
 const result = {
   cwd: process.cwd(),
   skill: fs.readFileSync('/workspace/.agents/skills/test/SKILL.md', 'utf8'),
-  book: fs.readFileSync('/workspace/.ala/folders/read/book.txt', 'utf8')
+  book: fs.readFileSync('/workspace/folders/read/book.txt', 'utf8')
 };
-for (const [name, target] of Object.entries({ skillWrite: '/workspace/.agents/skills/test/new.txt', readWrite: '/workspace/.ala/folders/read/new.txt' })) {
+for (const [name, target] of Object.entries({ skillWrite: '/workspace/.agents/skills/test/new.txt', readWrite: '/workspace/folders/read/new.txt', folderRootWrite: '/workspace/folders/unmanaged.txt' })) {
   try { fs.writeFileSync(target, 'denied'); result[name] = 'allowed'; } catch { result[name] = 'denied'; }
 }
-fs.writeFileSync('/workspace/.ala/folders/write/result.txt', 'persisted');
+fs.writeFileSync('/workspace/folders/write/result.txt', 'persisted');
 fs.writeFileSync('/workspace/artifact.txt', 'workspace');
 try { fs.readFileSync(${JSON.stringify(outside)}); result.outside = 'visible'; } catch { result.outside = 'hidden'; }
 process.stdout.write(JSON.stringify(result));
@@ -190,15 +194,15 @@ process.stdout.write(JSON.stringify(result));
       backend: 'codex',
       mounts: [
         { source: skill, target: '/workspace/.agents/skills/test', writable: false },
-        { source: readOnly, target: '/workspace/.ala/folders/read', writable: false },
-        { source: writable, target: '/workspace/.ala/folders/write', writable: true }
+        { source: readOnly, target: '/workspace/folders/read', writable: false },
+        { source: writable, target: '/workspace/folders/write', writable: true }
       ]
     }
   });
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), {
     cwd: '/workspace', skill: 'strict skill', book: 'book data',
-    skillWrite: 'denied', readWrite: 'denied', outside: 'hidden'
+    skillWrite: 'denied', readWrite: 'denied', folderRootWrite: 'denied', outside: 'hidden'
   });
   assert.equal(await readFile(join(writable, 'result.txt'), 'utf8'), 'persisted');
   assert.equal(await readFile(join(workspace, 'artifact.txt'), 'utf8'), 'workspace');

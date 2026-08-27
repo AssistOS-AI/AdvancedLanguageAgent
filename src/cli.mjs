@@ -49,7 +49,8 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
   /symbolic detection off        Disable symbolic task routing
   /websearch on                  Persist and enable coding-agent web search
   /websearch off                 Persist and disable coding-agent web search
-  /folder add <path> [write|w]   Mount a folder for this session; read-only by default
+  /folder add <path> [write|w] [as <alias>]
+                                  Mount a folder for this session; read-only by default
   /folder list                   List active folder mounts and access modes
   /folder remove <alias|path>    Remove a folder from subsequent agent invocations
   /quit | /exit | :quit | :exit  Close the interactive session`;
@@ -65,6 +66,12 @@ function unquote(value) {
 
 function parseInteractiveFolderAdd(line) {
   let value = line.slice('/folder add'.length).trim();
+  let alias = null;
+  const aliasMatch = value.match(/\s+as\s+(\S+)$/u);
+  if (aliasMatch) {
+    alias = aliasMatch[1];
+    value = value.slice(0, aliasMatch.index).trim();
+  }
   let writable = false;
   const mode = value.match(/\s+(write|w)$/u);
   if (mode) {
@@ -72,8 +79,8 @@ function parseInteractiveFolderAdd(line) {
     value = value.slice(0, mode.index).trim();
   }
   value = unquote(value);
-  if (!value) throw new ALAError('Usage: /folder add <path> [write|w]', EXIT_CODES.usage);
-  return { path: value, writable };
+  if (!value) throw new ALAError('Usage: /folder add <path> [write|w] [as <alias>]', EXIT_CODES.usage);
+  return { path: value, writable, alias };
 }
 
 async function packageVersion() {
@@ -306,7 +313,7 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
             const action = parts[1];
             if (action === 'add') {
               const request = parseInteractiveFolderAdd(line);
-              const record = await runtime.addFolder(request.path, request.writable);
+              const record = await runtime.addFolder(request.path, request.writable, request.alias);
               io.stderr.write(`ala: folder ${record.alias} mounted ${record.access} at ${record.workspacePath}\n`);
             } else if (action === 'list' && parts.length === 2) {
               const records = runtime.listFolders();
@@ -320,7 +327,7 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
               io.stderr.write(`ala: folder removed: ${value}\n`);
             } else {
               throw new ALAError(
-                'Usage: /folder add <path> [write|w] | /folder list | /folder remove <alias-or-path>',
+                'Usage: /folder add <path> [write|w] [as <alias>] | /folder list | /folder remove <alias-or-path>',
                 EXIT_CODES.usage
               );
             }

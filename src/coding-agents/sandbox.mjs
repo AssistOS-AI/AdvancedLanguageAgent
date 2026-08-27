@@ -4,7 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { ALAError, EXIT_CODES } from '../errors.mjs';
-import { SANDBOX_WORKSPACE } from './folders.mjs';
+import { SANDBOX_FOLDERS_DIRECTORY, SANDBOX_WORKSPACE } from './folders.mjs';
 
 const SANDBOX_HOME = '/home/ala';
 const PROBE_CACHE_TTL_MS = 30_000;
@@ -281,6 +281,10 @@ export function buildSandboxArgs({
 
   addParentDirs(sandboxArgs, SANDBOX_WORKSPACE);
   sandboxArgs.push('--bind', hostWorkspace, SANDBOX_WORKSPACE);
+  const hostFoldersDirectory = resolveExisting(path.join(hostWorkspace, 'folders'));
+  if (hostFoldersDirectory) {
+    sandboxArgs.push('--ro-bind', hostFoldersDirectory, SANDBOX_FOLDERS_DIRECTORY);
+  }
 
   const stateMounts = collectAgentStateMounts(backend, env).map((mount) => ({ ...mount }));
   const allMounts = normalizedMounts([...stateMounts, ...mounts]);

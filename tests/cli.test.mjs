@@ -323,7 +323,7 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
   assert.match(diagnostics, /\/symbolic detection off\s+Disable symbolic task routing/);
   assert.match(diagnostics, /\/websearch on\s+Persist and enable coding-agent web search/);
   assert.match(diagnostics, /\/websearch off\s+Persist and disable coding-agent web search/);
-  assert.match(diagnostics, /\/folder add <path> \[write\|w\]\s+Mount a folder for this session/);
+  assert.match(diagnostics, /\/folder add <path> \[write\|w\] \[as <alias>\]\s+Mount a folder for this session/);
   assert.match(diagnostics, /\/folder list\s+List active folder mounts/);
   assert.match(diagnostics, /\/folder remove <alias\|path>\s+Remove a folder/);
   assert.match(diagnostics, /\/quit \| \/exit \| :quit \| :exit\s+Close the interactive session/);
@@ -357,8 +357,8 @@ test('manages interactive folders locally and forces sandboxed coding-agent exec
   await writeFile(join(books, 'book.txt'), 'book source');
   await writeFile(binary, `#!/bin/sh
 test "$PWD" = '/workspace' || exit 10
-test -r /workspace/.ala/folders/*/book.txt || exit 11
-if printf '%s' denied > /workspace/.ala/folders/*/blocked.txt 2>/dev/null; then exit 12; fi
+test -r '/workspace/folders/book-data/book.txt' || exit 11
+if printf '%s' denied > '/workspace/folders/book-data/blocked.txt' 2>/dev/null; then exit 12; fi
 printf '%s\n' '{"type":"thread.started","thread_id":"thread-folders"}'
 printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"folder result"}}'
 `);
@@ -369,7 +369,7 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"f
     argv: ['--interactive', '--config', configPath],
     env: { HOME: join(root, 'home'), PATH: binaryDirectory, CODEX_BIN: binary },
     stdin: inputStream([
-      `/folder add "${books}"`,
+      `/folder add "${books}" as book-data`,
       '/folder list',
       'inspect the mounted folder',
       `/folder remove "${books}"`,
@@ -385,7 +385,7 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"f
   const lines = stdout.read().trim().split('\n');
   assert.equal(lines.length, 2);
   assert.match(lines[0], /\tread-only\t/u);
-  assert.match(lines[0], /\/workspace\/\.ala\/folders\//u);
+  assert.match(lines[0], /\/workspace\/folders\/book-data/u);
   assert.equal(lines[1], 'folder result');
   assert.match(stderr.read(), /folder .* mounted read-only/);
   assert.match(stderr.read(), /folder removed:/);
