@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -216,6 +216,13 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"a
   assert.equal(stderr.read(), '');
   assert.match(await readFile(agentLog, 'utf8'), /^--search$/mu);
   await assert.rejects(() => readFile(join(root, 'missing.json'), 'utf8'));
+  const sessionFiles = await readdir(join(root, 'sessions'));
+  assert.equal(sessionFiles.length, 1);
+  const sessionEvents = (await readFile(join(root, 'sessions', sessionFiles[0]), 'utf8'))
+    .trim().split('\n').map((line) => JSON.parse(line));
+  assert.equal(sessionEvents.find((event) => event.type === 'prompt').content, 'complete task');
+  assert.equal(sessionEvents.find((event) => event.type === 'coding-agent-final').message, 'agent result');
+  assert.equal(sessionEvents.at(-1).status, 'completed');
 });
 
 test('handles slash agent commands locally in interactive mode', {
@@ -341,6 +348,13 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
   const persistedConfig = JSON.parse(await readFile(join(root, 'missing.json'), 'utf8'));
   assert.equal(persistedConfig.codingAgents.models.codex, undefined);
   assert.equal(persistedConfig.codingAgents.websearch, true);
+  const sessionFiles = await readdir(join(root, 'sessions'));
+  assert.equal(sessionFiles.length, 1);
+  const sessionEvents = (await readFile(join(root, 'sessions', sessionFiles[0]), 'utf8'))
+    .trim().split('\n').map((line) => JSON.parse(line));
+  assert.equal(sessionEvents.filter((event) => event.type === 'prompt').length, 2);
+  assert.equal(sessionEvents.filter((event) => event.type === 'session-started').length, 1);
+  assert.equal(sessionEvents.at(-1).type, 'session-ended');
 });
 
 test('manages interactive folders locally and forces sandboxed coding-agent execution', {

@@ -78,6 +78,7 @@ export function createCodingAgentService({
   cwd = process.cwd(),
   env = process.env,
   logger = null,
+  eventSink = null,
   runners = adapters,
   modelListers = modelAdapters
 }) {
@@ -146,14 +147,20 @@ export function createCodingAgentService({
       await ensureWorkspace();
       activeName = selected.name;
       logger?.debug?.(`coding-agent: backend=${selected.name}, workspace=${SANDBOX_WORKSPACE}`);
+      eventSink?.({
+        type: 'coding-agent-selected',
+        agent: selected.name,
+        ...(configuredModels[selected.name] ? { model: configuredModels[selected.name] } : {})
+      });
       let emitted = false;
       let endsWithNewline = true;
-      const onVisibleText = outputSink ? (value) => {
+      const onVisibleText = outputSink || eventSink ? (value) => {
         const text = String(value || '');
         if (!text) return;
         emitted = true;
         endsWithNewline = text.endsWith('\n');
-        outputSink(text);
+        outputSink?.(text);
+        eventSink?.({ type: 'coding-agent-message', agent: selected.name, message: text });
       } : null;
       try {
         const result = await runners[selected.name]({
@@ -168,6 +175,7 @@ export function createCodingAgentService({
           onVisibleText
         });
         continuation = result.continuation;
+        eventSink?.({ type: 'coding-agent-final', agent: selected.name, message: result.outputText });
         return result.outputText;
       } catch (error) {
         if (error?.continuation) continuation = error.continuation;

@@ -39,7 +39,8 @@ export async function createRuntime({
   cwd = process.cwd(),
   options,
   env = process.env,
-  diagnostics = process.stderr
+  diagnostics = process.stderr,
+  eventSink = null
 }) {
   if (typeof achillesModule.MainAgent !== 'function' || typeof achillesModule.discoverSkills !== 'function') {
     throw new ALAError(
@@ -60,7 +61,8 @@ export async function createRuntime({
     websearch,
     cwd,
     env,
-    logger
+    logger,
+    eventSink
   });
   let symbolicRouter = await createSymbolicRouter(skills);
   const selected = runtimeOptions(options, env);
@@ -70,7 +72,20 @@ export async function createRuntime({
       startDir: registry.path,
       logger,
       reasoningEffort: selected.reasoningEffort,
-      disableInternalSkills: true
+      disableInternalSkills: true,
+      supervisor: {
+        async approve() { return 'approve'; },
+        getOutputWriter() {
+          return {
+            async write(message) {
+              if (message?.type !== 'tool_reason') return;
+              const tool = String(message.tool || '').trim();
+              const reason = String(message.reason || '').trim();
+              if (tool && reason) eventSink?.({ type: 'agentlib-tool', tool, reason });
+            }
+          };
+        }
+      }
     });
     await mainAgent.buildSkills();
   } catch (error) {

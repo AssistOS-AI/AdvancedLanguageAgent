@@ -244,8 +244,10 @@ test('passes configured models and mutable websearch state to coding-agent invoc
 
 test('forwards live backend text and terminates an incomplete diagnostic line', async () => {
   const visible = [];
+  const events = [];
   const service = createCodingAgentService({
     agents: [{ name: 'codex', available: true, binary: '/fake/codex' }],
+    eventSink: (event) => events.push(event),
     runners: {
       codex: async ({ onVisibleText }) => {
         onVisibleText('working');
@@ -256,6 +258,11 @@ test('forwards live backend text and terminates an incomplete diagnostic line', 
   service.setOutputSink((text) => visible.push(text));
   assert.equal(await service.execute('task'), 'done');
   assert.deepEqual(visible, ['working', '\n']);
+  assert.deepEqual(events, [
+    { type: 'coding-agent-selected', agent: 'codex' },
+    { type: 'coding-agent-message', agent: 'codex', message: 'working' },
+    { type: 'coding-agent-final', agent: 'codex', message: 'done' }
+  ]);
   await service.close();
 });
 

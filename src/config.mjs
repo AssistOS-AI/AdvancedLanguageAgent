@@ -8,10 +8,14 @@ import { ALAError, EXIT_CODES } from './errors.mjs';
 export const CONFIG_VERSION = 1;
 const DEFAULT_CODING_AGENT_PRIORITY = ['codex', 'opencode', 'pi'];
 
-export function resolveConfigPath({ cliPath, env = process.env, cwd = process.cwd() } = {}) {
+export function resolveConfigPath({ cliPath, env = process.env, cwd = process.cwd(), homeDirectory = homedir() } = {}) {
   if (cliPath) return resolve(cwd, cliPath);
-  if (env.ALA_CONFIG_PATH) return resolve(cwd, env.ALA_CONFIG_PATH);
-  return resolve(homedir(), '.config', 'ala', 'config.json');
+  const configuredRoot = String(env.ALA_CONFIG_PATH || '').trim();
+  const environmentHome = String(env.HOME || '').trim();
+  const configurationRoot = configuredRoot
+    ? resolve(cwd, configuredRoot)
+    : resolve(environmentHome || homeDirectory);
+  return resolve(configurationRoot, '.ala', 'config.json');
 }
 
 function validateConfig(value, configPath) {

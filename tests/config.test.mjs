@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { loadConfig, resolveActiveRepositories, resolveConfigPath, saveConfig } from '../src/config.mjs';
@@ -12,12 +12,20 @@ test('resolves configuration location using documented precedence', () => {
     '/work/custom.json'
   );
   assert.equal(
-    resolveConfigPath({ env: { ALA_CONFIG_PATH: '/selected/config.json' }, cwd: '/work' }),
-    '/selected/config.json'
+    resolveConfigPath({ env: { ALA_CONFIG_PATH: '/selected/root' }, cwd: '/work' }),
+    '/selected/root/.ala/config.json'
   );
   assert.equal(
-    resolveConfigPath({ env: { XDG_CONFIG_HOME: '/ignored' } }),
-    join(homedir(), '.config', 'ala', 'config.json')
+    resolveConfigPath({ env: { XDG_CONFIG_HOME: '/ignored' }, homeDirectory: '/home/tester' }),
+    '/home/tester/.ala/config.json'
+  );
+  assert.equal(
+    resolveConfigPath({ env: { HOME: '/environment-home' }, homeDirectory: '/ignored' }),
+    '/environment-home/.ala/config.json'
+  );
+  assert.equal(
+    resolveConfigPath({ env: { ALA_CONFIG_PATH: './runtime' }, cwd: '/work', homeDirectory: '/ignored' }),
+    '/work/runtime/.ala/config.json'
   );
 });
 

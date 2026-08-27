@@ -43,6 +43,34 @@ test('executes general requests without a task repository', async (context) => {
   assert.deepEqual(calls[1].slice(0, 2), ['prompt', 'answer this']);
 });
 
+test('forwards only Achilles tool name and reason from supervisor progress', async (context) => {
+  const events = [];
+  let mainAgentOptions;
+  const runtime = await createRuntime({
+    achillesModule: {
+      MainAgent: class extends FakeMainAgent {
+        constructor(options) {
+          super({ ...options, calls: [] });
+          mainAgentOptions = options;
+        }
+      },
+      discoverSkills() { return []; }
+    },
+    repositories: [],
+    options: { tags: [] },
+    diagnostics: captureStream(),
+    eventSink: (event) => events.push(event)
+  });
+  context.after(() => runtime.close());
+
+  await mainAgentOptions.supervisor.getOutputWriter().write({
+    type: 'tool_reason', tool: 'coding-agent', reason: 'Needs a coding backend.', stepIndex: 4, secret: 'omit'
+  });
+  assert.deepEqual(events, [{
+    type: 'agentlib-tool', tool: 'coding-agent', reason: 'Needs a coding backend.'
+  }]);
+});
+
 test('initializes the actual Achilles runtime with an empty task catalog', async (context) => {
   const runtime = await createRuntime({
     achillesModule,
