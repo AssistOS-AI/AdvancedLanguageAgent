@@ -26,7 +26,7 @@ import {
   repositorySourceName
 } from './repository-sources.mjs';
 import { createRuntime, feedbackPrompt } from './runtime.mjs';
-import { createRuntimeEventSink, createSessionRecorder, recordExecution } from './session-recorder.mjs';
+import { createRuntimeEventSink } from './runtime-events.mjs';
 import { discoverCodingAgents } from './coding-agents/discovery.mjs';
 import { resolveFolderRequests } from './coding-agents/folders.mjs';
 
@@ -184,7 +184,7 @@ async function runAgentCommand(options, io, env) {
   return EXIT_CODES.success;
 }
 
-async function interactiveLoop(runtime, recorder, initialPrompt, initialInstruction, options, io, env, signal) {
+async function interactiveLoop(runtime, initialPrompt, initialInstruction, options, io, env, signal) {
   const configPath = resolveConfigPath({ cliPath: options.configPath, env, cwd: io.cwd });
   let activeConfig = await loadConfig(configPath);
   let repositoryPaths = activeConfig.taskRepositories.map((entry) => entry.path);
@@ -207,9 +207,7 @@ async function interactiveLoop(runtime, recorder, initialPrompt, initialInstruct
   try {
     if (initialPrompt) {
       previousResult = await thinking.run(
-        () => recordExecution(recorder, initialPrompt, () => (
-          runtime.execute(initialPrompt, { signal, instruction: initialInstruction })
-        ))
+        () => runtime.execute(initialPrompt, { signal, instruction: initialInstruction })
       );
       await writeResult(previousResult, { stdout: io.stdout });
     }
@@ -256,9 +254,9 @@ async function interactiveLoop(runtime, recorder, initialPrompt, initialInstruct
             } else if (['auto', 'codex', 'opencode', 'pi'].includes(action)) {
               const prompt = parts.slice(2).join(' ').trim();
               if (!prompt) throw new ALAError(`/agent ${action} requires a prompt.`, EXIT_CODES.usage);
-              const result = await thinking.run(() => recordExecution(
-                recorder, prompt, () => runtime.executeAgent(prompt, { agent: action, signal })
-              ));
+              const result = await thinking.run(
+                () => runtime.executeAgent(prompt, { agent: action, signal })
+              );
               await writeResult(result, { stdout: io.stdout });
             } else {
               throw new ALAError(`Unknown interactive command: ${line}`, EXIT_CODES.usage);
@@ -346,9 +344,7 @@ async function interactiveLoop(runtime, recorder, initialPrompt, initialInstruct
         return false;
       }
       const prompt = options.skill && previousResult !== null ? feedbackPrompt(previousResult, line) : line;
-      previousResult = await thinking.run(() => recordExecution(
-        recorder, prompt, () => runtime.execute(prompt, { signal })
-      ));
+      previousResult = await thinking.run(() => runtime.execute(prompt, { signal }));
       await writeResult(previousResult, { stdout: io.stdout });
       return false;
     };
@@ -381,11 +377,7 @@ async function runExecution(options, io, env) {
   const configPath = resolveConfigPath({ cliPath: options.configPath, env, cwd: io.cwd });
   const config = await loadConfig(configPath);
   const inferredInteractive = options.interactive || (options.instructionParts.length === 0 && io.stdin.isTTY);
-  const recorder = createSessionRecorder({
-    configPath,
-    mode: inferredInteractive ? 'interactive' : 'one-shot'
-  });
-  const eventSink = createRuntimeEventSink({ recorder, stream: io.stderr, env });
+  const eventSink = createRuntimeEventSink({ stream: io.stderr, env });
   const folders = await resolveFolderRequests(options.folders, io.cwd);
   const repositories = await resolveActiveRepositories({
     config,
@@ -425,8 +417,6 @@ async function runExecution(options, io, env) {
     runtime.cancel('SIGINT');
   };
   process.once('SIGINT', interrupt);
-  let sessionStatus = 'completed';
-
   try {
     let initialPrompt = null;
     let initialInstruction = null;
@@ -442,25 +432,18 @@ async function runExecution(options, io, env) {
       initialInstruction = request.instruction;
     }
     if (inferredInteractive) {
-      await interactiveLoop(runtime, recorder, initialPrompt, initialInstruction, options, io, env, controller.signal);
+      await interactiveLoop(runtime, initialPrompt, initialInstruction, options, io, env, controller.signal);
     } else {
-      const result = await recordExecution(recorder, initialPrompt, () => runtime.execute(initialPrompt, {
+      const result = await runtime.execute(initialPrompt, {
         signal: controller.signal, instruction: initialInstruction
-      }));
+      });
       const outputPath = options.output ? resolve(io.cwd, options.output) : null;
       await writeResult(result, { outputPath, force: options.force, stdout: io.stdout });
     }
     return EXIT_CODES.success;
-  } catch (error) {
-    sessionStatus = controller.signal.aborted ? 'interrupted' : 'failed';
-    throw error;
   } finally {
     process.removeListener('SIGINT', interrupt);
-    try {
-      await runtime.close();
-    } finally {
-      await recorder.close(controller.signal.aborted ? 'interrupted' : sessionStatus);
-    }
+    await runtime.close();
   }
 }
 
