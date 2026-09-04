@@ -6,7 +6,7 @@ A task skill is a procedure defined in an independent task repository through an
 
 ## Install
 
-ALA requires Node.js 20 or newer, npm, and Git. Coding-agent execution additionally requires Linux with Bubblewrap (`bwrap`); ALA fails closed instead of starting Codex, OpenCode, or Pi without it. Coding-agent CLIs remain installed once in their normal system or user locations: ALA never reinstalls or copies them into a task workspace. It resolves each launcher to its existing runtime prefix, mounts that prefix read-only, and prefers its matching executable path inside the sandbox. An external target of `/etc/resolv.conf` is mounted read-only when systemd-resolved stores it under `/run`. Codex and OpenCode also require the host to permit Bubblewrap to mount a private procfs; ALA never substitutes the host's `/proc`. Direct MainAgent execution remains available without a coding agent. From the repository root, run:
+ALA requires Node.js 20 or newer, npm, and Git. Coding-agent execution additionally requires Linux with Bubblewrap (`bwrap`); ALA fails closed instead of starting Codex, OpenCode, or Pi without it. Coding-agent CLIs remain installed once in their normal system or user locations: ALA never reinstalls or copies them into a task workspace. It resolves each launcher to its existing runtime prefix, mounts that prefix read-only, and prefers its matching executable path inside the sandbox. An external target of `/etc/resolv.conf` is mounted read-only when systemd-resolved stores it under `/run`. Codex and OpenCode also require Bubblewrap to mount a private procfs; ALA never substitutes the caller's `/proc`. It first uses a private user namespace. In a capability-bounded nested container where that extra user namespace cannot mount procfs, ALA may use the outer sandbox capability to construct the PID namespace and private procfs, then drops all capabilities before starting the coding agent. Codex is told not to construct a second native sandbox: its `danger-full-access` setting is scoped inside ALA's Bubblewrap boundary, where only the selected workspace and controlled home remain writable. Direct MainAgent execution remains available without a coding agent. From the repository root, run:
 
 ```sh
 npm install
@@ -74,7 +74,7 @@ ala agent list
 
 ## Run a single task
 
-A single-task command runs in one-shot mode. ALA creates a new runtime for that command and, when coding-agent execution is selected, a fresh temporary workspace. It removes the runtime workspace when the command ends. A later one-shot command reads current configuration, repositories and explicit folder arguments again, but it does not resume the preceding ALA conversation or coding-agent continuation.
+A single-task command runs in one-shot mode. Without `--cwd`, ALA creates and later removes a temporary coding-agent workspace. With `--cwd`, it uses the existing directory directly and never deletes it. A later process does not resume the preceding ALA conversation or coding-agent continuation.
 
 Run a general request without a task repository:
 
@@ -94,24 +94,23 @@ Write the result to a file:
 ala "Summarize this report" --file report.md --output summary.md
 ```
 
-MainAgent may delegate suitable complex work to an installed [coding agent](docs/wiki.html#definition-coding-agent) automatically. Force one supported backend with `--agent`; `auto` uses the configured priority, which defaults to Codex, OpenCode, then Pi:
+MainAgent may delegate suitable complex work to an installed [coding agent](docs/wiki.html#definition-coding-agent) automatically. Force one supported backend with `--ca`; `auto` uses the configured priority, which defaults to Codex, OpenCode, then Pi. `--agent` remains a compatibility alias:
 
 ```sh
-ala --agent codex "Research this topic and produce a verified summary"
-ala --agent auto "Plan and validate this multi-step language task"
+ala --ca codex "Research this topic and produce a verified summary"
+ala --ca auto "Plan and validate this multi-step language task"
 ```
 
 The selected coding-agent CLI must already be authenticated through its own login mechanism. By default ALA passes no model option, so each selected CLI uses its own default model. In an interactive session, `/agent <codex|opencode|pi> models` asks that backend for its available model identifiers, `/agent <codex|opencode|pi> model <model-name>` persists a backend-specific selection, and `/agent <codex|opencode|pi> model default` removes that override so the agent CLI chooses its default again. ALA applies each change to every subsequent invocation. ALA's `--model`, `--tag`, `--reasoning-effort`, and `--model-config` settings continue to apply only to direct LLMAgent execution and do not override coding-agent model selection. Anthropic task-skill execution also requires one detected coding agent. ALA runs every agent and model-catalog process inside Bubblewrap, clears inherited environment variables before restoring a backend-specific allowlist, exposes its temporary workspace read-write at `/workspace`, mounts discovered task-skill directories strictly read-only under `/workspace/.agents/skills`, exposes the existing backend runtime read-only, exposes only controlled authentication/state directories read-write, and removes the workspace when the command or interactive session closes.
 
-Mount external folders explicitly when an agent needs filesystem context. The option is repeatable; read-only is the default, while the exact `write` or `w` marker authorizes a read-write bind mount:
+Embedding applications can select a persistent coding-agent home, an existing work tree, skill sets, a prompt file, and Streamable HTTP MCP servers explicitly:
 
 ```sh
-ala --folder ./books "Inspect the book material"
-ala --folder ./books as sources --folder ./drafts write as output "Update the draft from the source material"
-ala --interactive --folder ./books
+ala --home /robot/home --cwd /workspace/project --skillSets pdf2Html,writeArticle \
+  --taskFile task.prompt --MCPServers desktop=http://127.0.0.1:48100/mcp --ca codex
 ```
 
-ALA canonicalizes each source and mounts it directly under `/workspace/folders/<alias>`. Without `as <alias>`, the alias is a sanitized form of the source directory's basename. Different sources cannot share an alias, so collisions must be resolved explicitly. The `/workspace/folders` parent cannot be modified; each mounted child is read-only unless `write` or `w` was supplied. ALA injects the exact sandbox paths and access modes into the delegated request instead of creating a mount manifest. Active folders are process- or session-scoped, are never written to ALA configuration, and force coding-agent execution. Unmounted host paths are absent from the sandbox.
+`--home` is bound as the sandbox home and supplies saved agent authentication and configuration. `--cwd` is bound read-write at `/workspace`. `--skillSets` restricts the discovered catalog, `--task` or `--taskFile` supplies the prompt, and `--MCPServers` injects temporary URL configuration into Codex without rewriting its saved config. The former arbitrary `--folder` and `/folder` interfaces have been removed.
 
 Coding-agent web search is off by default. Use bare `--websearch` to enable it for one invocation, `--websearch on|off` as an explicit invocation-only override, or persist the setting during an interactive session:
 
@@ -157,14 +156,10 @@ Interactive sessions also accept local slash commands. `/agent ...` commands are
 /symbolic detection off
 /websearch on
 /websearch off
-/folder add ./books
-/folder add ./drafts write as output
-/folder list
-/folder remove ./books
 /quit
 ```
 
-`/help` lists every interactive command and explains what it does; `/agent` and `/agent help` display the same list. `/agent list` reports detected backends, `/agent <name> models` prints the model identifiers returned by that backend, `/agent <name> model <model-name>` saves its model selection, and `/agent <name> model default` deletes the saved selection. `/agent auto <prompt>` follows the configured priority, and `/agent <codex|opencode|pi> <prompt>` selects a backend. Codex models come from its app-server catalog, OpenCode models come from `opencode models`, and Pi models come from `pi --list-models`; Pi provider and model columns are rendered as `provider/model`. `/websearch on|off` persists the coding-agent web-search setting and applies it to subsequent requests in the same session. `/folder add <path> [write|w] [as <alias>]`, `/folder list`, and `/folder remove <alias-or-path>` change only the active session's bind mounts and apply to the next coding-agent process without clearing workspace files or native continuation. While a terminal waits for a MainAgent or coding-agent response, ALA cycles through `Thinking.`, `Thinking..`, and `Thinking...`; the first supported coding-agent output event clears the indicator and subsequent intermediate assistant, command, or tool text is shown live on the diagnostic stream. ALA holds back Codex's last completed assistant event so the normalized final answer appears once on standard output. Benign Codex stdin notices and stale-rollout catalog diagnostics are not rendered during a successful turn. The animation and live diagnostic routing are disabled when the interactive input or diagnostic output is not a terminal, so redirected output remains clean. `/repo add`, `/repo list`, and `/repo remove` manage persistent task repository registrations locally. Removal accepts the Git repository name without `.git`, such as `task-repository`, while the registered path and original Git URL remain supported. In a terminal, press TAB after `/repo remove ` or after a partial name to complete matching registered repository names. An addition or removal refreshes the active skill catalog immediately, so the next prompt in the same session sees the change. Refreshing changes only strict read-only task-skill mounts for the next agent process and preserves workspace files, active folder mounts, selected backend, native continuation, MainAgent conversation, symbolic-detection setting, and web-search setting. Symbolic detection is off by default for each session; `/symbolic detection on` enables instruction-only symbolic task routing, while uncertain matches remain available for coding-agent catalog selection, and `off` disables it again. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
+`/help` lists every interactive command. `/agent` commands discover a backend, inspect or select its native model, and delegate prompts; `/websearch on|off` controls supported search tools. `/repo` commands manage persistent task-repository registrations and refresh the active read-only skill set without resetting workspace files, backend selection, native continuation, or MainAgent conversation. While a terminal waits, ALA renders a transient thinking indicator and supported live backend events on standard error, leaving the normalized final result on standard output. Symbolic detection remains off unless enabled with `/symbolic detection on`. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session. Arbitrary interactive folder mounts are no longer supported.
 
 ## More information
 

@@ -1,4 +1,4 @@
-import { readFile, rm } from 'node:fs/promises';
+import { readFile, realpath, rm, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
@@ -28,7 +28,6 @@ import {
 import { createRuntime, feedbackPrompt } from './runtime.mjs';
 import { createRuntimeEventSink } from './runtime-events.mjs';
 import { discoverCodingAgents } from './coding-agents/discovery.mjs';
-import { resolveFolderRequests } from './coding-agents/folders.mjs';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -50,39 +49,7 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
   /symbolic detection off        Disable symbolic task routing
   /websearch on                  Persist and enable coding-agent web search
   /websearch off                 Persist and disable coding-agent web search
-  /folder add <path> [write|w] [as <alias>]
-                                  Mount a folder for this session; read-only by default
-  /folder list                   List active folder mounts and access modes
-  /folder remove <alias|path>    Remove a folder from subsequent agent invocations
   /quit | /exit | :quit | :exit  Close the interactive session`;
-
-function unquote(value) {
-  const trimmed = String(value || '').trim();
-  if (trimmed.length >= 2 && (
-    (trimmed.startsWith('"') && trimmed.endsWith('"'))
-    || (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  )) return trimmed.slice(1, -1);
-  return trimmed;
-}
-
-function parseInteractiveFolderAdd(line) {
-  let value = line.slice('/folder add'.length).trim();
-  let alias = null;
-  const aliasMatch = value.match(/\s+as\s+(\S+)$/u);
-  if (aliasMatch) {
-    alias = aliasMatch[1];
-    value = value.slice(0, aliasMatch.index).trim();
-  }
-  let writable = false;
-  const mode = value.match(/\s+(write|w)$/u);
-  if (mode) {
-    writable = true;
-    value = value.slice(0, mode.index).trim();
-  }
-  value = unquote(value);
-  if (!value) throw new ALAError('Usage: /folder add <path> [write|w] [as <alias>]', EXIT_CODES.usage);
-  return { path: value, writable, alias };
-}
 
 async function packageVersion() {
   const manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'));
@@ -312,28 +279,6 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
             activeConfig = nextConfig;
             runtime.setWebsearch(enabled);
             io.stderr.write(`ala: websearch ${parts[1]}\n`);
-          } else if (parts[0] === '/folder') {
-            const action = parts[1];
-            if (action === 'add') {
-              const request = parseInteractiveFolderAdd(line);
-              const record = await runtime.addFolder(request.path, request.writable, request.alias);
-              io.stderr.write(`ala: folder ${record.alias} mounted ${record.access} at ${record.workspacePath}\n`);
-            } else if (action === 'list' && parts.length === 2) {
-              const records = runtime.listFolders();
-              io.stdout.write(records.map((record) => (
-                `${record.alias}\t${record.access}\t${record.sourcePath}\t${record.workspacePath}\n`
-              )).join(''));
-            } else if (action === 'remove') {
-              const value = unquote(line.slice('/folder remove'.length));
-              if (!value) throw new ALAError('Usage: /folder remove <alias-or-path>', EXIT_CODES.usage);
-              await runtime.removeFolder(value);
-              io.stderr.write(`ala: folder removed: ${value}\n`);
-            } else {
-              throw new ALAError(
-                'Usage: /folder add <path> [write|w] [as <alias>] | /folder list | /folder remove <alias-or-path>',
-                EXIT_CODES.usage
-              );
-            }
           } else {
             throw new ALAError(`Unknown interactive command: ${line}`, EXIT_CODES.usage);
           }
@@ -374,15 +319,29 @@ async function runExecution(options, io, env) {
   }
   if (options.modelConfigPath) env.LLM_MODELS_CONFIG_PATH = resolve(io.cwd, options.modelConfigPath);
 
-  const configPath = resolveConfigPath({ cliPath: options.configPath, env, cwd: io.cwd });
+  const executionCwd = options.cwd ? await realpath(resolve(io.cwd, options.cwd)) : io.cwd;
+  if (options.cwd && !(await stat(executionCwd)).isDirectory()) {
+    throw new ALAError('--cwd must reference an existing directory.', EXIT_CODES.usage);
+  }
+  const executionHome = options.home ? await realpath(resolve(io.cwd, options.home)) : null;
+  if (executionHome && !(await stat(executionHome)).isDirectory()) {
+    throw new ALAError('--home must reference an existing directory.', EXIT_CODES.usage);
+  }
+  const runtimeEnv = executionHome
+    ? { ...env, HOME: executionHome, CODEX_HOME: resolve(executionHome, '.codex') }
+    : env;
+  if (options.taskFile) {
+    const taskFile = resolve(io.cwd, options.taskFile);
+    options.instructionParts.unshift(await readFile(taskFile, 'utf8'));
+  }
+  const configPath = resolveConfigPath({ cliPath: options.configPath, env: runtimeEnv, cwd: executionCwd });
   const config = await loadConfig(configPath);
   const inferredInteractive = options.interactive || (options.instructionParts.length === 0 && io.stdin.isTTY);
   const eventSink = createRuntimeEventSink({ stream: io.stderr, env });
-  const folders = await resolveFolderRequests(options.folders, io.cwd);
   const repositories = await resolveActiveRepositories({
     config,
-    env,
-    cwd: io.cwd
+    env: runtimeEnv,
+    cwd: executionCwd
   });
   const achilles = await loadAchillesAgentLib({
     overridePath: options.achillesPath,
@@ -390,7 +349,7 @@ async function runExecution(options, io, env) {
     cwd: io.cwd
   });
   const codingAgents = await discoverCodingAgents({ env, priority: config.codingAgents.priority });
-  if (options.agent || folders.length > 0) {
+  if (options.agent) {
     const available = codingAgents.filter((agent) => agent.available);
     const requested = options.agent || 'auto';
     const selected = requested === 'auto'
@@ -403,11 +362,13 @@ async function runExecution(options, io, env) {
     repositories,
     codingAgents,
     codingAgentModels: config.codingAgents.models,
-    folders,
+    workspace: options.cwd ? executionCwd : null,
+    home: executionHome,
+    mcpServers: options.mcpServers,
     websearch: options.websearch ?? config.codingAgents.websearch,
-    cwd: io.cwd,
+    cwd: executionCwd,
     options,
-    env,
+    env: runtimeEnv,
     diagnostics: io.stderr,
     eventSink
   });

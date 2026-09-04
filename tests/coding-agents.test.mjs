@@ -54,6 +54,10 @@ test('discovers configured and PATH coding-agent executables in configured prior
 test('builds and parses native coding-agent protocols', () => {
   const defaultCodexArguments = buildCodexArguments({ prompt: 'continue', continuation: { threadId: 'thread-1' } });
   assert.equal(defaultCodexArguments.includes('--model'), false);
+  assert.deepEqual(defaultCodexArguments.slice(
+    defaultCodexArguments.indexOf('--sandbox'),
+    defaultCodexArguments.indexOf('--sandbox') + 2
+  ), ['--sandbox', 'danger-full-access']);
   assert.deepEqual(defaultCodexArguments.slice(-5), [
     'resume', '--json', '--skip-git-repo-check', 'thread-1', 'continue'
   ]);
@@ -62,6 +66,9 @@ test('builds and parses native coding-agent protocols', () => {
   assert.deepEqual(buildCodexArguments({ prompt: 'offline' }).slice(0, 2), [
     '--config', 'web_search="disabled"'
   ]);
+  assert.deepEqual(buildCodexArguments({
+    prompt: 'desktop', mcpServers: [{ name: 'desktop', url: 'http://127.0.0.1:8100/mcp' }]
+  }).slice(0, 2), ['--config', 'mcp_servers.desktop.url="http://127.0.0.1:8100/mcp"']);
   const codex = parseCodexOutput([
     JSON.stringify({ type: 'thread.started', thread_id: 'thread-1' }),
     JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'done' } })

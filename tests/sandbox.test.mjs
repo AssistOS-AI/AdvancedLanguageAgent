@@ -53,6 +53,35 @@ test('Bubblewrap capability probes recover from one transient failure', () => {
   assert.equal(attempts, 2);
 });
 
+test('uses an outer capability only to construct private procfs in a nested container', async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-sandbox-nested-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const workspace = join(root, 'workspace');
+  await mkdir(workspace);
+  let attempts = 0;
+  const nestedBwrap = '/fake/bwrap-nested';
+  assert.equal(canMountPrivateProc(nestedBwrap, {
+    spawnSyncImpl(_command, args) {
+      attempts += 1;
+      if (args.includes('--unshare-user')) {
+        return { status: 1, error: null, stdout: '', stderr: 'proc mount denied in nested user namespace' };
+      }
+      return { status: 0, error: null, stdout: '', stderr: '' };
+    }
+  }), true);
+  assert.equal(attempts, 3);
+  const args = buildSandboxArgs({
+    workspace,
+    backend: 'codex',
+    binary: process.execPath,
+    bwrap: nestedBwrap,
+    privateProc: true
+  });
+  assert.equal(args.includes('--unshare-user'), false);
+  assert.equal(args.some((value, index) => value === '--cap-drop' && args[index + 1] === 'ALL'), true);
+  assert.equal(args.some((value, index) => value === '--proc' && args[index + 1] === '/proc'), true);
+});
+
 test('builds a fail-closed Bubblewrap namespace with explicit mount access', async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-sandbox-args-'));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -82,14 +111,10 @@ test('builds a fail-closed Bubblewrap namespace with explicit mount access', asy
     value === '--bind' && args[index + 1] === writable
       && args[index + 2] === '/workspace/folders/write'
   )), true);
-  assert.equal(args.some((value, index) => (
-    value === '--ro-bind' && args[index + 1] === join(workspace, 'folders')
-      && args[index + 2] === '/workspace/folders'
-  )), true);
   assert.equal(args.some((value, index) => value === '--ro-bind' && args[index + 1] === skill), true);
   assert.equal(args.some((value, index) => value === '--bind' && args[index + 2] === '/workspace'), true);
   assert.equal(args.some((value, index) => (
-    value === '--bind' && args[index + 1] === codexState && args[index + 2] === codexState
+    value === '--bind' && args[index + 1] === codexState && args[index + 2] === '/home/ala/.codex'
   )), true);
   assert.equal(args.some((value, index) => (
     ['--bind', '--ro-bind'].includes(value) && args[index + 1] === home
@@ -140,7 +165,7 @@ test('uses backend-specific state and environment profiles', async (context) => 
   assert.equal(codex.ANTHROPIC_API_KEY, undefined);
   assert.equal(codex.UNRELATED_SECRET, undefined);
   assert.equal(codex.HOME, '/home/ala');
-  assert.equal(codex.CODEX_HOME, codexHome);
+  assert.equal(codex.CODEX_HOME, '/home/ala/.codex');
 
   const pi = sandboxEnvironment('pi', [], { ANTHROPIC_API_KEY: 'provider-secret' });
   assert.equal(pi.ANTHROPIC_API_KEY, 'provider-secret');
@@ -148,7 +173,7 @@ test('uses backend-specific state and environment profiles', async (context) => 
   assert.equal(pi.PI_OFFLINE, '1');
 });
 
-test('enforces read-only skills and folders while preserving explicit writable mounts', {
+test('enforces read-only skill and explicit sandbox mounts', {
   skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
 }, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-sandbox-live-'));
@@ -176,7 +201,7 @@ const result = {
   skill: fs.readFileSync('/workspace/.agents/skills/test/SKILL.md', 'utf8'),
   book: fs.readFileSync('/workspace/folders/read/book.txt', 'utf8')
 };
-for (const [name, target] of Object.entries({ skillWrite: '/workspace/.agents/skills/test/new.txt', readWrite: '/workspace/folders/read/new.txt', folderRootWrite: '/workspace/folders/unmanaged.txt' })) {
+for (const [name, target] of Object.entries({ skillWrite: '/workspace/.agents/skills/test/new.txt', readWrite: '/workspace/folders/read/new.txt' })) {
   try { fs.writeFileSync(target, 'denied'); result[name] = 'allowed'; } catch { result[name] = 'denied'; }
 }
 fs.writeFileSync('/workspace/folders/write/result.txt', 'persisted');
@@ -202,7 +227,7 @@ process.stdout.write(JSON.stringify(result));
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), {
     cwd: '/workspace', skill: 'strict skill', book: 'book data',
-    skillWrite: 'denied', readWrite: 'denied', folderRootWrite: 'denied', outside: 'hidden'
+    skillWrite: 'denied', readWrite: 'denied', outside: 'hidden'
   });
   assert.equal(await readFile(join(writable, 'result.txt'), 'utf8'), 'persisted');
   assert.equal(await readFile(join(workspace, 'artifact.txt'), 'utf8'), 'workspace');

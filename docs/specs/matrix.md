@@ -1,4 +1,6 @@
-# Specification Matrix
+---
+title: Specification Matrix
+---
 
 | Name | Description |
 | --- | --- |
@@ -8,5 +10,5 @@
 | [DS003-main-behavior](specsLoader.html?spec=DS003-main-behavior.md) | Defines ALA request execution, Anthropic task-skill discovery, configured AchillesAgentLib execution, symbolic routing, and coding-agent delegation. |
 | [DS004-task-repositories-and-a-skills](specsLoader.html?spec=DS004-task-repositories-and-a-skills.md) | Defines independently versioned task families and their SKILL.md task contract. |
 | [DS005-routing](specsLoader.html?spec=DS005-routing.md) | Defines explicit Anthropic skill selection, coding-agent catalog selection, symbolic abstention, and general-request fallback. |
-| [DS006-workspaces-sessions-and-feedback](specsLoader.html?spec=DS006-workspaces-sessions-and-feedback.md) | Defines Bubblewrap workspaces, explicit folder mounts, interactive correction, verification, and bounded escalation. |
+| [DS006-workspaces-sessions-and-feedback](specsLoader.html?spec=DS006-workspaces-sessions-and-feedback.md) | Defines explicit cwd and home execution, temporary fallback workspaces, skill mounts, continuation, and cancellation. |
 | [DS007-integration-and-evaluation](specsLoader.html?spec=DS007-integration-and-evaluation.md) | Defines standalone and Ploinky operation, independent configuration, and Anthropic skill-routing evaluation. |

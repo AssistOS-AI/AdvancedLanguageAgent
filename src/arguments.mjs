@@ -13,7 +13,14 @@ const valueOptions = new Map([
   ['--model-config', 'modelConfigPath'],
   ['--achilles-path', 'achillesPath'],
   ['--config', 'configPath'],
-  ['--agent', 'agent']
+  ['--agent', 'agent'],
+  ['--ca', 'agent'],
+  ['--home', 'home'],
+  ['--cwd', 'cwd'],
+  ['--skillSets', 'skillSets'],
+  ['--taskFile', 'taskFile'],
+  ['--task', 'task'],
+  ['--MCPServers', 'mcpServers']
 ]);
 
 const repeatableOptions = new Set(['tags']);
@@ -37,7 +44,6 @@ function defaultExecutionOptions() {
     instructionParts: [],
     sources: [],
     tags: [],
-    folders: [],
     interactive: false,
     websearch: null,
     force: false,
@@ -133,19 +139,6 @@ export function parseArguments(argv) {
         options.websearch = true;
       }
     }
-    else if (token === '--folder') {
-      const path = optionValue(argv, index, token);
-      let cursor = index + 2;
-      const writable = argv[cursor] === 'write' || argv[cursor] === 'w';
-      if (writable) cursor += 1;
-      let alias = null;
-      if (argv[cursor] === 'as') {
-        alias = optionValue(argv, cursor, 'as');
-        cursor += 2;
-      }
-      options.folders.push({ path, writable, alias });
-      index = cursor - 1;
-    }
     else if (token === '--stdin') options.sources.push({ type: 'stdin' });
     else if (valueOptions.has(token)) {
       const key = valueOptions.get(token);
@@ -160,17 +153,15 @@ export function parseArguments(argv) {
       options.instructionParts.push(token);
     }
   }
+  if (options.task) options.instructionParts.unshift(options.task);
   if (options.agent && !['auto', 'codex', 'opencode', 'pi'].includes(options.agent)) {
     throw new ALAError('--agent must be auto, codex, opencode, or pi.', EXIT_CODES.usage);
   }
   if (options.agent && options.skill) {
     throw new ALAError('--agent and --skill cannot be used together.', EXIT_CODES.usage);
   }
-  if (options.agent && (options.model || options.tags.length > 0 || options.reasoningEffort || options.modelConfigPath)) {
-    throw new ALAError(
-      '--agent cannot be combined with model, tag, reasoning-effort, or model-config overrides.',
-      EXIT_CODES.usage
-    );
+  if (options.agent && (options.tags.length > 0 || options.reasoningEffort || options.modelConfigPath)) {
+    throw new ALAError('--ca cannot be combined with tag, reasoning-effort, or model-config overrides.', EXIT_CODES.usage);
   }
   return options;
 }
@@ -186,7 +177,13 @@ Usage:
 
 Execution options:
   --skill <name>             Execute a task skill explicitly
-  --agent <name>             Delegate explicitly: auto, codex, opencode, or pi
+  --ca <name>                Coding agent: auto, codex, opencode, or pi
+  --home <path>              Explicit coding-agent home/configuration directory
+  --cwd <path>               Existing working directory; disables temporary workspace creation
+  --skillSets <a,b>          Expose only the named skill sets in <cwd>/.agents/skills
+  --task <prompt>            Task prompt
+  --taskFile <path>          UTF-8 file containing a detailed task prompt
+  --MCPServers <addresses>   Comma-separated name=URL or host:port MCP servers
   --text <text>              Add a text payload
   --file <path>              Add a UTF-8 file payload
   --url <url>                Add an HTTP(S) UTF-8 payload
@@ -195,8 +192,6 @@ Execution options:
   --force                    Permit overwriting the output file
   --interactive, -i          Start or retain an interactive session
   --websearch [on|off]       Enable, or override web search for this invocation
-  --folder <path> [write|w] [as <alias>]
-                              Mount under /workspace/folders/<alias>; read-only by default
   --model <value>            Override the model or model tag
   --tag <tag>                Add a model-selection tag
   --reasoning-effort <value> Override reasoning effort
@@ -207,6 +202,5 @@ Execution options:
   Interactive: /repo <add|remove|list>  Manage persistent task repositories
   Interactive: /symbolic detection on|off  Toggle symbolic routing in a session
   Interactive: /websearch on|off  Persist and toggle coding-agent web search
-  Interactive: /folder <add|list|remove>  Manage session-scoped sandbox folders
   --help, -h                 Show help
   --version, -v              Show version`;

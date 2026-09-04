@@ -39,6 +39,7 @@ export function spawnProcess({ binary, args, cwd, env = process.env, stdio, sand
     env: executionEnv,
     bwrap,
     privateProc: sandbox.privateProc,
+    home: sandbox.home,
     chdir: cwd
   }), {
     cwd: sandbox.hostWorkspace,

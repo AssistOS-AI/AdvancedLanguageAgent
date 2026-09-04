@@ -4,11 +4,12 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { ALAError, EXIT_CODES } from '../errors.mjs';
-import { SANDBOX_FOLDERS_DIRECTORY, SANDBOX_WORKSPACE } from './folders.mjs';
+import { SANDBOX_WORKSPACE } from './paths.mjs';
 
 const SANDBOX_HOME = '/home/ala';
 const PROBE_CACHE_TTL_MS = 30_000;
 const privateProcSupport = new Map();
+const privateProcModes = new Map();
 const sandboxSupport = new Map();
 const probeDiagnostics = new Map();
 
@@ -41,10 +42,22 @@ export function findBubblewrap() {
 
 export function canMountPrivateProc(bwrap = findBubblewrap(), dependencies = {}) {
   if (!bwrap) return false;
-  const args = ['--die-with-parent', '--unshare-user', '--unshare-pid'];
-  addSystemMounts(args);
-  args.push('--proc', '/proc', '--', '/usr/bin/true');
-  return probeBubblewrap(privateProcSupport, bwrap, args, dependencies);
+  const userNamespaceArgs = ['--die-with-parent', '--unshare-user', '--unshare-pid'];
+  addSystemMounts(userNamespaceArgs);
+  userNamespaceArgs.push('--proc', '/proc', '--', '/usr/bin/true');
+  if (probeBubblewrap(privateProcSupport, bwrap, userNamespaceArgs, dependencies)) {
+    privateProcModes.set(bwrap, 'userns');
+    return true;
+  }
+  const outerCapabilityArgs = ['--die-with-parent', '--unshare-pid', '--cap-drop', 'ALL'];
+  addSystemMounts(outerCapabilityArgs);
+  outerCapabilityArgs.push('--proc', '/proc', '--', '/usr/bin/true');
+  if (probeBubblewrap(privateProcSupport, bwrap, outerCapabilityArgs, dependencies)) {
+    privateProcModes.set(bwrap, 'outer-cap');
+    return true;
+  }
+  privateProcModes.delete(bwrap);
+  return false;
 }
 
 export function canStartBubblewrap(bwrap = findBubblewrap(), dependencies = {}) {
@@ -119,7 +132,7 @@ export function collectAgentStateMounts(backend, env = process.env) {
   const home = path.resolve(env.HOME || homedir());
   if (backend === 'codex') {
     const codexHome = path.resolve(env.CODEX_HOME || path.join(home, '.codex'));
-    return [stateMount(codexHome, codexHome)].filter(Boolean);
+    return [stateMount(codexHome, `${SANDBOX_HOME}/.codex`)].filter(Boolean);
   }
   if (backend === 'opencode') {
     const configHome = path.resolve(env.XDG_CONFIG_HOME || path.join(home, '.config'));
@@ -176,7 +189,7 @@ export function sandboxEnvironment(backend, runtimeMounts = [], env = process.en
     PATH: [...runtimeSearchPaths(runtimeMounts), '/usr/local/bin', '/usr/bin', '/bin'].join(':')
   });
   if (backend === 'codex') {
-    values.CODEX_HOME = path.resolve(env.CODEX_HOME || path.join(env.HOME || homedir(), '.codex'));
+    values.CODEX_HOME = `${SANDBOX_HOME}/.codex`;
   }
   if (backend === 'pi') {
     values.PI_CODING_AGENT_DIR = `${SANDBOX_HOME}/.pi/agent`;
@@ -238,6 +251,7 @@ export function buildSandboxArgs({
   env = process.env,
   bwrap = findBubblewrap(),
   privateProc = canMountPrivateProc(bwrap),
+  home = null,
   chdir = SANDBOX_WORKSPACE
 }) {
   if (!bwrap) {
@@ -261,15 +275,21 @@ export function buildSandboxArgs({
       EXIT_CODES.execution
     );
   }
-  const sandboxArgs = [
-    '--die-with-parent', '--new-session', '--unshare-user', '--unshare-pid', '--unshare-ipc', '--unshare-uts',
-    '--share-net', '--clearenv'
-  ];
+  const outerCapabilityProc = privateProcModes.get(bwrap) === 'outer-cap';
+  const sandboxArgs = ['--die-with-parent', '--new-session'];
+  if (!outerCapabilityProc) sandboxArgs.push('--unshare-user');
+  sandboxArgs.push('--unshare-pid', '--unshare-ipc', '--unshare-uts', '--share-net');
+  if (outerCapabilityProc) sandboxArgs.push('--cap-drop', 'ALL');
+  sandboxArgs.push('--clearenv');
   addSystemMounts(sandboxArgs);
   addResolverMount(sandboxArgs);
   if (privateProc) sandboxArgs.push('--proc', '/proc');
   else sandboxArgs.push('--dir', '/proc');
-  sandboxArgs.push('--dev', '/dev', '--tmpfs', '/tmp', '--dir', '/home', '--tmpfs', SANDBOX_HOME);
+  sandboxArgs.push('--dev', '/dev', '--tmpfs', '/tmp', '--dir', '/home');
+  const explicitHome = resolveExisting(home);
+  if (home && !explicitHome) throw new ALAError('Coding-agent home is unavailable.', EXIT_CODES.execution);
+  if (explicitHome) sandboxArgs.push('--bind', explicitHome, SANDBOX_HOME);
+  else sandboxArgs.push('--tmpfs', SANDBOX_HOME);
 
   const runtimeMounts = collectAgentRuntimeMounts(command).map((source) => ({
     source, target: source, writable: false, purpose: 'agent-runtime'
@@ -281,12 +301,8 @@ export function buildSandboxArgs({
 
   addParentDirs(sandboxArgs, SANDBOX_WORKSPACE);
   sandboxArgs.push('--bind', hostWorkspace, SANDBOX_WORKSPACE);
-  const hostFoldersDirectory = resolveExisting(path.join(hostWorkspace, 'folders'));
-  if (hostFoldersDirectory) {
-    sandboxArgs.push('--ro-bind', hostFoldersDirectory, SANDBOX_FOLDERS_DIRECTORY);
-  }
 
-  const stateMounts = collectAgentStateMounts(backend, env).map((mount) => ({ ...mount }));
+  const stateMounts = explicitHome ? [] : collectAgentStateMounts(backend, env).map((mount) => ({ ...mount }));
   const allMounts = normalizedMounts([...stateMounts, ...mounts]);
   for (const mount of allMounts) {
     addParentDirs(sandboxArgs, mount.target);

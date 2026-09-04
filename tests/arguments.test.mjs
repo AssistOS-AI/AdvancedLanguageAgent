@@ -31,27 +31,27 @@ test('parses coding-agent discovery and explicit delegation options', () => {
   assert.equal(parseArguments(['--agent', 'codex', 'Plan', 'this']).agent, 'codex');
   assert.throws(() => parseArguments(['--agent', 'unknown', 'task']), /must be auto/);
   assert.throws(() => parseArguments(['--agent', 'pi', '--skill', 'translate']), /cannot be used together/);
-  assert.throws(() => parseArguments(['--agent', 'pi', '--model', 'fast', 'task']), /cannot be combined/);
+  assert.equal(parseArguments(['--ca', 'pi', '--model', 'fast', '--task', 'task']).model, 'fast');
   assert.equal(parseArguments(['--websearch', 'on', 'research']).websearch, true);
   assert.equal(parseArguments(['--websearch', 'off', 'offline']).websearch, false);
   assert.equal(parseArguments(['--websearch', 'research']).websearch, true);
   assert.deepEqual(parseArguments(['--websearch', 'research']).instructionParts, ['research']);
-  assert.deepEqual(parseArguments([
-    '--folder', './books', '--folder', './drafts', 'write', 'as', 'draft-output',
-    '--folder', './notes', 'w', 'research'
-  ]).folders, [
-    { path: './books', writable: false, alias: null },
-    { path: './drafts', writable: true, alias: 'draft-output' },
-    { path: './notes', writable: true, alias: null }
+  const invocation = parseArguments([
+    '--home', '/robot', '--cwd', '/work', '--skillSets', 'pdf2Html,writeArticle',
+    '--taskFile', 'task.prompt', '--MCPServers', 'desktop=http://127.0.0.1:8100/mcp', '--ca', 'codex'
   ]);
+  assert.equal(invocation.home, '/robot');
+  assert.equal(invocation.cwd, '/work');
+  assert.equal(invocation.skillSets, 'pdf2Html,writeArticle');
+  assert.equal(invocation.taskFile, 'task.prompt');
+  assert.equal(invocation.mcpServers, 'desktop=http://127.0.0.1:8100/mcp');
 });
 
 test('rejects unknown options and missing values', () => {
   assert.throws(() => parseArguments(['--unknown']), /Unknown option/);
   assert.throws(() => parseArguments(['--task-repo', 'tasks']), /Unknown option/);
   assert.throws(() => parseArguments(['--skill']), /requires a value/);
-  assert.throws(() => parseArguments(['--folder']), /requires a value/);
-  assert.throws(() => parseArguments(['--folder', './books', 'as']), /requires a value/);
+  assert.throws(() => parseArguments(['--folder', './books']), /Unknown option/);
   assert.throws(() => parseArguments(['repo', 'add']), /requires a Git URL/);
   assert.throws(() => parseArguments(['repo', 'add', './tasks']), /requires a Git URL/);
   assert.throws(() => parseArguments(['repo', 'remove']), /requires a repository name, path, or Git URL/);

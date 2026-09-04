@@ -34,7 +34,9 @@ export async function createRuntime({
   repositories,
   codingAgents = [],
   codingAgentModels = {},
-  folders = [],
+  workspace = null,
+  home = null,
+  mcpServers = null,
   websearch = false,
   cwd = process.cwd(),
   options,
@@ -53,11 +55,27 @@ export async function createRuntime({
     builtInSkillsDirectories: codingAgents.some((record) => record.available) ? [internalSkillsDirectory] : []
   });
   let skills = registry.skills;
+  if (options.skillSets) {
+    const requested = String(options.skillSets).split(',').map((name) => name.trim()).filter(Boolean);
+    const selectedNames = new Set(requested);
+    skills = skills.filter((skill) => selectedNames.has(skill.name));
+    const missing = requested.filter((name) => !skills.some((skill) => skill.name === name));
+    if (missing.length) throw new ALAError(`Task skill sets not found: ${missing.join(', ')}`, EXIT_CODES.repository);
+  }
+  const invocationModels = { ...codingAgentModels };
+  if (options.agent && options.model) {
+    const selectedAgent = options.agent === 'auto'
+      ? codingAgents.find((record) => record.available)?.name
+      : options.agent;
+    if (selectedAgent) invocationModels[selectedAgent] = options.model;
+  }
   const codingAgentService = createCodingAgentService({
     agents: codingAgents,
     skills,
-    folders,
-    models: codingAgentModels,
+    workspace,
+    home,
+    mcpServers,
+    models: invocationModels,
     websearch,
     cwd,
     env,
@@ -115,15 +133,6 @@ export async function createRuntime({
     setCodingAgentOutputSink(outputSink) {
       codingAgentService.setOutputSink(outputSink);
     },
-    listFolders() {
-      return codingAgentService.listFolders();
-    },
-    addFolder(path, writable = false, alias = null) {
-      return codingAgentService.addFolder(path, writable, alias);
-    },
-    removeFolder(value) {
-      return codingAgentService.removeFolder(value);
-    },
     async refreshRepositories(nextRepositories) {
       const nextSkills = await discoverTaskSkills(nextRepositories);
       const nextSymbolicRouter = await createSymbolicRouter(nextSkills);
@@ -171,12 +180,6 @@ export async function createRuntime({
       }
       if (skills.length > 0 && codingAgents.some((agent) => agent.available)) {
         return mainAgent.executeSkill('coding-agent', catalogSelectionPrompt(skills, prompt), common);
-      }
-      if (codingAgentService.listFolders().length > 0) {
-        if (!codingAgents.some((agent) => agent.available)) {
-          throw new ALAError('Active folders require an available coding agent.', EXIT_CODES.execution);
-        }
-        return mainAgent.executeSkill('coding-agent', prompt, common);
       }
       return mainAgent.executePrompt(prompt, common);
     },

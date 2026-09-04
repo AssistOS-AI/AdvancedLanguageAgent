@@ -1,12 +1,17 @@
 import { executionError, requireSandbox, runProcess, spawnProcess } from './process.mjs';
 import { appendBoundedTail, createLineDecoder } from './streaming.mjs';
+import { codexMcpOverrides } from './mcp-servers.mjs';
 
-export function buildCodexArguments({ prompt, continuation = null, model = null, websearch = false }) {
-  const common = [];
+export function buildCodexArguments({ prompt, continuation = null, model = null, websearch = false, mcpServers = [] }) {
+  const common = codexMcpOverrides(mcpServers);
   if (model) common.push('--model', model);
   if (websearch) common.push('--search');
   else common.push('--config', 'web_search="disabled"');
-  common.push('--sandbox', 'workspace-write', '--ask-for-approval', 'never', 'exec');
+  // ALA already confines Codex with Bubblewrap. Asking Codex to create its own
+  // workspace sandbox would require another user namespace and fails in nested
+  // container deployments. "danger-full-access" therefore applies only inside
+  // ALA's already restricted filesystem and capability boundary.
+  common.push('--sandbox', 'danger-full-access', '--ask-for-approval', 'never', 'exec');
   if (continuation?.threadId) {
     return [...common, 'resume', '--json', '--skip-git-repo-check', continuation.threadId, prompt];
   }
@@ -85,14 +90,14 @@ export function createCodexStderrParser({ onText = () => {} } = {}) {
 }
 
 export async function runCodex({
-  binary, prompt, workspace, continuation, model, websearch, env, signal, sandbox, onVisibleText
+  binary, prompt, workspace, continuation, model, websearch, mcpServers, env, signal, sandbox, onVisibleText
 }) {
   requireSandbox(sandbox);
   const parser = createCodexEventParser({ threadId: continuation?.threadId, onText: onVisibleText });
   const stderrParser = createCodexStderrParser({ onText: onVisibleText });
   const result = await runProcess({
     binary,
-    args: buildCodexArguments({ prompt, continuation, model, websearch }),
+    args: buildCodexArguments({ prompt, continuation, model, websearch, mcpServers }),
     cwd: workspace,
     env,
     signal,
