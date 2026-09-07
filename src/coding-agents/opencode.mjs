@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import { executionError, requireSandbox, runProcess } from './process.mjs';
-import { appendBoundedTail } from './streaming.mjs';
+import { appendBoundedTail, createLineDecoder } from './streaming.mjs';
 
 const SEMANTIC_FAILURE_PATTERNS = Object.freeze([
   /permission requested:\s*external_directory/iu,
@@ -143,20 +143,43 @@ export function openCodeEnvironment(env, websearch) {
 }
 
 export async function runOpenCode({
-  binary, prompt, workspace, hostWorkspace, continuation, model, websearch, env, signal, sandbox, onVisibleText
+  binary, prompt, workspace, hostWorkspace, continuation, model, websearch, env, signal, sandbox, onVisibleText,
+  onSession
 }) {
   requireSandbox(sandbox);
   await configureOpenCodeWebsearch(hostWorkspace, websearch);
   const executionEnv = openCodeEnvironment(env, websearch);
   const title = continuation?.sessionId ? null : `ala-${randomUUID()}`;
   const args = buildOpenCodeArguments({ prompt, workspace, sessionId: continuation?.sessionId, title, model });
-  const result = await runProcess({
-    binary, args, cwd: workspace, env: executionEnv, signal, sandbox,
-    onStdout: (chunk) => onVisibleText?.(chunk.toString('utf8')),
-    onStderr: (chunk) => onVisibleText?.(chunk.toString('utf8'))
+  if (onSession) args.splice(1, 0, '--format', 'json');
+  let discoveredId = continuation?.sessionId;
+  let identityError = null;
+  let saved = Promise.resolve();
+  const decoder = createLineDecoder((line) => {
+    let event;
+    try { event = JSON.parse(line); } catch { onVisibleText?.(`${line}\n`); return; }
+    if (continuation?.sessionId && event.sessionID && event.sessionID !== continuation.sessionId) {
+      identityError = new Error('OpenCode did not restore the requested native session.');
+      return;
+    }
+    if (event.sessionID && !discoveredId) {
+      discoveredId = event.sessionID;
+      saved = Promise.resolve(onSession?.({ sessionId: discoveredId }));
+      saved.catch(() => {});
+    }
+    const text = textFromEvent(event);
+    if (text) onVisibleText?.(text);
   });
-  const sessionId = continuation?.sessionId
+  let result;
+  try { result = await runProcess({
+    binary, args, cwd: workspace, env: executionEnv, signal, sandbox,
+    onStdout: onSession ? decoder.push : (chunk) => onVisibleText?.(chunk.toString('utf8')),
+    onStderr: (chunk) => onVisibleText?.(chunk.toString('utf8'))
+  }); } finally { decoder.finish(); await saved; }
+  if (identityError) throw identityError;
+  const sessionId = discoveredId
     || await resolveSession(binary, workspace, title, executionEnv, signal, sandbox);
+  if (sessionId) await onSession?.({ sessionId });
   const semanticFailure = detectOpenCodeSemanticFailure(result);
   if (result.code !== 0 || semanticFailure) {
     const error = result.code !== 0

@@ -24,6 +24,13 @@
 printf 'Summarize this text' | ala
 ala --interactive</code></pre>
 
+    <h2>Persistent coding-agent sessions</h2>
+    <p><code>--session-id &lt;uuid&gt;</code> creates a persistent conversation and requires explicit <code>--home</code>, <code>--cwd</code>, and <code>--ca</code> in one-shot mode. Add <code>--resume-session</code> to resume that exact conversation. The backend chosen on first execution remains pinned. Missing state, a missing native conversation, another active process, or a different home/workspace causes an error. Without these options, one-shot execution remains independent.</p>
+    <pre><code>ala --home /robots/analyst/home --cwd /projects/app --ca auto \
+  --session-id 11111111-1111-4111-8111-111111111111 --task "Inspect the project"
+ala --home /robots/analyst/home --cwd /projects/app --ca auto \
+  --session-id 11111111-1111-4111-8111-111111111111 --resume-session --task "Continue."</code></pre>
+    <p><code>--control-stdin</code> accepts JSONL records such as <code>{"type":"message","id":"request-1","message":"Also check the tests"}</code> while the task executes. Supply the initial task as an argument or file; stdin is reserved for control. Persistent mode emits <code>@@ALA_EVENT@@</code> records on stderr, including <code>session-ready</code>, <code>message-accepted</code> with <code>delivery</code> set to <code>delivered</code> or <code>queued</code>, and <code>message-rejected</code>. stdout remains the final result. Codex uses app-server steering and Pi uses RPC steering. OpenCode follow-ups run sequentially after the active invocation. Queues belong to the live execution; interruption cancels pending follow-ups.</p>
     <h2>Interactive slash commands</h2>
     <p>When an interactive session is active, a line beginning with <code>/</code> is handled locally before ALA calls <a href="wiki.html#definition-main-agent">MainAgent</a>. These commands therefore do not consume an LLM prompt. While a terminal waits for a MainAgent or coding-agent response, ALA animates <code>Thinking.</code>, <code>Thinking..</code>, and <code>Thinking...</code> on the diagnostic stream. The first supported coding-agent event clears the indicator and replaces it with live backend output; the normalized final answer remains on standard output. The indicator and live events are disabled when interactive input or diagnostic output is redirected.</p>
     <div class="table-wrap">

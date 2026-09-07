@@ -17,6 +17,7 @@ const valueOptions = new Map([
   ['--ca', 'agent'],
   ['--home', 'home'],
   ['--cwd', 'cwd'],
+  ['--session-id', 'sessionId'],
   ['--skillSets', 'skillSets'],
   ['--taskFile', 'taskFile'],
   ['--task', 'task'],
@@ -130,6 +131,8 @@ export function parseArguments(argv) {
     else if (token === '--version' || token === '-v') options.version = true;
     else if (token === '--interactive' || token === '-i') options.interactive = true;
     else if (token === '--force') options.force = true;
+    else if (token === '--resume-session') options.resumeSession = true;
+    else if (token === '--control-stdin') options.controlStdin = true;
     else if (token === '--websearch') {
       const state = argv[index + 1];
       if (['on', 'off'].includes(state)) {
@@ -180,6 +183,9 @@ Execution options:
   --ca <name>                Coding agent: auto, codex, opencode, or pi
   --home <path>              Explicit coding-agent home/configuration directory
   --cwd <path>               Existing working directory; disables temporary workspace creation
+  --session-id <uuid>        Persistent conversation identity; requires --home, --cwd and --ca
+  --resume-session           Resume the exact saved session, never create a replacement
+  --control-stdin            Accept JSONL message commands while executing
   --skillSets <a,b>          Expose only the named skill sets in <cwd>/.agents/skills
   --task <prompt>            Task prompt
   --taskFile <path>          UTF-8 file containing a detailed task prompt

@@ -64,7 +64,7 @@ ala repo remove task-repository
 
 ALA accepts only a Git URL for persistent `repo add` operations and saves the resulting registration in `$HOME/.ala/config.json`. Set `ALA_CONFIG_PATH` to another root directory when an embedding application needs isolated ALA state; ALA then uses `<ALA_CONFIG_PATH>/.ala/config.json`. The explicit `--config <file>` option remains available for a one-command file override. The repository is cloned into `$XDG_DATA_HOME/ala/repositories`, or `~/.local/share/ala/repositories` when `XDG_DATA_HOME` is not set. `repo remove` accepts the Git repository name without `.git`, its registered path, or the original Git URL. Removing its registration does not delete the managed clone. `ALA_TASK_REPOSITORIES` supplies platform-delimited local repository paths through the environment.
 
-ALA does not persist prompt or execution history. One-shot callers that need conversation continuity must provide that context again, and embedding applications that need observable history must consume the opt-in structured event stream and store it themselves. Interactive mode retains conversation only in the lifetime of its running process.
+ALA does not store prompt or result transcripts itself. Coding agents own their native conversation history. Embedding applications can resume a native conversation through explicit session options and consume the structured event stream for visible logs.
 
 ALA also detects authenticated Codex, OpenCode, and Pi installations. Inspect the detected backend names with:
 
@@ -74,7 +74,7 @@ ala agent list
 
 ## Run a single task
 
-A single-task command runs in one-shot mode. Without `--cwd`, ALA creates and later removes a temporary coding-agent workspace. With `--cwd`, it uses the existing directory directly and never deletes it. A later process does not resume the preceding ALA conversation or coding-agent continuation.
+A single-task command runs in one-shot mode. Without `--cwd`, ALA creates and later removes a temporary coding-agent workspace. With `--cwd`, it uses the existing directory directly and never deletes it. Reusing cwd alone does not resume a conversation.
 
 Run a general request without a task repository:
 
@@ -122,6 +122,21 @@ ala --interactive
 ```
 
 The interactive command saves `codingAgents.websearch` in the selected ALA configuration and applies it immediately without resetting the current coding-agent session. ALA maps the setting to Codex live search and OpenCode web search and fetch permissions. Pi has no ALA-managed web-search capability, so the setting does not change Pi arguments or tools. Authentication, provider quotas, site terms, and rate limits remain owned by the selected backend and its search provider.
+
+## Continue a coding-agent task
+
+Use a new UUID to create a persistent session. Later invocations require the same home, cwd, session id, and coding backend. `--ca auto` selects a backend once and then keeps that choice.
+
+```sh
+ala --home /robot/home --cwd /workspace/project --ca codex \
+  --session-id 11111111-1111-4111-8111-111111111111 --task "Inspect the project"
+ala --home /robot/home --cwd /workspace/project --ca codex \
+  --session-id 11111111-1111-4111-8111-111111111111 --resume-session --task "Add tests"
+```
+
+ALA saves the backend and native session reference under `<home>/.ala/sessions`. Stop interrupts execution without deleting that reference. Missing native state fails explicitly rather than starting an unrelated conversation.
+
+An embedding process can add `--control-stdin` and send JSONL messages such as `{"type":"message","id":"request-1","message":"Also check the tests"}`. Codex app-server and Pi RPC support live steering. The current OpenCode adapter queues follow-ups until the active invocation finishes. Structured stderr receipts distinguish `delivered` from `queued`; stdout remains the final response. Pending messages are execution-local and are cancelled on Stop. See the [session command reference](docs/commands.html) for the protocol.
 
 ## Run interactively
 

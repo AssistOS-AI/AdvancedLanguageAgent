@@ -9,6 +9,7 @@ import { listOpenCodeModels, runOpenCode } from './opencode.mjs';
 import { listPiModels, runPi } from './pi.mjs';
 import { canMountPrivateProc, findBubblewrap } from './sandbox.mjs';
 import { parseMcpServers } from './mcp-servers.mjs';
+import { runCodexLive, runPiLive } from './live-agents.mjs';
 
 const adapters = Object.freeze({ codex: runCodex, opencode: runOpenCode, pi: runPi });
 const modelAdapters = Object.freeze({ codex: listCodexModels, opencode: listOpenCodeModels, pi: listPiModels });
@@ -66,6 +67,7 @@ export function createCodingAgentService({
   env = process.env,
   logger = null,
   eventSink = null,
+  sessionState = null,
   runners = adapters,
   modelListers = modelAdapters
 }) {
@@ -80,8 +82,10 @@ export function createCodingAgentService({
   const ownsWorkspace = !requestedWorkspace;
   let workspacePrepared = false;
   const configuredMcpServers = parseMcpServers(mcpServers);
-  let activeName = null;
-  let continuation = null;
+  let activeName = sessionState?.record.agent || null;
+  let continuation = sessionState?.record.continuation || null;
+  let sendLive = null;
+  let executing = false;
   const configuredModels = { ...models };
   let websearchEnabled = Boolean(websearch);
   let outputSink = null;
@@ -108,7 +112,9 @@ export function createCodingAgentService({
       if (requested !== 'auto' && requested !== activeName) {
         throw new ALAError(`Coding-agent session is already pinned to ${activeName}.`, EXIT_CODES.usage);
       }
-      return available.find((record) => record.name === activeName);
+      const pinned = available.find((record) => record.name === activeName);
+      if (!pinned) throw new Error(`Saved coding agent is unavailable: ${activeName}`);
+      return pinned;
     }
     const selected = requested === 'auto'
       ? available[0]
@@ -135,9 +141,17 @@ export function createCodingAgentService({
   return {
     agents,
     async execute(prompt, { agent = 'auto', signal = null } = {}) {
+      if (executing) throw new Error('Coding-agent session is already executing.');
       const selected = select(agent);
-      await ensureWorkspace();
-      activeName = selected.name;
+      executing = true;
+      try {
+        await ensureWorkspace();
+        activeName = selected.name;
+        await sessionState?.save({ agent: activeName });
+      } catch (error) {
+        executing = false;
+        throw error;
+      }
       logger?.debug?.(`coding-agent: backend=${selected.name}, workspace=${SANDBOX_WORKSPACE}`);
       eventSink?.({
         type: 'coding-agent-selected',
@@ -155,7 +169,10 @@ export function createCodingAgentService({
         eventSink?.({ type: 'coding-agent-message', agent: selected.name, message: text });
       } : null;
       try {
-        const result = await runners[selected.name]({
+        const runner = sessionState && runners === adapters
+          ? ({ codex: runCodexLive, pi: runPiLive, opencode: runOpenCode })[selected.name]
+          : runners[selected.name];
+        const result = await runner({
           binary: selected.binary,
           prompt,
           ...executionContext(selected),
@@ -165,17 +182,32 @@ export function createCodingAgentService({
           mcpServers: configuredMcpServers,
           env,
           signal,
-          onVisibleText
+          onVisibleText,
+          onSession: async (value) => {
+            continuation = value;
+            await sessionState?.save({ continuation });
+          },
+          setMessageHandler: (handler) => { sendLive = handler; }
         });
         continuation = result.continuation;
+        await sessionState?.save({ continuation });
         eventSink?.({ type: 'coding-agent-final', agent: selected.name, message: result.outputText });
         return result.outputText;
       } catch (error) {
-        if (error?.continuation) continuation = error.continuation;
+        if (error?.continuation) {
+          continuation = error.continuation;
+          await sessionState?.save({ continuation });
+        }
         throw error;
       } finally {
+        executing = false;
+        sendLive = null;
         if (emitted && !endsWithNewline) outputSink?.('\n');
       }
+    },
+    async sendMessage(message) {
+      if (!sendLive) return { delivery: 'queued' };
+      return sendLive(message);
     },
     async listModels(name, { signal = null } = {}) {
       const selected = available.find((record) => record.name === name);

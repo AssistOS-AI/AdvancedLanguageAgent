@@ -42,7 +42,8 @@ export async function createRuntime({
   options,
   env = process.env,
   diagnostics = process.stderr,
-  eventSink = null
+  eventSink = null,
+  sessionState = null
 }) {
   if (typeof achillesModule.MainAgent !== 'function' || typeof achillesModule.discoverSkills !== 'function') {
     throw new ALAError(
@@ -65,7 +66,7 @@ export async function createRuntime({
   const invocationModels = { ...codingAgentModels };
   if (options.agent && options.model) {
     const selectedAgent = options.agent === 'auto'
-      ? codingAgents.find((record) => record.available)?.name
+      ? sessionState?.record.agent || codingAgents.find((record) => record.available)?.name
       : options.agent;
     if (selectedAgent) invocationModels[selectedAgent] = options.model;
   }
@@ -80,7 +81,8 @@ export async function createRuntime({
     cwd,
     env,
     logger,
-    eventSink
+    eventSink,
+    sessionState
   });
   let symbolicRouter = await createSymbolicRouter(skills);
   const selected = runtimeOptions(options, env);
@@ -118,6 +120,7 @@ export async function createRuntime({
     symbolicDetectionEnabled: false,
     setSymbolicDetection(enabled) { this.symbolicDetectionEnabled = Boolean(enabled); },
     getSymbolicDetection() { return this.symbolicDetectionEnabled; },
+    sendMessage(message) { return codingAgentService.sendMessage(message); },
     listCodingAgents() {
       return codingAgents.filter((record) => record.available).map((record) => record.name);
     },

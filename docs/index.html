@@ -21,7 +21,7 @@
 
       <h2>From instruction to result</h2>
       <p>A request may carry input through command arguments, standard input, a URL, or a file. With no configured <a href="wiki.html#definition-task-repository">task repository</a>, the runtime executes the general request through <a href="wiki.html#definition-main-agent">MainAgent</a>. When task skills and an authenticated <a href="wiki.html#definition-coding-agent">coding agent</a> are available, the agent selects a matching descriptor, reads its <code>SKILL.md</code>, and follows its methodology. The runtime writes the requested result to standard output or a file, while diagnostics use a separate channel.</p>
-      <p>A one-shot command creates a new runtime for one request and removes only a temporary coding-agent workspace it created; a later command does not inherit its ALA conversation or native continuation. An interactive command retains the runtime, workspace, pinned coding backend and native continuation until the user exits. A caller-supplied <code>--cwd</code> remains persistent and is never deleted by ALA.</p>
+      <p>A one-shot command creates a new runtime and removes only a temporary coding-agent workspace it created. Reusing <code>--cwd</code> alone does not resume a conversation. Explicit <code>--session-id</code> and <code>--resume-session</code> restore the same native conversation and pinned coding backend across processes. An interactive command retains these in memory until exit. A caller-supplied cwd is never deleted by ALA. See <a href="commands.html">persistent session commands</a> for continuation and live input.</p>
       <figure class="diagram">
         <pre class="mermaid">flowchart LR
           Caller[Human or agent] --> Request[Instruction and optional input]

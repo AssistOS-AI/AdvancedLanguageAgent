@@ -28,6 +28,8 @@ import {
 import { createRuntime, feedbackPrompt } from './runtime.mjs';
 import { createRuntimeEventSink } from './runtime-events.mjs';
 import { discoverCodingAgents } from './coding-agents/discovery.mjs';
+import { openSessionState } from './session-state.mjs';
+import { runControlledExecution } from './controlled-execution.mjs';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -324,6 +326,16 @@ async function runExecution(options, io, env) {
     throw new ALAError('--cwd must reference an existing directory.', EXIT_CODES.usage);
   }
   const executionHome = options.home ? await realpath(resolve(io.cwd, options.home)) : null;
+  if ((options.resumeSession || options.controlStdin) && !options.sessionId) {
+    throw new ALAError('--resume-session and --control-stdin require --session-id.', EXIT_CODES.usage);
+  }
+  if (options.sessionId && (!options.cwd || !options.home || !options.agent || options.interactive)) {
+    throw new ALAError('--session-id requires --cwd, --home and --ca in one-shot mode.', EXIT_CODES.usage);
+  }
+  if (options.controlStdin && (options.sources.some((source) => source.type === 'stdin')
+      || (!options.taskFile && options.instructionParts.length === 0))) {
+    throw new ALAError('--control-stdin requires a task argument/file and cannot read the prompt from stdin.', EXIT_CODES.usage);
+  }
   if (executionHome && !(await stat(executionHome)).isDirectory()) {
     throw new ALAError('--home must reference an existing directory.', EXIT_CODES.usage);
   }
@@ -337,7 +349,11 @@ async function runExecution(options, io, env) {
   const configPath = resolveConfigPath({ cliPath: options.configPath, env: runtimeEnv, cwd: executionCwd });
   const config = await loadConfig(configPath);
   const inferredInteractive = options.interactive || (options.instructionParts.length === 0 && io.stdin.isTTY);
-  const eventSink = createRuntimeEventSink({ stream: io.stderr, env });
+  if (options.sessionId && inferredInteractive) {
+    throw new ALAError('--session-id requires a one-shot task prompt.', EXIT_CODES.usage);
+  }
+  const eventSink = createRuntimeEventSink({ stream: io.stderr,
+    env: options.sessionId ? { ...env, ALA_EVENT_STREAM: '1' } : env });
   const repositories = await resolveActiveRepositories({
     config,
     env: runtimeEnv,
@@ -348,7 +364,7 @@ async function runExecution(options, io, env) {
     env,
     cwd: io.cwd
   });
-  const codingAgents = await discoverCodingAgents({ env, priority: config.codingAgents.priority });
+  const codingAgents = await discoverCodingAgents({ env: runtimeEnv, priority: config.codingAgents.priority });
   if (options.agent) {
     const available = codingAgents.filter((agent) => agent.available);
     const requested = options.agent || 'auto';
@@ -357,7 +373,11 @@ async function runExecution(options, io, env) {
       : available.find((agent) => agent.name === requested);
     if (!selected) throw new ALAError(`Coding agent is not available: ${requested}`, EXIT_CODES.execution);
   }
-  const runtime = await createRuntime({
+  const sessionState = options.sessionId ? await openSessionState({
+    id: options.sessionId, home: executionHome, workspace: executionCwd, resume: options.resumeSession
+  }) : null;
+  let runtime;
+  try { runtime = await createRuntime({
     achillesModule: achilles.module,
     repositories,
     codingAgents,
@@ -370,14 +390,17 @@ async function runExecution(options, io, env) {
     options,
     env: runtimeEnv,
     diagnostics: io.stderr,
-    eventSink
-  });
+    eventSink,
+    sessionState
+  }); } catch (error) { await sessionState?.close(); throw error; }
+  if (sessionState) eventSink({ type: 'session-ready', sessionId: options.sessionId });
   const controller = new AbortController();
   const interrupt = () => {
     controller.abort();
     runtime.cancel('SIGINT');
   };
   process.once('SIGINT', interrupt);
+  process.once('SIGTERM', interrupt);
   try {
     let initialPrompt = null;
     let initialInstruction = null;
@@ -395,16 +418,19 @@ async function runExecution(options, io, env) {
     if (inferredInteractive) {
       await interactiveLoop(runtime, initialPrompt, initialInstruction, options, io, env, controller.signal);
     } else {
-      const result = await runtime.execute(initialPrompt, {
-        signal: controller.signal, instruction: initialInstruction
-      });
+      const result = options.controlStdin
+        ? await runControlledExecution(runtime, initialPrompt, {
+          input: io.stdin, eventSink, signal: controller.signal, instruction: initialInstruction
+        })
+        : await runtime.execute(initialPrompt, { signal: controller.signal, instruction: initialInstruction });
       const outputPath = options.output ? resolve(io.cwd, options.output) : null;
       await writeResult(result, { outputPath, force: options.force, stdout: io.stdout });
     }
     return EXIT_CODES.success;
   } finally {
     process.removeListener('SIGINT', interrupt);
-    await runtime.close();
+    process.removeListener('SIGTERM', interrupt);
+    try { await runtime.close(); } finally { await sessionState?.close(); }
   }
 }
 
