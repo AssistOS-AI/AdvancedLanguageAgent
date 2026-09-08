@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 
 import { ALAError, EXIT_CODES } from '../errors.mjs';
 import { SANDBOX_WORKSPACE } from './paths.mjs';
+import { addPloinkyTaskMounts } from './ploinky-task.mjs';
 
 const SANDBOX_HOME = '/home/ala';
 const PROBE_CACHE_TTL_MS = 30_000;
@@ -75,9 +76,10 @@ export function bubblewrapProbeDiagnostic(bwrap) {
 function probeBubblewrap(cache, bwrap, args, dependencies = {}) {
   const now = typeof dependencies.now === 'function' ? dependencies.now() : Date.now();
   const spawn = typeof dependencies.spawnSyncImpl === 'function' ? dependencies.spawnSyncImpl : spawnSync;
-  const cached = cache.get(bwrap);
+  const cacheKey = JSON.stringify([bwrap, args]);
+  const cached = cache.get(cacheKey);
   if (cached?.expiresAt > now) return true;
-  cache.delete(bwrap);
+  cache.delete(cacheKey);
   let diagnostic = '';
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const result = spawn(bwrap, args, {
@@ -87,7 +89,7 @@ function probeBubblewrap(cache, bwrap, args, dependencies = {}) {
       timeout: 5000
     });
     if (result.status === 0 && !result.error) {
-      cache.set(bwrap, { expiresAt: now + PROBE_CACHE_TTL_MS });
+      cache.set(cacheKey, { expiresAt: now + PROBE_CACHE_TTL_MS });
       probeDiagnostics.delete(bwrap);
       return true;
     }
@@ -103,6 +105,15 @@ function resolveExisting(value) {
   try { return fs.realpathSync(path.resolve(value)); } catch { return null; }
 }
 
+export function validateRuntimeBridge(value = null) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string' || !path.isAbsolute(value)
+      || resolveExisting(value) !== value || !fs.statSync(value).isDirectory()) {
+    throw new ALAError('--runtime-bridge requires a canonical existing directory without symlinks.', EXIT_CODES.usage);
+  }
+  return value;
+}
+
 function systemPath(value) {
   return ['/usr', '/bin', '/sbin', '/lib', '/lib64'].some((root) => (
     value === root || value.startsWith(`${root}/`)
@@ -115,6 +126,14 @@ export function collectAgentRuntimeMounts(binary) {
   const nodeModulesMarker = `${path.sep}lib${path.sep}node_modules${path.sep}`;
   const markerIndex = resolved.indexOf(nodeModulesMarker);
   if (markerIndex >= 0) return [resolved.slice(0, markerIndex)];
+  const localModulesMarker = `${path.sep}node_modules${path.sep}`;
+  const localMarkerIndex = resolved.indexOf(localModulesMarker);
+  if (localMarkerIndex >= 0) {
+    return [resolved.slice(0, localMarkerIndex + localModulesMarker.length - 1)];
+  }
+  if (path.basename(resolved) === 'node' && path.basename(path.dirname(resolved)) === 'bin') {
+    return [path.dirname(path.dirname(resolved))];
+  }
   const openCodeMarker = `${path.sep}.opencode${path.sep}`;
   const openCodeIndex = resolved.indexOf(openCodeMarker);
   if (openCodeIndex >= 0) {
@@ -171,7 +190,9 @@ export function sandboxEnvironment(backend, runtimeMounts = [], env = process.en
     ...SHARED_ENVIRONMENT,
     ...(backend === 'codex' ? ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_ORGANIZATION', 'OPENAI_PROJECT'] : []),
     ...(['opencode', 'pi'].includes(backend) ? PROVIDER_ENVIRONMENT : []),
-    ...(backend === 'opencode' ? ['OPENCODE_ENABLE_EXA'] : [])
+    ...(backend === 'opencode' ? [
+      'OPENCODE_ENABLE_EXA', 'OPENCODE_CONFIG_CONTENT', 'OPENCODE_SERVER_PASSWORD'
+    ] : [])
   ]);
   for (const name of allowed) {
     if (typeof env[name] === 'string' && env[name]) values[name] = env[name];
@@ -242,6 +263,30 @@ function normalizedMounts(mounts) {
   return result;
 }
 
+function addSkillCatalogOverlay(args, hostWorkspace) {
+  const source = path.join(hostWorkspace, '.agents');
+  const target = `${SANDBOX_WORKSPACE}/.agents`;
+  let entries = [];
+  try {
+    if (!fs.lstatSync(source).isDirectory()) {
+      throw new ALAError('Bridge execution requires .agents to be a directory, not a symlink.', EXIT_CODES.execution);
+    }
+    entries = fs.readdirSync(source, { withFileTypes: true });
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  // The parent overlay keeps missing skill mount points off the writable host filesystem.
+  args.push('--tmpfs', target);
+  for (const entry of entries) {
+    if (entry.name === 'skills') continue;
+    const entrySource = path.join(source, entry.name);
+    const entryTarget = `${target}/${entry.name}`;
+    if (entry.isSymbolicLink()) args.push('--symlink', fs.readlinkSync(entrySource), entryTarget);
+    else args.push('--bind', entrySource, entryTarget);
+  }
+  args.push('--dir', `${target}/skills`);
+}
+
 export function buildSandboxArgs({
   workspace,
   backend,
@@ -252,6 +297,9 @@ export function buildSandboxArgs({
   bwrap = findBubblewrap(),
   privateProc = canMountPrivateProc(bwrap),
   home = null,
+  runtimeBridge = null,
+  ploinkyTask = null,
+  isolatedSkills = false,
   chdir = SANDBOX_WORKSPACE
 }) {
   if (!bwrap) {
@@ -264,6 +312,7 @@ export function buildSandboxArgs({
     throw new ALAError('Coding-agent execution through Bubblewrap is supported only on Linux.', EXIT_CODES.execution);
   }
   const hostWorkspace = resolveExisting(workspace);
+  const bridgeDirectory = validateRuntimeBridge(runtimeBridge);
   const command = resolveExisting(binary);
   if (!hostWorkspace || !command) {
     throw new ALAError('Coding-agent sandbox workspace or executable is unavailable.', EXIT_CODES.execution);
@@ -291,7 +340,11 @@ export function buildSandboxArgs({
   if (explicitHome) sandboxArgs.push('--bind', explicitHome, SANDBOX_HOME);
   else sandboxArgs.push('--tmpfs', SANDBOX_HOME);
 
-  const runtimeMounts = collectAgentRuntimeMounts(command).map((source) => ({
+  const runtimeSources = new Set([
+    ...collectAgentRuntimeMounts(command),
+    ...collectAgentRuntimeMounts(process.execPath)
+  ]);
+  const runtimeMounts = [...runtimeSources].map((source) => ({
     source, target: source, writable: false, purpose: 'agent-runtime'
   }));
   for (const mount of normalizedMounts(runtimeMounts)) {
@@ -301,6 +354,13 @@ export function buildSandboxArgs({
 
   addParentDirs(sandboxArgs, SANDBOX_WORKSPACE);
   sandboxArgs.push('--bind', hostWorkspace, SANDBOX_WORKSPACE);
+  if (bridgeDirectory || ploinkyTask || isolatedSkills) {
+    addSkillCatalogOverlay(sandboxArgs, hostWorkspace);
+  }
+  if (bridgeDirectory) {
+    sandboxArgs.push('--dir', '/run', '--ro-bind', bridgeDirectory, '/run/ala-runtime');
+  }
+  addPloinkyTaskMounts(sandboxArgs, ploinkyTask);
 
   const stateMounts = explicitHome ? [] : collectAgentStateMounts(backend, env).map((mount) => ({ ...mount }));
   const allMounts = normalizedMounts([...stateMounts, ...mounts]);

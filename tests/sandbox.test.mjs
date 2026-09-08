@@ -70,6 +70,13 @@ test('uses an outer capability only to construct private procfs in a nested cont
     }
   }), true);
   assert.equal(attempts, 3);
+  // A cached outer-capability success must never certify the userns probe.
+  assert.equal(canMountPrivateProc(nestedBwrap, {
+    spawnSyncImpl(_command, probeArgs) {
+      assert.equal(probeArgs.includes('--unshare-user'), true);
+      return { status: 1, stderr: 'proc mount denied in nested user namespace' };
+    }
+  }), true);
   const args = buildSandboxArgs({
     workspace,
     backend: 'codex',
@@ -251,4 +258,37 @@ test('cancels the Bubblewrap process tree through the active child handle', {
   });
   setTimeout(() => controller.abort(), 25);
   await assert.rejects(execution, { name: 'AbortError' });
+});
+
+test('runs a prefix-installed ESM backend with sibling dependencies and the Node runtime', {
+  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+}, async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-prefix-runtime-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const workspace = join(root, 'workspace');
+  const modules = join(root, 'installation', 'node_modules');
+  const packageRoot = join(modules, 'native-agent');
+  const dependency = join(modules, 'native-dependency');
+  await Promise.all([
+    mkdir(workspace),
+    mkdir(join(packageRoot, 'dist'), { recursive: true }),
+    mkdir(dependency, { recursive: true })
+  ]);
+  await Promise.all([
+    writeFile(join(packageRoot, 'package.json'), '{"type":"module"}'),
+    writeFile(join(dependency, 'package.json'), '{"type":"module","exports":"./index.js"}'),
+    writeFile(join(dependency, 'index.js'), 'export default "dependency-loaded";')
+  ]);
+  const binary = join(packageRoot, 'dist', 'cli.js');
+  await writeFile(binary, '#!/usr/bin/env node\nimport value from "native-dependency";\n'
+    + 'console.log(JSON.stringify({value,node:process.versions.node}));\n', { mode: 0o755 });
+  const result = await runProcess({
+    binary, args: [], cwd: '/workspace',
+    env: { HOME: join(root, 'missing-home') },
+    sandbox: { hostWorkspace: workspace, backend: 'pi', mounts: [] }
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), {
+    value: 'dependency-loaded', node: process.versions.node
+  });
 });

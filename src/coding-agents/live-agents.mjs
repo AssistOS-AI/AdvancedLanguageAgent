@@ -3,6 +3,8 @@ import path from 'node:path';
 import { openJsonChannel } from './json-channel.mjs';
 import { codexMcpOverrides } from './mcp-servers.mjs';
 import { createPiEventParser } from './pi.mjs';
+import { requirePiVersion } from './pi-version.mjs';
+import { attachCodexApprovals, codexThreadPolicy, verifyCodexPolicy } from './codex-approvals.mjs';
 
 function checkAbort(signal) {
   if (signal?.aborted) throw Object.assign(new Error('Coding-agent execution was interrupted.'), { name: 'AbortError' });
@@ -15,33 +17,62 @@ export async function runCodexLive(input) {
   let threadId = input.continuation?.threadId;
   let turnId = null;
   let finalText = '';
-  let cancelTimer;
-  const abort = () => {
-    cancelTimer ||= setTimeout(() => { void rpc.close(); }, 1500);
-    if (turnId) void rpc.request({ method: 'turn/interrupt', params: { threadId, turnId } }).catch(() => {});
+  let pendingMessage = '';
+  const flushProgress = () => {
+    if (pendingMessage) input.onVisibleText?.(pendingMessage);
+    pendingMessage = '';
   };
+  let cancelTimer;
+  let interrupted = false;
+  let nativeError;
+  let interruptSent = false;
+  const abort = () => {
+    interrupted = true;
+    cancelTimer ||= setTimeout(() => { void rpc.close(); }, 1500);
+    if (turnId && !interruptSent) {
+      interruptSent = true;
+      void rpc.request({ method: 'turn/interrupt', params: { threadId, turnId } }).catch(() => {});
+    }
+  };
+  const approvals = attachCodexApprovals({ rpc, input, interrupt: abort,
+    fail: (error) => { nativeError = error; abort(); } });
   input.signal?.addEventListener('abort', abort, { once: true });
   rpc.events.on('event', (event) => {
+    if (event.params?.threadId && threadId && event.params.threadId !== threadId) return;
     if (event.method === 'turn/started') turnId = event.params?.turn?.id;
-    if (event.method === 'item/agentMessage/delta') input.onVisibleText?.(event.params?.delta || '');
-    if (event.method === 'item/commandExecution/outputDelta') input.onVisibleText?.(event.params?.delta || '');
-    if (event.method === 'item/completed' && event.params?.item?.type === 'agentMessage') {
-      finalText = event.params.item.text || '';
+    const item = event.params?.item;
+    if (event.method === 'item/started' && item?.type !== 'agentMessage') flushProgress();
+    if (event.method === 'item/completed' && item?.type === 'agentMessage') {
+      flushProgress();
+      const text = item.text || '';
+      if (item.phase === 'commentary') input.onVisibleText?.(text);
+      else {
+        finalText = text;
+        // Older native protocols omit phase. Keep the last message for the result;
+        // only subsequent work proves it was an intermediate message.
+        if (item.phase !== 'final_answer') pendingMessage = text;
+      }
+    }
+    if (event.method === 'item/completed' && item?.type === 'commandExecution') {
+      flushProgress();
+      if (item.aggregatedOutput) input.onVisibleText?.(item.aggregatedOutput);
     }
   });
   try {
     await rpc.request({ method: 'initialize', params: { clientInfo: { name: 'ala', version: '1' } } });
     rpc.send({ method: 'initialized', params: {} });
     checkAbort(input.signal);
+    const policy = codexThreadPolicy(input.permissionMode);
     const thread = await rpc.request({ method: threadId ? 'thread/resume' : 'thread/start', params: {
       ...(threadId ? { threadId } : {}), cwd: input.workspace,
-      approvalPolicy: 'never', sandbox: 'danger-full-access',
+      ...policy,
       ...(input.model ? { model: input.model } : {})
     } });
     if (!thread.thread?.id || (threadId && thread.thread.id !== threadId)) {
       throw new Error('Codex did not restore the requested native thread.');
     }
     threadId = thread.thread.id;
+    verifyCodexPolicy(thread, policy);
     await input.onSession?.({ threadId });
     checkAbort(input.signal);
     const complete = rpc.wait((event) => event.method === 'turn/completed' && event.params?.threadId === threadId);
@@ -49,7 +80,7 @@ export async function runCodexLive(input) {
       threadId, input: [{ type: 'text', text: input.prompt }]
     } });
     turnId = started.turn.id;
-    if (input.signal?.aborted) abort();
+    if (input.signal?.aborted || interrupted) abort();
     input.setMessageHandler?.(async (message) => {
       await rpc.request({ method: 'turn/steer', params: {
         threadId, expectedTurnId: turnId, input: [{ type: 'text', text: message }]
@@ -59,10 +90,15 @@ export async function runCodexLive(input) {
     const ended = await complete;
     input.setMessageHandler?.(null);
     checkAbort(input.signal);
+    if (nativeError) throw nativeError;
+    if (interrupted) throw Object.assign(new Error('Coding-agent execution was interrupted.'), { name: 'AbortError' });
     if (ended.params.turn.status !== 'completed') throw new Error(ended.params.turn.error?.message || 'Codex turn failed.');
     if (!finalText) throw new Error('Codex completed without a final assistant message.');
     return { outputText: finalText, continuation: { threadId } };
+  } catch (error) {
+    throw nativeError || error;
   } finally {
+    approvals.close();
     clearTimeout(cancelTimer);
     input.setMessageHandler?.(null);
     input.signal?.removeEventListener('abort', abort);
@@ -72,6 +108,7 @@ export async function runCodexLive(input) {
 
 export async function runPiLive(input) {
   checkAbort(input.signal);
+  await requirePiVersion(input);
   const sessionDir = `${input.workspace}/.ala-pi-sessions`;
   await fs.mkdir(path.join(input.hostWorkspace, '.ala-pi-sessions'), { recursive: true, mode: 0o700 });
   const previous = input.continuation?.sessionFile;

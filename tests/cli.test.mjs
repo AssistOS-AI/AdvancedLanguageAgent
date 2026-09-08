@@ -278,6 +278,10 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
     stdin: inputStream([
       '/help',
       '/agent help',
+      '/permissions',
+      '/permissions ask-for-approval',
+      '/permissions invalid',
+      '/permissions full-access',
       `/repo add ${repositoryUrl}`,
       '/websearch on',
       'use the new task skill',
@@ -330,6 +334,9 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
   assert.equal(diagnostics.match(/repository catalog refreshed \(0 skills\)/g)?.length, 1);
   assert.match(diagnostics, /symbolic detection on/);
   assert.match(diagnostics, /websearch on/);
+  assert.match(diagnostics, /Native permissions: full-access/);
+  assert.match(diagnostics, /Native permissions: ask-for-approval/);
+  assert.match(diagnostics, /Usage: \/permissions/);
   assert.match(diagnostics, /codex model set to gpt-test/);
   assert.match(diagnostics, /codex model reset to agent default/);
   const agentCalls = (await readFile(agentLog, 'utf8')).trim().split('\n');

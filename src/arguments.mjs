@@ -1,5 +1,6 @@
 import { ALAError, EXIT_CODES } from './errors.mjs';
 import { isGitRepositoryUrl } from './repository-sources.mjs';
+import { validatePermissionMode } from './permission-requests.mjs';
 
 const valueOptions = new Map([
   ['--skill', 'skill'],
@@ -8,6 +9,7 @@ const valueOptions = new Map([
   ['--url', 'url'],
   ['--output', 'output'],
   ['--model', 'model'],
+  ['--permissions', 'permissionMode'],
   ['--tag', 'tags'],
   ['--reasoning-effort', 'reasoningEffort'],
   ['--model-config', 'modelConfigPath'],
@@ -17,6 +19,9 @@ const valueOptions = new Map([
   ['--ca', 'agent'],
   ['--home', 'home'],
   ['--cwd', 'cwd'],
+  ['--runtime-bridge', 'runtimeBridge'],
+  ['--ploinky-task', 'ploinkyTask'],
+  ['--skill-catalog', 'skillCatalog'],
   ['--session-id', 'sessionId'],
   ['--skillSets', 'skillSets'],
   ['--taskFile', 'taskFile'],
@@ -47,6 +52,7 @@ function defaultExecutionOptions() {
     tags: [],
     interactive: false,
     websearch: null,
+    permissionMode: 'full-access',
     force: false,
     help: false,
     version: false
@@ -157,6 +163,10 @@ export function parseArguments(argv) {
     }
   }
   if (options.task) options.instructionParts.unshift(options.task);
+  validatePermissionMode(options.permissionMode);
+  if (options.runtimeBridge !== undefined && !options.runtimeBridge.trim()) {
+    throw new ALAError('--runtime-bridge requires a canonical existing directory.', EXIT_CODES.usage);
+  }
   if (options.agent && !['auto', 'codex', 'opencode', 'pi'].includes(options.agent)) {
     throw new ALAError('--agent must be auto, codex, opencode, or pi.', EXIT_CODES.usage);
   }
@@ -181,11 +191,15 @@ Usage:
 Execution options:
   --skill <name>             Execute a task skill explicitly
   --ca <name>                Coding agent: auto, codex, opencode, or pi
+  --permissions <mode>      ask-for-approval or full-access (default: full-access)
+  --skill-catalog <dir>     Exclusive caller-selected SKILL.md catalog; may be empty
   --home <path>              Explicit coding-agent home/configuration directory
   --cwd <path>               Existing working directory; disables temporary workspace creation
+  --runtime-bridge <path>    Mount a canonical runtime capability directory read-only at /run/ala-runtime
+  --ploinky-task <path>     Mount explicit Ploinky SDK task configuration for direct MCP scripts
   --session-id <uuid>        Persistent conversation identity; requires --home, --cwd and --ca
   --resume-session           Resume the exact saved session, never create a replacement
-  --control-stdin            Accept JSONL message commands while executing
+  --control-stdin            Accept JSONL messages and interaction responses while executing
   --skillSets <a,b>          Expose only the named skill sets in <cwd>/.agents/skills
   --task <prompt>            Task prompt
   --taskFile <path>          UTF-8 file containing a detailed task prompt

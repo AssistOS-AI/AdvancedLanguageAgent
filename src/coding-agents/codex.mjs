@@ -2,7 +2,12 @@ import { executionError, requireSandbox, runProcess, spawnProcess } from './proc
 import { appendBoundedTail, createLineDecoder } from './streaming.mjs';
 import { codexMcpOverrides } from './mcp-servers.mjs';
 
-export function buildCodexArguments({ prompt, continuation = null, model = null, websearch = false, mcpServers = [] }) {
+export function buildCodexArguments({
+  prompt, continuation = null, model = null, websearch = false, mcpServers = [], permissionMode = 'full-access'
+}) {
+  if (permissionMode !== 'full-access') {
+    throw new Error('Codex ask-for-approval requires the native app-server adapter, not codex exec.');
+  }
   const common = codexMcpOverrides(mcpServers);
   if (model) common.push('--model', model);
   if (websearch) common.push('--search');
@@ -90,14 +95,15 @@ export function createCodexStderrParser({ onText = () => {} } = {}) {
 }
 
 export async function runCodex({
-  binary, prompt, workspace, continuation, model, websearch, mcpServers, env, signal, sandbox, onVisibleText
+  binary, prompt, workspace, continuation, model, websearch, mcpServers, env, signal, sandbox, onVisibleText,
+  permissionMode = 'full-access'
 }) {
   requireSandbox(sandbox);
   const parser = createCodexEventParser({ threadId: continuation?.threadId, onText: onVisibleText });
   const stderrParser = createCodexStderrParser({ onText: onVisibleText });
   const result = await runProcess({
     binary,
-    args: buildCodexArguments({ prompt, continuation, model, websearch, mcpServers }),
+    args: buildCodexArguments({ prompt, continuation, model, websearch, mcpServers, permissionMode }),
     cwd: workspace,
     env,
     signal,

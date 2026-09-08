@@ -2,10 +2,12 @@ import { fileURLToPath } from 'node:url';
 
 import { catalogSelectionPrompt, selectedSkillPrompt } from './anthropic-skills.mjs';
 import { createCodingAgentService } from './coding-agents/service.mjs';
+import { validateRuntimeBridge } from './coding-agents/sandbox.mjs';
 import { createSkillRegistry, discoverTaskSkills } from './repositories.mjs';
 import { ALAError, EXIT_CODES } from './errors.mjs';
 import { normalizeResult } from './output.mjs';
 import { createSymbolicRouter } from './routing/symbolic.mjs';
+import { createPermissionRequestManager, validatePermissionMode } from './permission-requests.mjs';
 
 const internalSkillsDirectory = fileURLToPath(new URL('./internal-skills', import.meta.url));
 
@@ -36,8 +38,10 @@ export async function createRuntime({
   codingAgentModels = {},
   workspace = null,
   home = null,
+  runtimeBridge = null,
   mcpServers = null,
   websearch = false,
+  permissionMode = 'full-access',
   cwd = process.cwd(),
   options,
   env = process.env,
@@ -45,6 +49,8 @@ export async function createRuntime({
   eventSink = null,
   sessionState = null
 }) {
+  validatePermissionMode(permissionMode);
+  runtimeBridge = validateRuntimeBridge(runtimeBridge);
   if (typeof achillesModule.MainAgent !== 'function' || typeof achillesModule.discoverSkills !== 'function') {
     throw new ALAError(
       'Resolved AchillesAgentLib does not expose MainAgent and discoverSkills.',
@@ -52,6 +58,7 @@ export async function createRuntime({
     );
   }
   const logger = createDiagnosticLogger(diagnostics, env);
+  const permissionRequests = createPermissionRequestManager({ eventSink, logger });
   const registry = await createSkillRegistry(repositories, {
     builtInSkillsDirectories: codingAgents.some((record) => record.available) ? [internalSkillsDirectory] : []
   });
@@ -75,9 +82,14 @@ export async function createRuntime({
     skills,
     workspace,
     home,
+    runtimeBridge,
+    ploinkyTask: options.ploinkyTask,
+    isolatedSkills: options.skillCatalog !== undefined,
     mcpServers,
     models: invocationModels,
     websearch,
+    permissionMode,
+    permissionRequests,
     cwd,
     env,
     logger,
@@ -117,6 +129,7 @@ export async function createRuntime({
   return {
     skills,
     codingAgents,
+    permissionRequests,
     symbolicDetectionEnabled: false,
     setSymbolicDetection(enabled) { this.symbolicDetectionEnabled = Boolean(enabled); },
     getSymbolicDetection() { return this.symbolicDetectionEnabled; },
@@ -132,6 +145,9 @@ export async function createRuntime({
     },
     setWebsearch(enabled) {
       codingAgentService.setWebsearch(enabled);
+    },
+    setPermissionMode(mode) {
+      codingAgentService.setPermissionMode(mode);
     },
     setCodingAgentOutputSink(outputSink) {
       codingAgentService.setOutputSink(outputSink);
@@ -165,7 +181,8 @@ export async function createRuntime({
           codingAgentPreference: options.agent || 'auto'
         }
       };
-      if (options.agent) return mainAgent.executeSkill('coding-agent', prompt, common);
+      if (options.agent) return mainAgent.executeSkill('coding-agent',
+        options.skillCatalog !== undefined && skills.length ? catalogSelectionPrompt(skills, prompt) : prompt, common);
       if (options.skill) {
         const record = skills.find((skill) => skill.name === options.skill);
         if (!record) throw new ALAError(`Task skill not found: ${options.skill}`, EXIT_CODES.repository);
@@ -187,9 +204,11 @@ export async function createRuntime({
       return mainAgent.executePrompt(prompt, common);
     },
     cancel(reason = 'cancelled') {
+      codingAgentService.cancel(reason);
       mainAgent.cancelCurrentSession(reason);
     },
     async close() {
+      permissionRequests.setReplyCapability(false);
       mainAgent.shutdown();
       await codingAgentService.close();
       await registry.cleanup();

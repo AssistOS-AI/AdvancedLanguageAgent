@@ -3,11 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { ALAError, EXIT_CODES } from '../errors.mjs';
+import { createPermissionRequestManager, validatePermissionMode } from '../permission-requests.mjs';
 import { listCodexModels, runCodex } from './codex.mjs';
 import { SANDBOX_WORKSPACE } from './paths.mjs';
 import { listOpenCodeModels, runOpenCode } from './opencode.mjs';
 import { listPiModels, runPi } from './pi.mjs';
-import { canMountPrivateProc, findBubblewrap } from './sandbox.mjs';
+import { canMountPrivateProc, findBubblewrap, validateRuntimeBridge } from './sandbox.mjs';
 import { parseMcpServers } from './mcp-servers.mjs';
 import { runCodexLive, runPiLive } from './live-agents.mjs';
 
@@ -60,6 +61,9 @@ export function createCodingAgentService({
   skills = [],
   workspace: requestedWorkspace = null,
   home = null,
+  runtimeBridge = null,
+  ploinkyTask = null,
+  isolatedSkills = false,
   mcpServers = null,
   models = {},
   websearch = false,
@@ -68,9 +72,17 @@ export function createCodingAgentService({
   logger = null,
   eventSink = null,
   sessionState = null,
+  permissionMode = 'full-access',
+  permissionRequests = null,
   runners = adapters,
   modelListers = modelAdapters
 }) {
+  let requestedPermissionMode = validatePermissionMode(permissionMode);
+  runtimeBridge = validateRuntimeBridge(runtimeBridge);
+  ploinkyTask = validateRuntimeBridge(ploinkyTask);
+  const overlaySkills = Boolean(runtimeBridge || ploinkyTask || isolatedSkills);
+  permissionRequests ??= createPermissionRequestManager({ eventSink, logger });
+  let activeController = null;
   const available = agents.filter((record) => record.available);
   const bwrap = findBubblewrap();
   const sandboxCapabilities = {
@@ -93,7 +105,8 @@ export function createCodingAgentService({
   async function prepareWorkspace() {
     const nextWorkspace = requestedWorkspace || await mkdtemp(join(tmpdir(), 'ala-agent-'));
     try {
-      if (ownsWorkspace) await syncWorkspaceLayout(nextWorkspace, activeSkills);
+      if (overlaySkills) await validateSkills(activeSkills);
+      else if (ownsWorkspace) await syncWorkspaceLayout(nextWorkspace, activeSkills);
       else await ensureSkillMountPoints(nextWorkspace, activeSkills);
       workspace = nextWorkspace;
       workspacePrepared = true;
@@ -131,6 +144,9 @@ export function createCodingAgentService({
         hostWorkspace: workspace,
         backend: selected.name,
         ...(home ? { home } : {}),
+        ...(runtimeBridge ? { runtimeBridge } : {}),
+        ...(ploinkyTask ? { ploinkyTask } : {}),
+        isolatedSkills: overlaySkills,
         mounts: sandboxMounts(activeSkills),
         bwrap: sandboxCapabilities.bwrap,
         ...(sandboxCapabilities.privateProc ? { privateProc: true } : {})
@@ -140,24 +156,26 @@ export function createCodingAgentService({
 
   return {
     agents,
+    permissionRequests,
     async execute(prompt, { agent = 'auto', signal = null } = {}) {
       if (executing) throw new Error('Coding-agent session is already executing.');
       const selected = select(agent);
-      executing = true;
-      try {
-        await ensureWorkspace();
-        activeName = selected.name;
-        await sessionState?.save({ agent: activeName });
-      } catch (error) {
-        executing = false;
-        throw error;
+      const turnPermissionMode = requestedPermissionMode;
+      if (selected.name === 'pi' && turnPermissionMode === 'ask-for-approval') {
+        throw new ALAError(
+          'Pi does not support ask-for-approval; select full-access or use Codex/OpenCode.',
+          EXIT_CODES.usage
+        );
       }
-      logger?.debug?.(`coding-agent: backend=${selected.name}, workspace=${SANDBOX_WORKSPACE}`);
-      eventSink?.({
-        type: 'coding-agent-selected',
-        agent: selected.name,
-        ...(configuredModels[selected.name] ? { model: configuredModels[selected.name] } : {})
-      });
+      executing = true;
+      const controller = new AbortController();
+      activeController = controller;
+      const abort = () => {
+        controller.abort(signal.reason);
+        permissionRequests.cancelAll('cancelled');
+      };
+      signal?.addEventListener('abort', abort, { once: true });
+      if (signal?.aborted) abort();
       let emitted = false;
       let endsWithNewline = true;
       const onVisibleText = outputSink || eventSink ? (value) => {
@@ -169,7 +187,20 @@ export function createCodingAgentService({
         eventSink?.({ type: 'coding-agent-message', agent: selected.name, message: text });
       } : null;
       try {
-        const runner = sessionState && runners === adapters
+        controller.signal.throwIfAborted();
+        await ensureWorkspace();
+        controller.signal.throwIfAborted();
+        activeName = selected.name;
+        await sessionState?.save({ agent: activeName });
+        controller.signal.throwIfAborted();
+        logger?.debug?.(`coding-agent: backend=${selected.name}, workspace=${SANDBOX_WORKSPACE}`);
+        eventSink?.({
+          type: 'coding-agent-selected',
+          agent: selected.name,
+          permissionMode: turnPermissionMode,
+          ...(configuredModels[selected.name] ? { model: configuredModels[selected.name] } : {})
+        });
+        const runner = (sessionState || turnPermissionMode === 'ask-for-approval') && runners === adapters
           ? ({ codex: runCodexLive, pi: runPiLive, opencode: runOpenCode })[selected.name]
           : runners[selected.name];
         const result = await runner({
@@ -179,9 +210,11 @@ export function createCodingAgentService({
           continuation,
           model: configuredModels[selected.name] || null,
           websearch: websearchEnabled,
+          permissionMode: turnPermissionMode,
+          permissionRequests,
           mcpServers: configuredMcpServers,
           env,
-          signal,
+          signal: controller.signal,
           onVisibleText,
           onSession: async (value) => {
             continuation = value;
@@ -189,6 +222,7 @@ export function createCodingAgentService({
           },
           setMessageHandler: (handler) => { sendLive = handler; }
         });
+        controller.signal.throwIfAborted();
         continuation = result.continuation;
         await sessionState?.save({ continuation });
         eventSink?.({ type: 'coding-agent-final', agent: selected.name, message: result.outputText });
@@ -200,6 +234,9 @@ export function createCodingAgentService({
         }
         throw error;
       } finally {
+        permissionRequests.cancelAll('expired');
+        signal?.removeEventListener('abort', abort);
+        activeController = null;
         executing = false;
         sendLive = null;
         if (emitted && !endsWithNewline) outputSink?.('\n');
@@ -231,6 +268,9 @@ export function createCodingAgentService({
     setWebsearch(enabled) {
       websearchEnabled = Boolean(enabled);
     },
+    setPermissionMode(mode) {
+      requestedPermissionMode = validatePermissionMode(mode);
+    },
     setOutputSink(nextOutputSink) {
       outputSink = typeof nextOutputSink === 'function' ? nextOutputSink : null;
     },
@@ -239,18 +279,25 @@ export function createCodingAgentService({
       const previous = activeSkills;
       activeSkills = nextSkills;
       try {
-        if (workspace) {
+        if (workspace && !overlaySkills) {
           if (ownsWorkspace) await syncWorkspaceLayout(workspace, activeSkills);
           else await ensureSkillMountPoints(workspace, activeSkills);
         }
       } catch (error) {
         activeSkills = previous;
-        if (workspace && ownsWorkspace) await syncWorkspaceLayout(workspace, activeSkills).catch(() => {});
+        if (workspace && ownsWorkspace && !overlaySkills) {
+          await syncWorkspaceLayout(workspace, activeSkills).catch(() => {});
+        }
         throw error;
       }
     },
-    cancel() {},
+    cancel(reason = 'cancelled') {
+      activeController?.abort(new ALAError(`Execution interrupted: ${reason}`, EXIT_CODES.interrupted));
+      permissionRequests.cancelAll('cancelled');
+    },
     async close() {
+      this.cancel('closed');
+      permissionRequests.setReplyCapability(false);
       if (workspace && ownsWorkspace) await rm(workspace, { recursive: true, force: true });
       workspace = null;
       workspacePrepared = false;

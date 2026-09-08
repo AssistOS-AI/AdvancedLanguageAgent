@@ -7,15 +7,18 @@ export function openJsonChannel(input, args, spawnImpl = input.spawnImpl || spaw
   const events = new EventEmitter();
   const child = spawnImpl({ ...input, args, cwd: input.workspace, stdio: ['pipe', 'pipe', 'pipe'] });
   const pending = new Map();
+  const incoming = new Map();
   const decoder = new StringDecoder('utf8');
   let buffer = '';
   let counter = 0;
   let failure = null;
   let exited = false;
   const fail = (error) => {
-    failure ||= error;
+    if (failure) return;
+    failure = error;
     for (const entry of pending.values()) { clearTimeout(entry.timer); entry.reject(error); }
     pending.clear();
+    incoming.clear();
     events.emit('failure', error);
   };
   child.on('error', fail);
@@ -23,6 +26,7 @@ export function openJsonChannel(input, args, spawnImpl = input.spawnImpl || spaw
   child.stdin.on('error', fail);
   child.stderr.on('data', (chunk) => input.onVisibleText?.(chunk.toString('utf8')));
   child.stdout.on('data', (chunk) => {
+    if (failure) return;
     buffer += decoder.write(chunk);
     if (buffer.length > 8 * 1024 * 1024) return fail(new Error('Coding-agent protocol record too large.'));
     let index;
@@ -30,23 +34,47 @@ export function openJsonChannel(input, args, spawnImpl = input.spawnImpl || spaw
       const line = buffer.slice(0, index); buffer = buffer.slice(index + 1);
       if (!line.trim()) continue;
       let event;
-      try { event = JSON.parse(line); } catch { fail(new Error('Invalid coding-agent JSON record.')); continue; }
-      const entry = pending.get(String(event.id));
-      if (entry) {
-        pending.delete(String(event.id)); clearTimeout(entry.timer);
-        if (event.error || event.success === false) entry.reject(new Error(event.error?.message || event.error || 'Agent rejected command.'));
-        else entry.resolve(event.result ?? event.data ?? event);
-      } else if (event.id !== undefined && event.method) {
-        child.stdin.write(`${JSON.stringify({ id: event.id, error: { code: -32601, message: 'Interactive request unsupported' } })}\n`);
-      } else events.emit('event', event);
+      try { event = JSON.parse(line); } catch { return fail(new Error('Invalid coding-agent JSON record.')); }
+      if (!event || typeof event !== 'object' || Array.isArray(event)) {
+        return fail(new Error('Invalid coding-agent JSON record.'));
+      }
+      if (event.id !== undefined && typeof event.method === 'string') {
+        if (typeof event.id !== 'string' && !Number.isInteger(event.id)) {
+          return fail(new Error('Invalid coding-agent request ID.'));
+        }
+        if (incoming.has(event.id)) return fail(new Error('Duplicate pending coding-agent request ID.'));
+        incoming.set(event.id, event);
+        if (!events.emit('request', event)) {
+          respondError(event.id, { code: -32601, message: `Unsupported native method: ${event.method}` });
+        }
+      } else {
+        const entry = pending.get(event.id);
+        if (entry) {
+          pending.delete(event.id); clearTimeout(entry.timer);
+          if (event.error || event.success === false) {
+            entry.reject(new Error(event.error?.message || event.error || 'Agent rejected command.'));
+          } else entry.resolve(event.result ?? event.data ?? event);
+        } else events.emit('event', event);
+      }
+      if (failure) return;
     }
   });
   const send = (value) => {
     if (failure) throw failure;
     child.stdin.write(`${JSON.stringify(value)}\n`);
   };
+  const respond = (id, response) => {
+    if (failure) throw failure;
+    const request = incoming.get(id);
+    if (!request) throw new Error('Unknown or already answered coding-agent request ID.');
+    incoming.delete(id);
+    send({ ...(request.jsonrpc !== undefined ? { jsonrpc: request.jsonrpc } : {}), id, ...response });
+  };
+  const respondError = (id, error) => respond(id, { error });
   return {
     events, send,
+    respond: (id, result) => respond(id, { result }),
+    respondError,
     request(value) {
       if (failure) return Promise.reject(failure);
       const id = String(++counter);
@@ -68,6 +96,7 @@ export function openJsonChannel(input, args, spawnImpl = input.spawnImpl || spaw
       return result;
     },
     async close() {
+      fail(new Error('Coding-agent control process closed.'));
       if (exited || (child.exitCode !== null && child.exitCode !== undefined)) return;
       const closed = new Promise((resolve) => child.once('close', resolve));
       child.kill('SIGTERM');

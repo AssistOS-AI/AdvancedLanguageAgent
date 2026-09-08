@@ -125,6 +125,8 @@ The interactive command saves `codingAgents.websearch` in the selected ALA confi
 
 ## Continue a coding-agent task
 
+An embedding host can pass `--skill-catalog /private/task/catalog` to register only its selected Anthropic skills. This overrides configured and environment-provided task repositories, accepts an empty catalog, and mounts selected skill folders read-only behind an isolated `.agents/skills` view without changing project files. The host retains this directory when task continuation must keep the same skills. The standalone `--skillSets` filter remains an exact skill-name filter, not a per-robot repository registry.
+
 Use a new UUID to create a persistent session. Later invocations require the same home, cwd, session id, and coding backend. `--ca auto` selects a backend once and then keeps that choice.
 
 ```sh
@@ -137,6 +139,10 @@ ala --home /robot/home --cwd /workspace/project --ca codex \
 ALA saves the backend and native session reference under `<home>/.ala/sessions`. Stop interrupts execution without deleting that reference. Missing native state fails explicitly rather than starting an unrelated conversation.
 
 An embedding process can add `--control-stdin` and send JSONL messages such as `{"type":"message","id":"request-1","message":"Also check the tests"}`. Codex app-server and Pi RPC support live steering. The current OpenCode adapter queues follow-ups until the active invocation finishes. Structured stderr receipts distinguish `delivered` from `queued`; stdout remains the final response. Pending messages are execution-local and are cancelled on Stop. See the [session command reference](docs/commands.html) for the protocol.
+
+Select native permission policy with `--permissions ask-for-approval|full-access`; the standalone default is full-access inside Bubblewrap. An embedding host must attach control stdin to display and answer native approval requests. Codex uses native app-server approval decisions; OpenCode uses its authenticated native server and once/always/reject replies, without changing project `opencode.json`. Pi supports full-access only and requires version 0.85.1 or a verified compatible RPC release. An older installation must be upgraded separately or selected through `PI_BIN`; ALA does not modify global installations. Missing reply capability declines an operation requiring approval rather than granting access. Native remembered grants are not an ALA authorization cache and need not survive a new native process.
+
+An embedding host may pass `--runtime-bridge /absolute/canonical/runtime-directory` to expose one read-only runtime channel at `/run/ala-runtime`. The host owns that directory's authentication and lifetime. This is not a general writable-folder option; ordinary callers expose no channel. Bridge mode presents only the selected skill descriptors to native discovery through a sandbox-local overlay, while leaving host skill files intact. Installed Node and package dependencies remain read-only so a standalone native backend can still execute portable Node-based skill scripts.
 
 ## Run interactively
 
@@ -169,12 +175,17 @@ Interactive sessions also accept local slash commands. `/agent ...` commands are
 /repo remove task-repository
 /symbolic detection on
 /symbolic detection off
+/permissions
+/permissions ask-for-approval
+/permissions full-access
 /websearch on
 /websearch off
 /quit
 ```
 
 `/help` lists every interactive command. `/agent` commands discover a backend, inspect or select its native model, and delegate prompts; `/websearch on|off` controls supported search tools. `/repo` commands manage persistent task-repository registrations and refresh the active read-only skill set without resetting workspace files, backend selection, native continuation, or MainAgent conversation. While a terminal waits, ALA renders a transient thinking indicator and supported live backend events on standard error, leaving the normalized final result on standard output. Symbolic detection remains off unless enabled with `/symbolic detection on`. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session. Arbitrary interactive folder mounts are no longer supported.
+
+`/permissions` reports the requested native policy. Supplying `ask-for-approval` or `full-access` changes subsequent executions in this interactive session without resetting the native conversation or saving configuration. The initial policy comes from `--permissions`, defaulting to `full-access`. Pi rejects ask-for-approval. The command does not add a reply channel: without a reply-capable embedding host, native operations requiring approval are declined.
 
 ## More information
 

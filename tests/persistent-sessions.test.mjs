@@ -8,6 +8,7 @@ import { PassThrough } from 'node:stream';
 import { openSessionState } from '../src/session-state.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
 import { runControlledExecution } from '../src/controlled-execution.mjs';
+import { createPermissionRequestManager } from '../src/permission-requests.mjs';
 
 test('reopens native continuation across runtimes and refuses backend or cwd replacement', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ala-session-test-'));
@@ -97,4 +98,68 @@ test('live delivery and queued follow-up use the same runtime without concurrent
   finish();
   assert.equal(await execution, 'result-2');
   assert.deepEqual(prompts, ['original', 'follow-up']);
+});
+
+test('interaction responses bypass a steering receipt awaiting the same native approval', { timeout: 2000 }, async () => {
+  const input = new PassThrough();
+  const events = [];
+  const eventSink = (event) => events.push(event);
+  const permissionRequests = createPermissionRequestManager({ eventSink, logger: { warn() {} } });
+  const prompts = [];
+  let answer;
+  const runtime = {
+    permissionRequests,
+    execute: async (prompt) => {
+      prompts.push(prompt);
+      answer = permissionRequests.request({
+        agent: 'codex', method: 'item/commandExecution/requestApproval', title: 'Run', message: 'Write scratch',
+        options: [{ id: 'allow', label: 'Allow' }, { id: 'deny', label: 'Deny' }]
+      });
+      return await answer === 'allow' ? 'allowed' : 'denied';
+    },
+    sendMessage: async () => {
+      await answer;
+      return { delivery: 'delivered' };
+    }
+  };
+  const execution = runControlledExecution(runtime, 'original', { input, eventSink });
+  input.write('{"type":"message","id":"steering","message":"Please check carefully"}\n');
+  await new Promise((resolve) => setImmediate(resolve));
+  input.write(`${JSON.stringify({ type: 'interaction-response', id: answer.id, optionId: 'invalid' })}\n`);
+  input.write(`${JSON.stringify({ type: 'interaction-response', id: answer.id, optionId: 'deny' })}\n`);
+  assert.equal(await execution, 'denied');
+  assert.deepEqual(prompts, ['original']);
+  assert.ok(events.some((event) => event.type === 'interaction-response-rejected' && event.id === answer.id));
+  assert.ok(events.some((event) => event.type === 'message-accepted' && event.id === 'steering'
+    && event.delivery === 'delivered'));
+});
+
+test('control EOF cancels native approvals and the owned execution, not a successful empty answer', {
+  timeout: 2000
+}, async () => {
+  const input = new PassThrough();
+  const events = [];
+  const permissionRequests = createPermissionRequestManager({ eventSink: (event) => events.push(event) });
+  let answer;
+  let cancelled = 0;
+  const runtime = {
+    permissionRequests,
+    execute: async (_prompt, { signal }) => {
+      answer = permissionRequests.request({
+        agent: 'codex', method: 'item/commandExecution/requestApproval', title: 'Run', message: 'Write scratch',
+        options: [{ id: 'allow', label: 'Allow' }]
+      }, { signal, onCancel: () => { cancelled += 1; } });
+      await new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    },
+    cancel() { cancelled += 1; }
+  };
+  const execution = runControlledExecution(runtime, 'original', {
+    input, eventSink: (event) => events.push(event)
+  });
+  input.end();
+  await assert.rejects(execution, { exitCode: 130 });
+  assert.equal(await answer, null);
+  assert.equal(cancelled, 2);
+  assert.equal(permissionRequests.replyCapable, false);
+  assert.deepEqual(events.at(-1), { type: 'coding-agent-request-resolved', id: answer.id, reason: 'cancelled' });
 });

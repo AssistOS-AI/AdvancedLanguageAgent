@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -12,14 +12,7 @@ import {
   parseCodexOutput
 } from '../src/coding-agents/codex.mjs';
 import { discoverCodingAgents } from '../src/coding-agents/discovery.mjs';
-import {
-  buildOpenCodeArguments,
-  configureOpenCodeWebsearch,
-  openCodeEnvironment,
-  parseOpenCodeModels,
-  parseOpenCodeOutput,
-  runOpenCode
-} from '../src/coding-agents/opencode.mjs';
+import { parseOpenCodeModels } from '../src/coding-agents/opencode.mjs';
 import { buildPiArguments, createPiEventParser, parsePiModels, parsePiOutput } from '../src/coding-agents/pi.mjs';
 import { requireSandbox, runProcess } from '../src/coding-agents/process.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
@@ -74,13 +67,6 @@ test('builds and parses native coding-agent protocols', () => {
     JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'done' } })
   ].join('\n'));
   assert.deepEqual(codex, { outputText: 'done', continuation: { threadId: 'thread-1' } });
-  assert.equal(parseOpenCodeOutput(JSON.stringify({ type: 'text', part: { text: 'open' } })), 'open');
-  assert.deepEqual(buildOpenCodeArguments({
-    prompt: 'next', workspace: '/tmp/work', sessionId: 'session-1'
-  }).slice(-3), ['--session', 'session-1', 'next']);
-  assert.deepEqual(buildOpenCodeArguments({
-    prompt: 'next', workspace: '/tmp/work', model: 'provider/model'
-  }).slice(-3), ['--model', 'provider/model', 'next']);
   assert.equal(parsePiOutput(JSON.stringify({
     type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'pi' }] }
   })), 'pi');
@@ -104,20 +90,6 @@ test('builds and parses native coding-agent protocols', () => {
   ].join('\n')), ['openai/gpt-test']);
 });
 
-test('configures OpenCode web tools and its opt-in search environment', async (context) => {
-  const root = await mkdtemp(join(tmpdir(), 'ala-opencode-websearch-'));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  await configureOpenCodeWebsearch(root, true);
-  assert.deepEqual(JSON.parse(await readFile(join(root, 'opencode.json'), 'utf8')).permission, {
-    websearch: 'allow', webfetch: 'allow'
-  });
-  assert.equal(openCodeEnvironment({ KEEP: 'yes' }, true).OPENCODE_ENABLE_EXA, '1');
-  await configureOpenCodeWebsearch(root, false);
-  assert.deepEqual(JSON.parse(await readFile(join(root, 'opencode.json'), 'utf8')).permission, {
-    websearch: 'deny', webfetch: 'deny'
-  });
-  assert.equal(openCodeEnvironment({}, false).OPENCODE_ENABLE_EXA, '0');
-});
 
 test('streams supported Codex and Pi events across chunk boundaries', () => {
   const codexText = [];
@@ -162,65 +134,6 @@ test('streams supported Codex and Pi events across chunk boundaries', () => {
   assert.deepEqual(piText, ['hello', 'abc', 'd']);
 });
 
-test('uses native OpenCode output while exporting the final assistant message', {
-  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
-}, async (context) => {
-  const root = await mkdtemp(join(tmpdir(), 'ala-opencode-runner-'));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  const workspace = join(root, 'workspace');
-  const stateRoot = join(root, 'state');
-  const configRoot = join(root, 'config');
-  const dataRoot = join(root, 'data');
-  const cacheRoot = join(root, 'cache');
-  await Promise.all([
-    mkdir(workspace),
-    mkdir(join(stateRoot, 'opencode'), { recursive: true }),
-    mkdir(join(configRoot, 'opencode'), { recursive: true }),
-    mkdir(join(dataRoot, 'opencode'), { recursive: true }),
-    mkdir(join(cacheRoot, 'opencode'), { recursive: true })
-  ]);
-  const binary = await executable(root, 'opencode', `#!/bin/sh
-case "$1" in
-  run)
-    shift
-    title=''
-    while [ "$#" -gt 0 ]; do
-      if [ "$1" = '--title' ]; then title="$2"; shift 2; else shift; fi
-    done
-    printf '[{"id":"session-test","title":"%s","directory":"/workspace"}]' "$title" > "$XDG_STATE_HOME/opencode/sessions.json"
-    printf 'native progress\n'
-    ;;
-  session)
-    cat "$XDG_STATE_HOME/opencode/sessions.json"
-    ;;
-  export)
-    printf '%s\n' '{"messages":[{"info":{"role":"assistant"},"parts":[{"type":"text","text":"exported final"}]}]}'
-    ;;
-esac
-`);
-  const visible = [];
-  const result = await runOpenCode({
-    binary,
-    prompt: 'perform task',
-    workspace: '/workspace',
-    hostWorkspace: workspace,
-    continuation: null,
-    model: null,
-    websearch: false,
-    env: {
-      HOME: root,
-      XDG_STATE_HOME: stateRoot,
-      XDG_CONFIG_HOME: configRoot,
-      XDG_DATA_HOME: dataRoot,
-      XDG_CACHE_HOME: cacheRoot
-    },
-    signal: null,
-    sandbox: { hostWorkspace: workspace, backend: 'opencode', mounts: [] },
-    onVisibleText: (text) => visible.push(text)
-  });
-  assert.deepEqual(result, { outputText: 'exported final', continuation: { sessionId: 'session-test' } });
-  assert.equal(visible.join(''), 'native progress\n');
-});
 
 test('passes configured models and mutable websearch state to coding-agent invocations', async () => {
   const calls = [];
@@ -266,7 +179,7 @@ test('forwards live backend text and terminates an incomplete diagnostic line', 
   assert.equal(await service.execute('task'), 'done');
   assert.deepEqual(visible, ['working', '\n']);
   assert.deepEqual(events, [
-    { type: 'coding-agent-selected', agent: 'codex' },
+    { type: 'coding-agent-selected', agent: 'codex', permissionMode: 'full-access' },
     { type: 'coding-agent-message', agent: 'codex', message: 'working' },
     { type: 'coding-agent-final', agent: 'codex', message: 'done' }
   ]);
@@ -383,6 +296,66 @@ test('does not switch backends after a delegated process fails', async () => {
   await assert.rejects(() => service.execute('first', { agent: 'codex' }), /failed after launch/);
   await assert.rejects(() => service.execute('second', { agent: 'opencode' }), /pinned to codex/);
   await service.close();
+});
+
+test('ask mode rejects selected Pi before workspace creation or native session mutation without fallback', async (t) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-pi-policy-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const agents = [
+    { name: 'pi', available: true, binary: '/fake/pi' },
+    { name: 'codex', available: true, binary: '/fake/codex' }
+  ];
+  let calls = 0;
+  const service = createCodingAgentService({
+    agents, workspace: root, permissionMode: 'ask-for-approval',
+    sessionState: { record: { agent: 'pi' }, save: async () => { calls += 1; } },
+    runners: {
+      pi: async () => { calls += 1; return { outputText: 'Pi ran', continuation: null }; },
+      codex: async () => { calls += 1; return { outputText: 'wrong backend', continuation: null }; }
+    }
+  });
+  t.after(() => service.close());
+  await assert.rejects(service.execute('task'), {
+    message: 'Pi does not support ask-for-approval; select full-access or use Codex/OpenCode.', exitCode: 2
+  });
+  assert.equal(calls, 0);
+  await assert.rejects(access(join(root, '.agents')));
+  service.setPermissionMode('full-access');
+  assert.equal(await service.execute('task'), 'Pi ran');
+  service.setPermissionMode('ask-for-approval');
+  await assert.rejects(service.execute('next'), /Pi does not support ask-for-approval/);
+});
+
+test('service cancellation releases pending approval and interrupts the active native operation', {
+  timeout: 2000
+}, async (t) => {
+  let ready;
+  const started = new Promise((resolve) => { ready = resolve; });
+  const events = [];
+  let answer;
+  const service = createCodingAgentService({
+    agents: [{ name: 'codex', available: true, binary: '/fake/codex' }],
+    permissionMode: 'ask-for-approval',
+    eventSink: (event) => events.push(event),
+    runners: { codex: async ({ signal, permissionRequests }) => {
+      answer = permissionRequests.request({
+        agent: 'codex', method: 'item/commandExecution/requestApproval', title: 'Run', message: 'Write scratch',
+        options: [{ id: 'allow', label: 'Allow' }]
+      }, { signal });
+      ready();
+      await new Promise((_resolve, reject) =>
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+    } }
+  });
+  t.after(() => service.close());
+  service.permissionRequests.setReplyCapability(true);
+  const execution = service.execute('task');
+  await started;
+  service.cancel('host stopped');
+  await assert.rejects(execution, { exitCode: 130 });
+  assert.equal(await answer, null);
+  assert.equal(events.some((event) => event.type === 'coding-agent-final'), false);
+  assert.deepEqual(events.at(-1), { type: 'coding-agent-request-resolved', id: answer.id, reason: 'cancelled' });
 });
 
 test('registers and explicitly executes the built-in coding-agent Code Skill', {

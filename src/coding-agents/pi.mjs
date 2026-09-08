@@ -4,6 +4,7 @@ import { join } from 'node:path';
 
 import { executionError, requireSandbox, runProcess } from './process.mjs';
 import { appendBoundedTail, contentText, createLineDecoder, unseenText } from './streaming.mjs';
+import { requirePiVersion } from './pi-version.mjs';
 
 export function parsePiOutput(stdout) {
   const parser = createPiEventParser();
@@ -86,9 +87,11 @@ export function buildPiArguments({ prompt, sessionId, sessionDir, model = null }
 }
 
 export async function runPi({
-  binary, prompt, workspace, hostWorkspace, continuation, model, env, signal, sandbox, onVisibleText
+  binary, prompt, workspace, hostWorkspace, continuation, model, env, signal, sandbox, onVisibleText,
+  permissionMode = 'full-access'
 }) {
   requireSandbox(sandbox);
+  await requirePiVersion({ binary, workspace, env, signal, sandbox, permissionMode });
   const sessionId = continuation?.sessionId || randomUUID();
   const hostSessionDir = join(hostWorkspace, '.ala-pi-sessions');
   const sessionDir = join(workspace, '.ala-pi-sessions');

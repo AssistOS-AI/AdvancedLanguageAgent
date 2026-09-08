@@ -15,9 +15,10 @@ import {
 import { ALAError, asALAError, EXIT_CODES } from './errors.mjs';
 import { composePrompt, loadRequest } from './input.mjs';
 import { createInteractiveCompleter } from './interactive-completion.mjs';
+import { createPermissionCommand } from './interactive-permissions.mjs';
 import { createThinkingIndicator } from './interactive-status.mjs';
 import { writeResult } from './output.mjs';
-import { validateTaskRepository } from './repositories.mjs';
+import { discoverAnthropicSkills, validateTaskRepository } from './repositories.mjs';
 import {
   isGitRepositoryUrl,
   managedRepositoryPath,
@@ -28,6 +29,7 @@ import {
 import { createRuntime, feedbackPrompt } from './runtime.mjs';
 import { createRuntimeEventSink } from './runtime-events.mjs';
 import { discoverCodingAgents } from './coding-agents/discovery.mjs';
+import { validateRuntimeBridge } from './coding-agents/sandbox.mjs';
 import { openSessionState } from './session-state.mjs';
 import { runControlledExecution } from './controlled-execution.mjs';
 
@@ -51,6 +53,7 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
   /symbolic detection off        Disable symbolic task routing
   /websearch on                  Persist and enable coding-agent web search
   /websearch off                 Persist and disable coding-agent web search
+  /permissions [mode]            Show or set ask-for-approval or full-access for this session
   /quit | /exit | :quit | :exit  Close the interactive session`;
 
 async function packageVersion() {
@@ -154,6 +157,7 @@ async function runAgentCommand(options, io, env) {
 }
 
 async function interactiveLoop(runtime, initialPrompt, initialInstruction, options, io, env, signal) {
+  const permissionCommand = createPermissionCommand(runtime, options.permissionMode);
   const configPath = resolveConfigPath({ cliPath: options.configPath, env, cwd: io.cwd });
   let activeConfig = await loadConfig(configPath);
   let repositoryPaths = activeConfig.taskRepositories.map((entry) => entry.path);
@@ -232,6 +236,9 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
             }
           } else if (parts[0] === '/repo') {
             const action = parts[1];
+            if (options.skillCatalog && action !== 'list') {
+              throw new ALAError('The caller-selected skill catalog cannot be changed in this session.', EXIT_CODES.usage);
+            }
             if (!['add', 'remove', 'list'].includes(action)) {
               throw new ALAError('Usage: /repo add <git-url> | /repo remove <name-or-path-or-git-url> | /repo list', EXIT_CODES.usage);
             }
@@ -268,6 +275,8 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
             }
             runtime.setSymbolicDetection(parts[2] === 'on');
             io.stderr.write(`ala: symbolic detection ${parts[2]}\n`);
+          } else if (parts[0] === '/permissions') {
+            io.stderr.write(`ala: ${permissionCommand(parts)}\n`);
           } else if (parts[0] === '/websearch') {
             if (parts.length !== 2 || !['on', 'off'].includes(parts[1])) {
               throw new ALAError('Usage: /websearch on|off', EXIT_CODES.usage);
@@ -321,6 +330,7 @@ async function runExecution(options, io, env) {
   }
   if (options.modelConfigPath) env.LLM_MODELS_CONFIG_PATH = resolve(io.cwd, options.modelConfigPath);
 
+  const runtimeBridge = validateRuntimeBridge(options.runtimeBridge);
   const executionCwd = options.cwd ? await realpath(resolve(io.cwd, options.cwd)) : io.cwd;
   if (options.cwd && !(await stat(executionCwd)).isDirectory()) {
     throw new ALAError('--cwd must reference an existing directory.', EXIT_CODES.usage);
@@ -354,11 +364,16 @@ async function runExecution(options, io, env) {
   }
   const eventSink = createRuntimeEventSink({ stream: io.stderr,
     env: options.sessionId ? { ...env, ALA_EVENT_STREAM: '1' } : env });
-  const repositories = await resolveActiveRepositories({
+  let repositories = options.skillCatalog !== undefined ? [] : await resolveActiveRepositories({
     config,
     env: runtimeEnv,
     cwd: executionCwd
   });
+  if (options.skillCatalog !== undefined) {
+    const catalog = validateRuntimeBridge(options.skillCatalog);
+    if (!catalog) throw new ALAError('--skill-catalog requires an existing canonical directory.', EXIT_CODES.usage);
+    repositories = (await discoverAnthropicSkills(catalog)).length ? [catalog] : [];
+  }
   const achilles = await loadAchillesAgentLib({
     overridePath: options.achillesPath,
     env,
@@ -384,8 +399,10 @@ async function runExecution(options, io, env) {
     codingAgentModels: config.codingAgents.models,
     workspace: options.cwd ? executionCwd : null,
     home: executionHome,
+    runtimeBridge,
     mcpServers: options.mcpServers,
     websearch: options.websearch ?? config.codingAgents.websearch,
+    permissionMode: options.permissionMode,
     cwd: executionCwd,
     options,
     env: runtimeEnv,
