@@ -216,6 +216,7 @@ export function createCodingAgentService({
           env,
           signal: controller.signal,
           onVisibleText,
+          onSkillRegistration: (value) => eventSink?.({ type: 'coding-agent-skill-registration', agent: selected.name, ...value }),
           onSession: async (value) => {
             continuation = value;
             await sessionState?.save({ continuation });
@@ -275,7 +276,9 @@ export function createCodingAgentService({
       outputSink = typeof nextOutputSink === 'function' ? nextOutputSink : null;
     },
     async refreshSkills(nextSkills) {
+      if (executing) throw new Error('Cannot refresh skills during an active coding-agent execution.');
       await validateSkills(nextSkills);
+      if (executing) throw new Error('Cannot refresh skills during an active coding-agent execution.');
       const previous = activeSkills;
       activeSkills = nextSkills;
       try {

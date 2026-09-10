@@ -192,7 +192,7 @@ Execution options:
   --skill <name>             Execute a task skill explicitly
   --ca <name>                Coding agent: auto, codex, opencode, or pi
   --permissions <mode>      ask-for-approval or full-access (default: full-access)
-  --skill-catalog <file>    JSON array of absolute skill directory paths; [] selects none
+  --skill-catalog <path>    JSON skill-path array or canonical catalog directory; empty selects none
   --home <path>              Explicit coding-agent home/configuration directory
   --cwd <path>               Existing working directory; disables temporary workspace creation
   --runtime-bridge <path>    Mount a canonical runtime capability directory read-only at /run/ala-runtime
