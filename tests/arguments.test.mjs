@@ -30,7 +30,11 @@ test('parses coding-agent discovery and explicit delegation options', () => {
   });
   assert.equal(parseArguments(['--agent', 'codex', 'Plan', 'this']).agent, 'codex');
   assert.throws(() => parseArguments(['--agent', 'unknown', 'task']), /must be auto/);
-  assert.throws(() => parseArguments(['--agent', 'pi', '--skill', 'translate']), /cannot be used together/);
+  for (const flag of ['--agent', '--ca']) {
+    const selected = parseArguments([flag, 'pi', '--skill', 'translate']);
+    assert.equal(selected.agent, 'pi');
+    assert.equal(selected.skill, 'translate');
+  }
   assert.equal(parseArguments(['--ca', 'pi', '--model', 'fast', '--task', 'task']).model, 'fast');
   assert.equal(parseArguments(['--websearch', 'on', 'research']).websearch, true);
   assert.equal(parseArguments(['--websearch', 'off', 'offline']).websearch, false);

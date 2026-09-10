@@ -369,7 +369,8 @@ async function runExecution(options, io, env) {
     cwd: executionCwd
   });
   if (options.skillCatalog !== undefined) {
-    repositories = await readSkillCatalog(resolve(io.cwd, options.skillCatalog));
+    options.skillCatalog = resolve(io.cwd, options.skillCatalog);
+    repositories = await readSkillCatalog(options.skillCatalog);
   }
   const achilles = await loadAchillesAgentLib({
     overridePath: options.achillesPath,

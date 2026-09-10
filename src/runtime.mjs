@@ -7,6 +7,7 @@ import { ALAError, EXIT_CODES } from './errors.mjs';
 import { normalizeResult } from './output.mjs';
 import { createSymbolicRouter } from './routing/symbolic.mjs';
 import { createPermissionRequestManager, validatePermissionMode } from './permission-requests.mjs';
+import { filterTaskSkills, readCatalogEnvelope, restrictCatalogEnvelope } from './skill-catalog.mjs';
 
 const internalSkillsDirectory = fileURLToPath(new URL('./internal-skills', import.meta.url));
 
@@ -59,16 +60,20 @@ export async function createRuntime({
   const registry = await createSkillRegistry(repositories, {
     builtInSkillsDirectories: codingAgents.some((record) => record.available) ? [internalSkillsDirectory] : []
   });
-  function selectTaskSkills(catalog) {
-    if (options.skillSets === undefined) return catalog;
-    const requested = String(options.skillSets).split(',').map(name => name.trim()).filter(Boolean);
-    const selectedNames = new Set(requested);
-    const selectedSkills = catalog.filter(skill => selectedNames.has(skill.name));
-    const missing = requested.filter(name => !selectedSkills.some(skill => skill.name === name));
-    if (missing.length) throw new ALAError(`Task skills not found: ${missing.join(', ')}`, EXIT_CODES.repository);
-    return selectedSkills;
+  let skills;
+  let catalogEnvelope;
+  try {
+    skills = filterTaskSkills(registry.skills, options.skillSets);
+    catalogEnvelope = options.skillCatalog !== undefined
+      ? restrictCatalogEnvelope(await readCatalogEnvelope(options.skillCatalog, registry.skills), skills) : null;
+  } catch (error) { await registry.cleanup(); throw error; }
+  function emitCatalog() {
+    if (catalogEnvelope) eventSink?.({ type: 'skill-catalog', ...catalogEnvelope });
   }
-  let skills = selectTaskSkills(registry.skills);
+  function catalogPrompt(prompt) {
+    emitCatalog();
+    return catalogSelectionPrompt(skills, prompt);
+  }
   const invocationModels = { ...codingAgentModels };
   if (options.agent && options.model) {
     const selectedAgent = options.agent === 'auto'
@@ -151,7 +156,8 @@ export async function createRuntime({
       codingAgentService.setOutputSink(outputSink);
     },
     async refreshRepositories(nextRepositories) {
-      const nextSkills = selectTaskSkills(await discoverTaskSkills(nextRepositories));
+      if (catalogEnvelope) throw new ALAError('Caller-selected catalogs cannot be replaced interactively.', EXIT_CODES.usage);
+      const nextSkills = filterTaskSkills(await discoverTaskSkills(nextRepositories), options.skillSets);
       const nextSymbolicRouter = await createSymbolicRouter(nextSkills);
       await codingAgentService.refreshSkills(nextSkills);
       skills = nextSkills;
@@ -163,7 +169,7 @@ export async function createRuntime({
         ? codingAgents.find((record) => record.available)
         : codingAgents.find((record) => record.name === agent && record.available);
       if (!selected) throw new ALAError(`Coding agent is not available: ${agent}`, EXIT_CODES.execution);
-      return mainAgent.executeSkill('coding-agent', prompt, {
+      return mainAgent.executeSkill('coding-agent', catalogEnvelope || skills.length ? catalogPrompt(prompt) : prompt, {
         signal,
         context: { codingAgentService, codingAgentPreference: agent }
       });
@@ -185,19 +191,23 @@ export async function createRuntime({
         if (!codingAgents.some((agent) => agent.available)) {
           throw new ALAError('Anthropic task skills require an available coding agent.', EXIT_CODES.execution);
         }
-        return mainAgent.executeSkill('coding-agent', selectedSkillPrompt(record, prompt), common);
+        const selectedPrompt = selectedSkillPrompt(record, prompt);
+        emitCatalog();
+        return mainAgent.executeSkill('coding-agent', selectedPrompt, common);
       }
       if (options.agent || options.folders?.length) return mainAgent.executeSkill('coding-agent',
-        skills.length ? catalogSelectionPrompt(skills, prompt) : prompt, common);
+        catalogEnvelope || skills.length ? catalogPrompt(prompt) : prompt, common);
       if (this.symbolicDetectionEnabled) {
         const decision = symbolicRouter.route(executionOptions.instruction || prompt);
         if (decision.skill && ['DETERMINISTIC', 'HIGH'].includes(decision.state)) {
           const record = skills.find((skill) => skill.name === decision.skill);
-          return mainAgent.executeSkill('coding-agent', selectedSkillPrompt(record, prompt), common);
+          const selectedPrompt = selectedSkillPrompt(record, prompt);
+          emitCatalog();
+          return mainAgent.executeSkill('coding-agent', selectedPrompt, common);
         }
       }
-      if (skills.length > 0 && codingAgents.some((agent) => agent.available)) {
-        return mainAgent.executeSkill('coding-agent', catalogSelectionPrompt(skills, prompt), common);
+      if ((catalogEnvelope || skills.length > 0) && codingAgents.some((agent) => agent.available)) {
+        return mainAgent.executeSkill('coding-agent', catalogPrompt(prompt), common);
       }
       return mainAgent.executePrompt(prompt, common);
     },

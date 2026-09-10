@@ -177,9 +177,6 @@ export function parseArguments(argv) {
   if (options.agent && !['auto', 'codex', 'opencode', 'pi'].includes(options.agent)) {
     throw new ALAError('--agent must be auto, codex, opencode, or pi.', EXIT_CODES.usage);
   }
-  if (options.agent && options.skill) {
-    throw new ALAError('--agent and --skill cannot be used together.', EXIT_CODES.usage);
-  }
   if (options.agent && (options.tags.length > 0 || options.reasoningEffort || options.modelConfigPath)) {
     throw new ALAError('--ca cannot be combined with tag, reasoning-effort, or model-config overrides.', EXIT_CODES.usage);
   }
@@ -199,7 +196,7 @@ Execution options:
   --skill <name>             Execute a task skill explicitly
   --ca <name>                Coding agent: auto, codex, opencode, or pi
   --permissions <mode>      ask-for-approval or full-access (default: full-access)
-  --skill-catalog <file>    JSON array of absolute skill directory paths; [] selects none
+  --skill-catalog <path>    JSON skill-path array or canonical catalog directory; empty selects none
   --home <path>              Explicit coding-agent home/configuration directory
   --cwd <path>               Existing working directory; disables temporary workspace creation
   --folder <path> [as <alias>]  Mount a directory read-only; alias is relative to /workspace

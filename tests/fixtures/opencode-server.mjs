@@ -1,4 +1,4 @@
-#!/usr/bin/node
+#!/usr/bin/env node
 import { createServer } from 'node:http';
 import { readFileSync, writeFileSync, existsSync, appendFileSync } from 'node:fs';
 

@@ -135,8 +135,8 @@ test('builds a fail-closed Bubblewrap namespace with explicit mount access', asy
   assert.equal(args.some((value, index) => value === '--ro-bind' && args[index + 1] === '/'), false);
   const pathIndex = args.findIndex((value, index) => value === '--setenv' && args[index + 1] === 'PATH');
   const runtimeRoot = collectAgentRuntimeMounts(process.execPath)[0];
-  const runtimeBin = runtimeRoot.endsWith('/bin') ? runtimeRoot : `${runtimeRoot}/bin`;
-  assert.match(args[pathIndex + 2], new RegExp(`^${runtimeBin.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}:`));
+  const runtimeBin = runtimeRoot ? join(runtimeRoot, 'bin') : '/usr/local/bin';
+  assert.equal(args[pathIndex + 2].startsWith(`${runtimeBin}:`), true);
   assert.throws(() => buildSandboxArgs({
     workspace, backend: 'codex', binary: process.execPath, bwrap: null
   }), /requires Bubblewrap/);
