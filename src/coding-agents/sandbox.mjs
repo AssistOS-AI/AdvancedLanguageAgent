@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 
 import { ALAError, EXIT_CODES } from '../errors.mjs';
 import { SANDBOX_WORKSPACE } from './paths.mjs';
-import { addPloinkyTaskMounts } from './ploinky-task.mjs';
+import { resolveFolderMounts, validateFolderTargets } from './folders.mjs';
 
 const SANDBOX_HOME = '/home/ala';
 const PROBE_CACHE_TTL_MS = 30_000;
@@ -103,15 +103,6 @@ function probeBubblewrap(cache, bwrap, args, dependencies = {}) {
 function resolveExisting(value) {
   if (!value) return null;
   try { return fs.realpathSync(path.resolve(value)); } catch { return null; }
-}
-
-export function validateRuntimeBridge(value = null) {
-  if (value === null || value === undefined) return null;
-  if (typeof value !== 'string' || !path.isAbsolute(value)
-      || resolveExisting(value) !== value || !fs.statSync(value).isDirectory()) {
-    throw new ALAError('--runtime-bridge requires a canonical existing directory without symlinks.', EXIT_CODES.usage);
-  }
-  return value;
 }
 
 function systemPath(value) {
@@ -297,8 +288,7 @@ export function buildSandboxArgs({
   bwrap = findBubblewrap(),
   privateProc = canMountPrivateProc(bwrap),
   home = null,
-  runtimeBridge = null,
-  ploinkyTask = null,
+  folders = [],
   isolatedSkills = false,
   chdir = SANDBOX_WORKSPACE
 }) {
@@ -312,8 +302,8 @@ export function buildSandboxArgs({
     throw new ALAError('Coding-agent execution through Bubblewrap is supported only on Linux.', EXIT_CODES.execution);
   }
   const hostWorkspace = resolveExisting(workspace);
-  const bridgeDirectory = validateRuntimeBridge(runtimeBridge);
   const command = resolveExisting(binary);
+  const folderMounts = resolveFolderMounts(folders);
   if (!hostWorkspace || !command) {
     throw new ALAError('Coding-agent sandbox workspace or executable is unavailable.', EXIT_CODES.execution);
   }
@@ -354,19 +344,21 @@ export function buildSandboxArgs({
 
   addParentDirs(sandboxArgs, SANDBOX_WORKSPACE);
   sandboxArgs.push('--bind', hostWorkspace, SANDBOX_WORKSPACE);
-  if (bridgeDirectory || ploinkyTask || isolatedSkills) {
+  if (folderMounts.length || isolatedSkills) {
     addSkillCatalogOverlay(sandboxArgs, hostWorkspace);
   }
-  if (bridgeDirectory) {
-    sandboxArgs.push('--dir', '/run', '--ro-bind', bridgeDirectory, '/run/ala-runtime');
-  }
-  addPloinkyTaskMounts(sandboxArgs, ploinkyTask);
+
 
   const stateMounts = explicitHome ? [] : collectAgentStateMounts(backend, env).map((mount) => ({ ...mount }));
   const allMounts = normalizedMounts([...stateMounts, ...mounts]);
   for (const mount of allMounts) {
     addParentDirs(sandboxArgs, mount.target);
     sandboxArgs.push(mount.writable ? '--bind' : '--ro-bind', mount.source, mount.target);
+  }
+  validateFolderTargets(folderMounts, hostWorkspace, [...runtimeMounts, ...allMounts]);
+  for (const mount of folderMounts) {
+    addParentDirs(sandboxArgs, mount.target);
+    sandboxArgs.push('--ro-bind', mount.source, mount.target);
   }
   sandboxArgs.push('--remount-ro', '/');
   for (const [name, value] of Object.entries(sandboxEnvironment(backend, runtimeMounts, env))) {

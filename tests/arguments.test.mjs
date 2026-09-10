@@ -38,12 +38,12 @@ test('parses coding-agent discovery and explicit delegation options', () => {
   assert.deepEqual(parseArguments(['--websearch', 'research']).instructionParts, ['research']);
   const invocation = parseArguments([
     '--home', '/robot', '--cwd', '/work', '--skillSets', 'pdf2Html,writeArticle',
-    '--runtime-bridge', '/private/turn',
+    '--folder', '/private/turn', 'as', 'runtime',
     '--taskFile', 'task.prompt', '--MCPServers', 'desktop=http://127.0.0.1:8100/mcp', '--ca', 'codex'
   ]);
   assert.equal(invocation.home, '/robot');
   assert.equal(invocation.cwd, '/work');
-  assert.equal(invocation.runtimeBridge, '/private/turn');
+  assert.deepEqual(invocation.folders, [{ source: '/private/turn', alias: 'runtime' }]);
   assert.equal(invocation.skillSets, 'pdf2Html,writeArticle');
   assert.equal(invocation.taskFile, 'task.prompt');
   assert.equal(invocation.mcpServers, 'desktop=http://127.0.0.1:8100/mcp');
@@ -53,8 +53,8 @@ test('rejects unknown options and missing values', () => {
   assert.throws(() => parseArguments(['--unknown']), /Unknown option/);
   assert.throws(() => parseArguments(['--task-repo', 'tasks']), /Unknown option/);
   assert.throws(() => parseArguments(['--skill']), /requires a value/);
-  assert.throws(() => parseArguments(['--folder', './books']), /Unknown option/);
-  assert.throws(() => parseArguments(['--runtime-bridge']), /requires a value/);
+  assert.throws(() => parseArguments(['--ploinky-task', './books']), /Unknown option/);
+  assert.throws(() => parseArguments(['--runtime-bridge']), /Unknown option/);
   assert.throws(() => parseArguments(['--runtime-bridge', '']), { exitCode: 2 });
   assert.throws(() => parseArguments(['repo', 'add']), /requires a Git URL/);
   assert.throws(() => parseArguments(['repo', 'add', './tasks']), /requires a Git URL/);

@@ -30,7 +30,6 @@ import { readSkillCatalog } from './skill-catalog.mjs';
 import { createRuntime, feedbackPrompt } from './runtime.mjs';
 import { createRuntimeEventSink } from './runtime-events.mjs';
 import { discoverCodingAgents } from './coding-agents/discovery.mjs';
-import { validateRuntimeBridge } from './coding-agents/sandbox.mjs';
 import { openSessionState } from './session-state.mjs';
 import { runControlledExecution } from './controlled-execution.mjs';
 
@@ -331,7 +330,6 @@ async function runExecution(options, io, env) {
   }
   if (options.modelConfigPath) env.LLM_MODELS_CONFIG_PATH = resolve(io.cwd, options.modelConfigPath);
 
-  const runtimeBridge = validateRuntimeBridge(options.runtimeBridge);
   const executionCwd = options.cwd ? await realpath(resolve(io.cwd, options.cwd)) : io.cwd;
   if (options.cwd && !(await stat(executionCwd)).isDirectory()) {
     throw new ALAError('--cwd must reference an existing directory.', EXIT_CODES.usage);
@@ -398,7 +396,6 @@ async function runExecution(options, io, env) {
     codingAgentModels: config.codingAgents.models,
     workspace: options.cwd ? executionCwd : null,
     home: executionHome,
-    runtimeBridge,
     mcpServers: options.mcpServers,
     websearch: options.websearch ?? config.codingAgents.websearch,
     permissionMode: options.permissionMode,

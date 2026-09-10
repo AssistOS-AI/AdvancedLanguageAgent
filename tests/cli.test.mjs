@@ -256,7 +256,7 @@ for argument in "$@"; do
 done
 printf '%s|%s|%s|%s|%s\n' "$PWD" "$resume" "$thread" "$model" "$websearch" >> "$CODEX_HOME/agent-calls.log"
 result='slash result'
-case "$last" in *interactive-task*) result='refreshed skill catalog' ;; esac
+if [ -f /workspace/.agents/skills/interactive-task/SKILL.md ]; then result='refreshed skill catalog'; fi
 printf '%s\n' '{"type":"thread.started","thread_id":"thread-interactive"}'
 printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n' "$result"
 `);

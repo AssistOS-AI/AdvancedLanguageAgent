@@ -40,8 +40,7 @@ export function spawnProcess({ binary, args, cwd, env = process.env, stdio, sand
     bwrap,
     privateProc: sandbox.privateProc,
     home: sandbox.home,
-    runtimeBridge: sandbox.runtimeBridge,
-    ploinkyTask: sandbox.ploinkyTask,
+    folders: sandbox.folders,
     isolatedSkills: sandbox.isolatedSkills,
     chdir: cwd
   }), {

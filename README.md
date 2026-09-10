@@ -110,7 +110,7 @@ ala --home /robot/home --cwd /workspace/project --skillSets pdf2Html,writeArticl
   --taskFile task.prompt --MCPServers desktop=http://127.0.0.1:48100/mcp --ca codex
 ```
 
-`--home` is bound as the sandbox home and supplies saved agent authentication and configuration. `--cwd` is bound read-write at `/workspace`. `--skillSets` restricts the discovered catalog, `--task` or `--taskFile` supplies the prompt, and `--MCPServers` injects temporary URL configuration into Codex without rewriting its saved config. The former arbitrary `--folder` and `/folder` interfaces have been removed.
+`--home` is bound as the sandbox home and supplies saved agent authentication and configuration. `--cwd` is bound read-write at `/workspace`. `--skillSets` restricts the discovered catalog, `--task` or `--taskFile` supplies the prompt, and `--MCPServers` injects temporary URL configuration into Codex without rewriting its saved config. Read-only extra directories use `--folder <path> [as <alias>]`; interactive `/folder` commands are not supported.
 
 Coding-agent web search is off by default. Use bare `--websearch` to enable it for one invocation, `--websearch on|off` as an explicit invocation-only override, or persist the setting during an interactive session:
 
@@ -142,7 +142,6 @@ An embedding process can add `--control-stdin` and send JSONL messages such as `
 
 Select native permission policy with `--permissions ask-for-approval|full-access`; the standalone default is full-access inside Bubblewrap. An embedding host must attach control stdin to display and answer native approval requests. Codex uses native app-server approval decisions; OpenCode uses its authenticated native server and once/always/reject replies, without changing project `opencode.json`. Pi supports full-access only and requires version 0.85.1 or a verified compatible RPC release. An older installation must be upgraded separately or selected through `PI_BIN`; ALA does not modify global installations. Missing reply capability declines an operation requiring approval rather than granting access. Native remembered grants are not an ALA authorization cache and need not survive a new native process.
 
-An embedding host may pass `--runtime-bridge /absolute/canonical/runtime-directory` to expose one read-only runtime channel at `/run/ala-runtime`. The host owns that directory's authentication and lifetime. This is not a general writable-folder option; ordinary callers expose no channel. Bridge mode presents only the selected skill descriptors to native discovery through a sandbox-local overlay, while leaving host skill files intact. Installed Node and package dependencies remain read-only so a standalone native backend can still execute portable Node-based skill scripts.
 
 ## Run interactively
 
@@ -202,3 +201,5 @@ npm run docs:verify
 ## License
 
 See [LICENSE](LICENSE).
+
+Expose a caller-owned directory read-only with `--folder /absolute/path as runtime`. It appears at `/workspace/runtime`; without `as`, it appears at the original absolute path. Repeat `--folder` for separate destinations. ALA only validates and mounts directories; the caller prepares dependencies and owns any socket protocol and cleanup.

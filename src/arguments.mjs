@@ -19,8 +19,6 @@ const valueOptions = new Map([
   ['--ca', 'agent'],
   ['--home', 'home'],
   ['--cwd', 'cwd'],
-  ['--runtime-bridge', 'runtimeBridge'],
-  ['--ploinky-task', 'ploinkyTask'],
   ['--skill-catalog', 'skillCatalog'],
   ['--session-id', 'sessionId'],
   ['--skillSets', 'skillSets'],
@@ -49,6 +47,7 @@ function defaultExecutionOptions() {
     command: 'execute',
     instructionParts: [],
     sources: [],
+    folders: [],
     tags: [],
     interactive: false,
     websearch: null,
@@ -148,6 +147,16 @@ export function parseArguments(argv) {
         options.websearch = true;
       }
     }
+    else if (token === '--folder') {
+      const source = optionValue(argv, index, token);
+      index += 1;
+      let alias;
+      if (argv[index + 1] === 'as') {
+        alias = optionValue(argv, index + 1, '--folder as');
+        index += 2;
+      }
+      options.folders.push({ source, ...(alias !== undefined ? { alias } : {}) });
+    }
     else if (token === '--stdin') options.sources.push({ type: 'stdin' });
     else if (valueOptions.has(token)) {
       const key = valueOptions.get(token);
@@ -164,9 +173,7 @@ export function parseArguments(argv) {
   }
   if (options.task) options.instructionParts.unshift(options.task);
   validatePermissionMode(options.permissionMode);
-  if (options.runtimeBridge !== undefined && !options.runtimeBridge.trim()) {
-    throw new ALAError('--runtime-bridge requires a canonical existing directory.', EXIT_CODES.usage);
-  }
+
   if (options.agent && !['auto', 'codex', 'opencode', 'pi'].includes(options.agent)) {
     throw new ALAError('--agent must be auto, codex, opencode, or pi.', EXIT_CODES.usage);
   }
@@ -195,8 +202,7 @@ Execution options:
   --skill-catalog <file>    JSON array of absolute skill directory paths; [] selects none
   --home <path>              Explicit coding-agent home/configuration directory
   --cwd <path>               Existing working directory; disables temporary workspace creation
-  --runtime-bridge <path>    Mount a canonical runtime capability directory read-only at /run/ala-runtime
-  --ploinky-task <path>     Mount explicit Ploinky SDK task configuration for direct MCP scripts
+  --folder <path> [as <alias>]  Mount a directory read-only; alias is relative to /workspace
   --session-id <uuid>        Persistent conversation identity; requires --home, --cwd and --ca
   --resume-session           Resume the exact saved session, never create a replacement
   --control-stdin            Accept JSONL messages and interaction responses while executing

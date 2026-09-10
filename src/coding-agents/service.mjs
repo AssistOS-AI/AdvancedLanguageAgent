@@ -8,7 +8,8 @@ import { listCodexModels, runCodex } from './codex.mjs';
 import { SANDBOX_WORKSPACE } from './paths.mjs';
 import { listOpenCodeModels, runOpenCode } from './opencode.mjs';
 import { listPiModels, runPi } from './pi.mjs';
-import { canMountPrivateProc, findBubblewrap, validateRuntimeBridge } from './sandbox.mjs';
+import { resolveFolderMounts } from './folders.mjs';
+import { canMountPrivateProc, findBubblewrap } from './sandbox.mjs';
 import { parseMcpServers } from './mcp-servers.mjs';
 import { runCodexLive, runPiLive } from './live-agents.mjs';
 
@@ -61,8 +62,7 @@ export function createCodingAgentService({
   skills = [],
   workspace: requestedWorkspace = null,
   home = null,
-  runtimeBridge = null,
-  ploinkyTask = null,
+  folders = [],
   isolatedSkills = false,
   mcpServers = null,
   models = {},
@@ -78,9 +78,8 @@ export function createCodingAgentService({
   modelListers = modelAdapters
 }) {
   let requestedPermissionMode = validatePermissionMode(permissionMode);
-  runtimeBridge = validateRuntimeBridge(runtimeBridge);
-  ploinkyTask = validateRuntimeBridge(ploinkyTask);
-  const overlaySkills = Boolean(runtimeBridge || ploinkyTask || isolatedSkills);
+  const folderMounts = resolveFolderMounts(folders, cwd);
+  const overlaySkills = Boolean(folderMounts.length || isolatedSkills);
   permissionRequests ??= createPermissionRequestManager({ eventSink, logger });
   let activeController = null;
   const available = agents.filter((record) => record.available);
@@ -144,8 +143,7 @@ export function createCodingAgentService({
         hostWorkspace: workspace,
         backend: selected.name,
         ...(home ? { home } : {}),
-        ...(runtimeBridge ? { runtimeBridge } : {}),
-        ...(ploinkyTask ? { ploinkyTask } : {}),
+        folders: folderMounts,
         isolatedSkills: overlaySkills,
         mounts: sandboxMounts(activeSkills),
         bwrap: sandboxCapabilities.bwrap,

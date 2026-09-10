@@ -1,13 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { access, mkdir, mkdtemp, readFile, readdir, readlink, realpath, rm, symlink, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { runProcess } from '../src/coding-agents/process.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
-import { buildSandboxArgs, canStartBubblewrap, validateRuntimeBridge } from '../src/coding-agents/sandbox.mjs';
+import { buildSandboxArgs, canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
+
+import { resolveFolderMounts } from '../src/coding-agents/folders.mjs';
+import net from 'node:net';
 
 const sandboxSupported = canStartBubblewrap();
 const liveSandbox = { skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process' };
@@ -18,29 +20,28 @@ async function fixture(context) {
   const workspace = join(root, 'workspace');
   const bridge = join(root, 'bridge');
   await Promise.all([mkdir(workspace), mkdir(bridge, { mode: 0o700 })]);
+  await mkdir(join(bridge, 'events'));
+  await writeFile(join(bridge, 'context.json'), JSON.stringify({ version: 1, env: {} }));
   return { root, workspace, bridge };
 }
 
-test('runtime bridge rejects missing, noncanonical, symlinked and expired directory capabilities', async (context) => {
-  const { root, workspace, bridge } = await fixture(context);
-  const file = join(root, 'file');
+test('folder mounts resolve aliases and reject missing sources and reserved destinations', async context => {
+  const { root, bridge } = await fixture(context);
   const alias = join(root, 'alias');
-  await writeFile(file, 'not a directory');
   await symlink(bridge, alias);
-  for (const value of ['', 'bridge', file, alias, join(root, 'missing'), `${bridge}/../bridge`]) {
-    assert.throws(() => validateRuntimeBridge(value), { exitCode: 2 });
-    assert.throws(() => createCodingAgentService({ agents: [], runtimeBridge: value }), { exitCode: 2 });
+  assert.deepEqual(resolveFolderMounts([{ source: alias }]), [{ source: bridge, target: alias }]);
+  assert.deepEqual(resolveFolderMounts([{ source: bridge, alias: 'data files' }]),
+    [{ source: bridge, target: '/workspace/data files' }]);
+  for (const folder of [{ source: '' }, { source: join(root, 'missing') },
+    { source: bridge, alias: '../escape' }, { source: bridge, alias: '.agents' },
+    { source: bridge, target: '/usr' }, { source: bridge, target: '/workspace' }]) {
+    assert.throws(() => resolveFolderMounts([folder]), { exitCode: 2 });
   }
-  assert.equal(validateRuntimeBridge(bridge), bridge);
-  await rm(bridge, { recursive: true });
-  await symlink(workspace, bridge);
-  assert.throws(() => buildSandboxArgs({
-    workspace, binary: process.execPath, backend: 'pi', bwrap: '/usr/bin/bwrap',
-    privateProc: false, runtimeBridge: bridge
-  }), { exitCode: 2 });
+  assert.throws(() => resolveFolderMounts([{ source: bridge, alias: 'same' },
+    { source: bridge, alias: 'same' }]), /overlap/);
 });
 
-test('bridge sandbox isolates the selected catalog and preserves host authoring files through refresh', liveSandbox,
+test('Folder mount sandbox isolates the selected catalog and preserves host authoring files through refresh', liveSandbox,
   async (context) => {
     const { root, workspace, bridge } = await fixture(context);
     const hostAgents = join(workspace, '.agents');
@@ -56,24 +57,15 @@ test('bridge sandbox isolates the selected catalog and preserves host authoring 
       writeFile(join(hostAgents, 'settings.json'), 'project settings'),
       writeFile(join(root, 'outside.txt'), 'outside private content'),
       symlink(join(root, 'outside.txt'), join(hostAgents, 'outside-link')),
-      writeFile(join(bridge, 'client.mjs'), 'export const marker = "mounted client";\n', { mode: 0o600 }),
-      writeFile(join(bridge, 'capability.json'), JSON.stringify({
-        version: 1, socketPath: '/run/ala-runtime/bridge.sock', capability: 'fixture-capability'
-      }), { mode: 0o600 })
+      writeFile(join(bridge, 'client.mjs'), 'export const marker = "mounted client";\n', { mode: 0o600 })
     ]);
-    const server = createServer((socket) => {
-      socket.once('data', (data) => socket.end(`accepted:${data.toString()}`));
-    });
-    await new Promise((resolve, reject) => {
-      server.once('error', reject);
-      server.listen(join(bridge, 'bridge.sock'), resolve);
-    });
-    context.after(() => new Promise((resolve) => server.close(resolve)));
+    const server = net.createServer(socket => socket.once('data', data => socket.end('ack:' + data)));
+    await new Promise(resolve => server.listen(join(bridge, 'notifications.sock'), resolve));
+    context.after(() => new Promise(resolve => server.close(resolve)));
     const script = `
 import fs from 'node:fs';
 import net from 'node:net';
-import { marker } from '/run/ala-runtime/client.mjs';
-const descriptor = JSON.parse(fs.readFileSync('/run/ala-runtime/capability.json', 'utf8'));
+import { marker } from '/workspace/runtime/client.mjs';
 const result = {
   marker, cwd: process.cwd(),
   names: fs.readdirSync('/workspace/.agents/skills').sort(),
@@ -82,17 +74,17 @@ const result = {
   bridgeParentVisible: fs.existsSync(${JSON.stringify(join(root, 'outside.txt'))})
 };
 for (const [name, target] of Object.entries({
-  bridgeWrite: '/run/ala-runtime/capability.json',
+  bridgeWrite: '/workspace/runtime/context.json',
   selectedWrite: '/workspace/.agents/skills/selected/SKILL.md'
 })) {
   try { fs.writeFileSync(target, 'changed'); result[name] = 'allowed'; }
   catch { result[name] = 'denied'; }
 }
 result.reply = await new Promise((resolve, reject) => {
-  const socket = net.createConnection(descriptor.socketPath);
+  const socket = net.createConnection('/workspace/runtime/notifications.sock');
   socket.once('error', reject);
-  socket.once('connect', () => socket.write(descriptor.capability));
-  socket.once('data', (data) => { socket.end(); resolve(data.toString()); });
+  socket.once('connect', () => socket.write('hello'));
+  socket.once('data', data => { socket.destroy(); resolve(data.toString()); });
 });
 fs.writeFileSync('/workspace/artifact.txt', 'persistent workspace output');
 console.log(JSON.stringify(result));
@@ -108,7 +100,7 @@ console.log(JSON.stringify(result));
     };
     const service = createCodingAgentService({
       agents: [{ name: 'pi', available: true, binary: '/bin/sh' }],
-      workspace, runtimeBridge: bridge,
+      workspace, folders: [{ source: bridge, alias: 'runtime' }],
       skills: [{ name: 'selected', directoryPath: selected }],
       runners: { pi: async (input) => ({ outputText: JSON.stringify(await inspect(input)), continuation: null }) },
       modelListers: { pi: inspect }
@@ -117,8 +109,7 @@ console.log(JSON.stringify(result));
     const first = JSON.parse(await service.execute('inspect selected catalog'));
     assert.deepEqual(first, {
       marker: 'mounted client', cwd: '/workspace', names: ['selected'], settings: 'project settings',
-      outsideVisible: false, bridgeParentVisible: false, bridgeWrite: 'denied', selectedWrite: 'denied',
-      reply: 'accepted:fixture-capability'
+      outsideVisible: false, bridgeParentVisible: false, bridgeWrite: 'denied', selectedWrite: 'denied', reply: 'ack:hello'
     });
     assert.deepEqual(await service.listModels('pi'), first);
     await service.refreshSkills([]);
@@ -130,10 +121,10 @@ console.log(JSON.stringify(result));
     assert.equal(await readFile(join(hostAgents, 'settings.json'), 'utf8'), 'project settings');
     assert.equal(await readlink(join(hostAgents, 'outside-link')), join(root, 'outside.txt'));
     assert.equal(await readFile(join(workspace, 'artifact.txt'), 'utf8'), 'persistent workspace output');
-    assert.equal(JSON.parse(await readFile(join(bridge, 'capability.json'), 'utf8')).capability, 'fixture-capability');
+    assert.equal(JSON.parse(await readFile(join(bridge, 'context.json'), 'utf8')).version, 1);
   });
 
-test('bridge creates missing skill mount points only inside the sandbox', liveSandbox, async (context) => {
+test('Folder mount creates missing skill mount points only inside the sandbox', liveSandbox, async (context) => {
   const { root, workspace, bridge } = await fixture(context);
   const selected = join(root, 'selected');
   await mkdir(selected);
@@ -142,7 +133,7 @@ test('bridge creates missing skill mount points only inside the sandbox', liveSa
     binary: process.execPath, args: ['-e',
       'console.log(require("node:fs").readFileSync("/workspace/.agents/skills/selected/SKILL.md", "utf8"))'],
     cwd: '/workspace', env: { HOME: join(root, 'missing-home') },
-    sandbox: { hostWorkspace: workspace, backend: 'pi', runtimeBridge: bridge,
+    sandbox: { hostWorkspace: workspace, backend: 'pi', folders: [{ source: bridge, alias: 'runtime' }],
       mounts: [{ source: selected, target: '/workspace/.agents/skills/selected', writable: false }] }
   });
   assert.equal(result.code, 0, result.stderr);
@@ -151,14 +142,33 @@ test('bridge creates missing skill mount points only inside the sandbox', liveSa
   assert.deepEqual(await readdir(join(workspace, '.agents')), []);
 });
 
-test('bridge rejects a symlinked host .agents parent rather than mounting its target', async (context) => {
+test('Folder mount rejects a symlinked host .agents parent rather than mounting its target', async (context) => {
   const { root, workspace, bridge } = await fixture(context);
   const outside = join(root, 'outside');
   await mkdir(outside);
   await symlink(outside, join(workspace, '.agents'));
   assert.throws(() => buildSandboxArgs({
     workspace, binary: process.execPath, backend: 'pi', bwrap: '/usr/bin/bwrap',
-    privateProc: false, runtimeBridge: bridge
+    privateProc: false, folders: [{ source: bridge, alias: 'runtime' }]
   }), /requires .agents to be a directory/);
   assert.deepEqual(await readdir(outside), []);
+});
+
+test('a folder without an alias is visible read-only at the original absolute path', liveSandbox, async context => {
+  const { root, workspace, bridge } = await fixture(context);
+  const sourceAlias = join(root, 'source-alias');
+  await symlink(bridge, sourceAlias);
+  const result = await runProcess({
+    binary: process.execPath, args: ['-e', `
+      const fs = require('node:fs');
+      const directory = ${JSON.stringify(sourceAlias)};
+      const value = JSON.parse(fs.readFileSync(directory + '/context.json'));
+      try { fs.writeFileSync(directory + '/new-file', 'changed'); process.exit(1); } catch {}
+      console.log(value.version);
+    `],
+    cwd: '/workspace', env: { HOME: join(root, 'missing-home') },
+    sandbox: { hostWorkspace: workspace, backend: 'pi', folders: [{ source: sourceAlias }] }
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stdout.trim(), '1');
 });

@@ -2,7 +2,6 @@ import { fileURLToPath } from 'node:url';
 
 import { catalogSelectionPrompt, selectedSkillPrompt } from './anthropic-skills.mjs';
 import { createCodingAgentService } from './coding-agents/service.mjs';
-import { validateRuntimeBridge } from './coding-agents/sandbox.mjs';
 import { createSkillRegistry, discoverTaskSkills } from './repositories.mjs';
 import { ALAError, EXIT_CODES } from './errors.mjs';
 import { normalizeResult } from './output.mjs';
@@ -38,7 +37,6 @@ export async function createRuntime({
   codingAgentModels = {},
   workspace = null,
   home = null,
-  runtimeBridge = null,
   mcpServers = null,
   websearch = false,
   permissionMode = 'full-access',
@@ -50,7 +48,6 @@ export async function createRuntime({
   sessionState = null
 }) {
   validatePermissionMode(permissionMode);
-  runtimeBridge = validateRuntimeBridge(runtimeBridge);
   if (typeof achillesModule.MainAgent !== 'function' || typeof achillesModule.discoverSkills !== 'function') {
     throw new ALAError(
       'Resolved AchillesAgentLib does not expose MainAgent and discoverSkills.',
@@ -84,8 +81,7 @@ export async function createRuntime({
     skills,
     workspace,
     home,
-    runtimeBridge,
-    ploinkyTask: options.ploinkyTask,
+    folders: options.folders,
     isolatedSkills: options.skillCatalog !== undefined || options.skillSets !== undefined,
     mcpServers,
     models: invocationModels,
@@ -191,7 +187,7 @@ export async function createRuntime({
         }
         return mainAgent.executeSkill('coding-agent', selectedSkillPrompt(record, prompt), common);
       }
-      if (options.agent) return mainAgent.executeSkill('coding-agent',
+      if (options.agent || options.folders?.length) return mainAgent.executeSkill('coding-agent',
         skills.length ? catalogSelectionPrompt(skills, prompt) : prompt, common);
       if (this.symbolicDetectionEnabled) {
         const decision = symbolicRouter.route(executionOptions.instruction || prompt);
