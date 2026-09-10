@@ -18,7 +18,7 @@ import { createInteractiveCompleter } from './interactive-completion.mjs';
 import { createPermissionCommand } from './interactive-permissions.mjs';
 import { createThinkingIndicator } from './interactive-status.mjs';
 import { writeResult } from './output.mjs';
-import { discoverAnthropicSkills, validateTaskRepository } from './repositories.mjs';
+import { validateTaskRepository } from './repositories.mjs';
 import {
   isGitRepositoryUrl,
   managedRepositoryPath,
@@ -26,6 +26,7 @@ import {
   registeredRepositoryName,
   repositorySourceName
 } from './repository-sources.mjs';
+import { readSkillCatalog } from './skill-catalog.mjs';
 import { createRuntime, feedbackPrompt } from './runtime.mjs';
 import { createRuntimeEventSink } from './runtime-events.mjs';
 import { discoverCodingAgents } from './coding-agents/discovery.mjs';
@@ -370,9 +371,7 @@ async function runExecution(options, io, env) {
     cwd: executionCwd
   });
   if (options.skillCatalog !== undefined) {
-    const catalog = validateRuntimeBridge(options.skillCatalog);
-    if (!catalog) throw new ALAError('--skill-catalog requires an existing canonical directory.', EXIT_CODES.usage);
-    repositories = (await discoverAnthropicSkills(catalog)).length ? [catalog] : [];
+    repositories = await readSkillCatalog(resolve(io.cwd, options.skillCatalog));
   }
   const achilles = await loadAchillesAgentLib({
     overridePath: options.achillesPath,

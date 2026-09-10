@@ -125,7 +125,7 @@ The interactive command saves `codingAgents.websearch` in the selected ALA confi
 
 ## Continue a coding-agent task
 
-An embedding host can pass `--skill-catalog /private/task/catalog` to register only its selected Anthropic skills. This overrides configured and environment-provided task repositories, accepts an empty catalog, and mounts selected skill folders read-only behind an isolated `.agents/skills` view without changing project files. The host retains this directory when task continuation must keep the same skills. The standalone `--skillSets` filter remains an exact skill-name filter, not a per-robot repository registry.
+An embedding host can pass `--skill-catalog /private/task/skill-catalog.json` to register only its selected Anthropic skills. This overrides configured and environment-provided task repositories, reads a JSON array of absolute skill directory paths, accepts [], and mounts selected skill folders read-only behind an isolated `.agents/skills` view without changing project files. The host retains the manifest and owns any pruning of deleted skills before invoking ALA. ALA validates each directory and its SKILL.md and rejects missing paths. See [Skill manifests and mounts](docs/integration.html#skill-manifests) for an example. The standalone `--skillSets` filter remains an exact skill-name filter, not a per-robot repository registry.
 
 Use a new UUID to create a persistent session. Later invocations require the same home, cwd, session id, and coding backend. `--ca auto` selects a backend once and then keeps that choice.
 

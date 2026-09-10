@@ -4,6 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runCli } from '../src/cli.mjs';
+import { readSkillCatalog } from '../src/skill-catalog.mjs';
 import { parseArguments } from '../src/arguments.mjs';
 import { canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
 import { captureStream, inputStream, writeAnthropicSkill } from './helpers.mjs';
@@ -23,12 +24,18 @@ test('explicit catalogs replace home/environment sources and hide unselected cwd
   const empty = join(root, 'empty');
   const catalog = join(root, 'catalog');
   await mkdir(join(home, '.codex'), { recursive: true });
-  await mkdir(empty);
+  await writeFile(empty, '[]');
   await writeAnthropicSkill(join(workspace, '.agents'), 'unselected');
-  await writeAnthropicSkill(catalog, 'selected');
+  const skills = join(root, 'skills');
+  await writeAnthropicSkill(skills, 'selected');
+  await writeFile(catalog, JSON.stringify([join(skills, 'skills', 'selected')]));
   const binary = join(root, 'codex');
   await writeFile(binary, `#!/bin/sh
 ls /workspace/.agents/skills > "$CODEX_HOME/visible-skills"
+if test -d /workspace/.agents/skills/selected; then
+  if touch /workspace/.agents/skills/selected/forbidden 2>/dev/null; then exit 90; fi
+  test -f /workspace/.agents/skills/selected/SKILL.md || exit 91
+fi
 printf '%s\\n' "$@" > "$CODEX_HOME/arguments"
 printf '%s\\n' '{"type":"thread.started","thread_id":"catalog-test"}'
 printf '%s\\n' '{"type":"item.completed","item":{"type":"agent_message","text":"done"}}'
@@ -49,4 +56,27 @@ printf '%s\\n' '{"type":"item.completed","item":{"type":"agent_message","text":"
     if (names.length) assert.match(await readFile(join(home, '.codex/arguments'), 'utf8'), /selected test skill/);
     assert.deepEqual(await readdir(join(workspace, '.agents/skills')), ['unselected']);
   }
+});
+
+
+test('manifest validation rejects malformed, missing, nested and duplicate-name skills', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-manifest-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = join(root, 'skill-catalog.json');
+  for (const value of ['{broken', '{}', '[1]', '["relative"]', '["/missing-ala-skill"]']) {
+    await writeFile(file, value);
+    await assert.rejects(readSkillCatalog(file), /Invalid --skill-catalog manifest/);
+  }
+  await writeAnthropicSkill(root, 'one');
+  const one = join(root, 'skills', 'one');
+  await writeFile(file, JSON.stringify([one, one]));
+  assert.deepEqual(await readSkillCatalog(file), [one]);
+  await writeAnthropicSkill(join(root, 'other'), 'one');
+  await writeFile(file, JSON.stringify([one, join(root, 'other', 'skills', 'one')]));
+  await assert.rejects(readSkillCatalog(file), /Duplicate task-skill name/);
+  await writeAnthropicSkill(one, 'nested');
+  await writeFile(file, JSON.stringify([one]));
+  await assert.rejects(readSkillCatalog(file), /nested skill/);
+  await writeFile(file, '[]');
+  assert.deepEqual(await readSkillCatalog(file), []);
 });

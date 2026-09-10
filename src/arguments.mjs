@@ -192,7 +192,7 @@ Execution options:
   --skill <name>             Execute a task skill explicitly
   --ca <name>                Coding agent: auto, codex, opencode, or pi
   --permissions <mode>      ask-for-approval or full-access (default: full-access)
-  --skill-catalog <dir>     Exclusive caller-selected SKILL.md catalog; may be empty
+  --skill-catalog <file>    JSON array of absolute skill directory paths; [] selects none
   --home <path>              Explicit coding-agent home/configuration directory
   --cwd <path>               Existing working directory; disables temporary workspace creation
   --runtime-bridge <path>    Mount a canonical runtime capability directory read-only at /run/ala-runtime
@@ -200,7 +200,7 @@ Execution options:
   --session-id <uuid>        Persistent conversation identity; requires --home, --cwd and --ca
   --resume-session           Resume the exact saved session, never create a replacement
   --control-stdin            Accept JSONL messages and interaction responses while executing
-  --skillSets <a,b>          Expose only the named skill sets in <cwd>/.agents/skills
+  --skillSets <a,b>          Expose only these exact skill names; callers resolve skillsets
   --task <prompt>            Task prompt
   --taskFile <path>          UTF-8 file containing a detailed task prompt
   --MCPServers <addresses>   Comma-separated name=URL or host:port MCP servers

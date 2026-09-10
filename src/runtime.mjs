@@ -62,14 +62,16 @@ export async function createRuntime({
   const registry = await createSkillRegistry(repositories, {
     builtInSkillsDirectories: codingAgents.some((record) => record.available) ? [internalSkillsDirectory] : []
   });
-  let skills = registry.skills;
-  if (options.skillSets) {
-    const requested = String(options.skillSets).split(',').map((name) => name.trim()).filter(Boolean);
+  function selectTaskSkills(catalog) {
+    if (options.skillSets === undefined) return catalog;
+    const requested = String(options.skillSets).split(',').map(name => name.trim()).filter(Boolean);
     const selectedNames = new Set(requested);
-    skills = skills.filter((skill) => selectedNames.has(skill.name));
-    const missing = requested.filter((name) => !skills.some((skill) => skill.name === name));
-    if (missing.length) throw new ALAError(`Task skill sets not found: ${missing.join(', ')}`, EXIT_CODES.repository);
+    const selectedSkills = catalog.filter(skill => selectedNames.has(skill.name));
+    const missing = requested.filter(name => !selectedSkills.some(skill => skill.name === name));
+    if (missing.length) throw new ALAError(`Task skills not found: ${missing.join(', ')}`, EXIT_CODES.repository);
+    return selectedSkills;
   }
+  let skills = selectTaskSkills(registry.skills);
   const invocationModels = { ...codingAgentModels };
   if (options.agent && options.model) {
     const selectedAgent = options.agent === 'auto'
@@ -84,7 +86,7 @@ export async function createRuntime({
     home,
     runtimeBridge,
     ploinkyTask: options.ploinkyTask,
-    isolatedSkills: options.skillCatalog !== undefined,
+    isolatedSkills: options.skillCatalog !== undefined || options.skillSets !== undefined,
     mcpServers,
     models: invocationModels,
     websearch,
@@ -153,7 +155,7 @@ export async function createRuntime({
       codingAgentService.setOutputSink(outputSink);
     },
     async refreshRepositories(nextRepositories) {
-      const nextSkills = await discoverTaskSkills(nextRepositories);
+      const nextSkills = selectTaskSkills(await discoverTaskSkills(nextRepositories));
       const nextSymbolicRouter = await createSymbolicRouter(nextSkills);
       await codingAgentService.refreshSkills(nextSkills);
       skills = nextSkills;

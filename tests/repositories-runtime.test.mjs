@@ -184,3 +184,20 @@ test('refreshes task repositories without recreating the interactive runtime', a
   assert.match(calls.at(-1)[2], /second-skill: Use the second method\./u);
   assert.doesNotMatch(calls.at(-1)[2], /first-skill/u);
 });
+
+test('resolved skill names remain an exact selection across repository refreshes', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-skillset-members-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeAnthropicSkill(root, 'read-report');
+  await writeAnthropicSkill(root, 'write-report');
+  const runtime = await createRuntime({
+    achillesModule: fakeAchilles([]), repositories: [root],
+    options: { skillSets: 'read-report', tags: ['testing'] }, diagnostics: captureStream()
+  });
+  t.after(() => runtime.close());
+  assert.deepEqual(runtime.skills.map(skill => skill.name), ['read-report']);
+  await runtime.refreshRepositories([root]);
+  assert.deepEqual(runtime.skills.map(skill => skill.name), ['read-report']);
+  await assert.rejects(runtime.refreshRepositories([]), /Task skills not found: read-report/);
+  assert.deepEqual(runtime.skills.map(skill => skill.name), ['read-report']);
+});
