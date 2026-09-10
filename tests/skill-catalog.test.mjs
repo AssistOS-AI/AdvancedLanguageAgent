@@ -53,7 +53,7 @@ printf '%s\\n' '{"type":"item.completed","item":{"type":"agent_message","text":"
     });
     assert.equal(code, 0, stderr.read());
     assert.deepEqual((await readFile(join(home, '.codex/visible-skills'), 'utf8')).trim().split('\n').filter(Boolean), names);
-    if (names.length) assert.match(await readFile(join(home, '.codex/arguments'), 'utf8'), /selected test skill/);
+    if (names.length) assert.match(await readFile(join(home, '.codex/arguments'), 'utf8'), /Use the skills in \.agents\/skills/);
     assert.deepEqual(await readdir(join(workspace, '.agents/skills')), ['unselected']);
   }
 });

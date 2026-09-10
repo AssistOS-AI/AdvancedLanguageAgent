@@ -183,8 +183,6 @@ export async function createRuntime({
           codingAgentPreference: options.agent || 'auto'
         }
       };
-      if (options.agent) return mainAgent.executeSkill('coding-agent',
-        options.skillCatalog !== undefined && skills.length ? catalogSelectionPrompt(skills, prompt) : prompt, common);
       if (options.skill) {
         const record = skills.find((skill) => skill.name === options.skill);
         if (!record) throw new ALAError(`Task skill not found: ${options.skill}`, EXIT_CODES.repository);
@@ -193,6 +191,8 @@ export async function createRuntime({
         }
         return mainAgent.executeSkill('coding-agent', selectedSkillPrompt(record, prompt), common);
       }
+      if (options.agent) return mainAgent.executeSkill('coding-agent',
+        skills.length ? catalogSelectionPrompt(skills, prompt) : prompt, common);
       if (this.symbolicDetectionEnabled) {
         const decision = symbolicRouter.route(executionOptions.instruction || prompt);
         if (decision.skill && ['DETERMINISTIC', 'HIGH'].includes(decision.state)) {

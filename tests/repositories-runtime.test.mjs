@@ -154,8 +154,9 @@ test('asks a coding agent to select from the Anthropic catalog by default', asyn
   context.after(() => runtime.close());
   assert.equal((await runtime.execute('route me')).result, 'delegated');
   assert.deepEqual(calls[1].slice(0, 2), ['skill', 'coding-agent']);
-  assert.match(calls[1][2], /echo: Echo supplied text\./u);
-  assert.match(calls[1][2], /If no skill applies, handle the request normally/u);
+  assert.match(calls[1][2], /Use the skills in \.agents\/skills/u);
+  assert.doesNotMatch(calls[1][2], /Echo supplied text/);
+  assert.match(calls[1][2], /User request:\nroute me/u);
   assert.deepEqual(calls[1][3].tags, ['testing']);
 });
 
@@ -181,7 +182,8 @@ test('refreshes task repositories without recreating the interactive runtime', a
   assert.deepEqual(runtime.skills.map((skill) => skill.name), ['second-skill']);
   assert.equal(runtime.getSymbolicDetection(), true);
   await runtime.execute('route after refresh');
-  assert.match(calls.at(-1)[2], /second-skill: Use the second method\./u);
+  assert.match(calls.at(-1)[2], /Use the skills in \.agents\/skills/u);
+  assert.doesNotMatch(calls.at(-1)[2], /Use the second method/);
   assert.doesNotMatch(calls.at(-1)[2], /first-skill/u);
 });
 
@@ -200,4 +202,36 @@ test('resolved skill names remain an exact selection across repository refreshes
   assert.deepEqual(runtime.skills.map(skill => skill.name), ['read-report']);
   await assert.rejects(runtime.refreshRepositories([]), /Task skills not found: read-report/);
   assert.deepEqual(runtime.skills.map(skill => skill.name), ['read-report']);
+});
+
+
+test('ALA alone wraps mounted skills and honors explicit skill selection with a backend', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-skill-prompt-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeAnthropicSkill(root, 'review');
+  for (const skill of [undefined, 'review', 'missing']) {
+    const calls = [];
+    const runtime = await createRuntime({
+      achillesModule: fakeAchilles(calls), repositories: [root],
+      codingAgents: [{ name: 'codex', available: true, binary: '/fake/codex' }],
+      options: { agent: 'codex', skill, tags: [] }, diagnostics: captureStream()
+    });
+    try {
+      if (skill === 'missing') {
+        await assert.rejects(runtime.execute('Inspect'), /Task skill not found/);
+        continue;
+      }
+      await runtime.execute('Inspect');
+      const prompt = calls.find(call => call[0] === 'skill')[2];
+      assert.equal(prompt.split('User request:').length, 2);
+      assert.match(prompt, /Inspect/);
+      if (skill) {
+        assert.match(prompt, /Execute the user request with the Anthropic-style skill "review"/);
+        assert.doesNotMatch(prompt, /Available skills:/);
+      } else {
+        assert.match(prompt, /Use the skills in \.agents\/skills/);
+        assert.doesNotMatch(prompt, /review test skill|Available skills:/);
+      }
+    } finally { await runtime.close(); }
+  }
 });

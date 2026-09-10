@@ -11,14 +11,8 @@ User request:
 ${userPrompt}`;
 }
 
-export function catalogSelectionPrompt(skills, userPrompt) {
-  const catalog = skills.map((skill) => `- ${skill.name}: ${skill.description}`).join('\n');
-  return `Complete the user request using the available Anthropic-style task skills when one clearly applies.
-
-Available skills:
-${catalog}
-
-Select the best matching skill, read its descriptor at .agents/skills/<name>/SKILL.md, and follow its instructions and resources. If no skill applies, handle the request normally. Do not claim to have used a skill unless you read its SKILL.md.
+export function catalogSelectionPrompt(_skills, userPrompt) {
+  return `Use the skills in .agents/skills for the user's task. Read the relevant SKILL.md files and follow their instructions.
 
 User request:
 ${userPrompt}`;
