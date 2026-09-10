@@ -177,11 +177,25 @@ export function collectAgentStateMounts(backend, env = process.env) {
 function runtimeSearchPaths(runtimeMounts) {
   const candidates = [];
   for (const mount of runtimeMounts) {
-    for (const candidate of [path.join(mount.target, 'bin'), mount.target]) {
-      if (fs.existsSync(candidate) && !candidates.includes(candidate)) candidates.push(candidate);
+    for (const relative of ['bin', '']) {
+      const candidate = path.join(mount.target, relative);
+      if (fs.existsSync(path.join(mount.source || mount.target, relative)) && !candidates.includes(candidate)) {
+        candidates.push(candidate);
+      }
     }
   }
   return candidates;
+}
+
+export function sandboxRuntimeMounts(sources) {
+  return [...sources].map((source, index) => ({
+    source,
+    // The later workspace bind hides prefixes installed below the launch workspace.
+    target: source === SANDBOX_WORKSPACE || source.startsWith(`${SANDBOX_WORKSPACE}/`)
+      ? `/run/ala-agent-runtime/${index}/${path.basename(source)}` : source,
+    writable: false,
+    purpose: 'agent-runtime'
+  }));
 }
 
 export function sandboxEnvironment(backend, runtimeMounts = [], env = process.env) {
@@ -344,9 +358,7 @@ export function buildSandboxArgs({
     ...collectAgentRuntimeMounts(command),
     ...collectAgentRuntimeMounts(process.execPath)
   ]);
-  const runtimeMounts = [...runtimeSources].map((source) => ({
-    source, target: source, writable: false, purpose: 'agent-runtime'
-  }));
+  const runtimeMounts = sandboxRuntimeMounts(runtimeSources);
   for (const mount of normalizedMounts(runtimeMounts)) {
     addParentDirs(sandboxArgs, mount.target);
     sandboxArgs.push('--ro-bind', mount.source, mount.target);
@@ -372,6 +384,10 @@ export function buildSandboxArgs({
   for (const [name, value] of Object.entries(sandboxEnvironment(backend, runtimeMounts, env))) {
     sandboxArgs.push('--setenv', name, value);
   }
-  sandboxArgs.push('--chdir', chdir, '--', command, ...args);
+  const commandMount = runtimeMounts.filter((mount) => command.startsWith(`${mount.source}/`))
+    .sort((left, right) => right.source.length - left.source.length)[0];
+  const sandboxCommand = commandMount
+    ? path.join(commandMount.target, path.relative(commandMount.source, command)) : command;
+  sandboxArgs.push('--chdir', chdir, '--', sandboxCommand, ...args);
   return sandboxArgs;
 }
