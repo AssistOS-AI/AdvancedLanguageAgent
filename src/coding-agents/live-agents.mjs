@@ -23,8 +23,8 @@ export async function runCodexLive(input) {
       if (error.code !== 'CODEX_SKILL_REGISTRATION_CHANGED' || !error.beforeTurn || attempt === 2) throw error;
       input.onSkillRegistration?.({ state: 'reconfigure', attempt: attempt + 1,
         threadId: error.continuation?.threadId || null, observedCount: error.skillPaths.length });
-      // Native plugins can register only after thread restoration. Reopen the
-      // process with those observed paths disabled, retaining the same thread.
+      // Only incoming conversations are resumable across process restarts.
+      // A fresh thread has no rollout until its first turn is accepted.
       input = { ...input, continuation: error.continuation || input.continuation,
         nativeSkillPaths: [...new Set([...(input.nativeSkillPaths || []), ...error.skillPaths])] };
     }
@@ -98,7 +98,7 @@ async function runCodexLiveAttempt(input) {
     }
     threadId = thread.thread.id;
     verifyCodexPolicy(thread, policy);
-    await input.onSession?.({ threadId });
+    if (input.continuation?.threadId) await input.onSession?.({ threadId });
     checkAbort(input.signal);
     await verifyCodexSkillPolicy(input, rpc);
     const complete = rpc.wait((event) => event.method === 'turn/completed' && event.params?.threadId === threadId);
@@ -107,6 +107,7 @@ async function runCodexLiveAttempt(input) {
       threadId, input: [{ type: 'text', text: input.prompt }]
     } });
     turnId = started.turn.id;
+    if (!input.continuation?.threadId) await input.onSession?.({ threadId });
     if (input.signal?.aborted || interrupted) abort();
     input.setMessageHandler?.(async (message) => {
       await rpc.request({ method: 'turn/steer', params: {
@@ -125,7 +126,7 @@ async function runCodexLiveAttempt(input) {
   } catch (error) {
     if (error.code === 'CODEX_SKILL_REGISTRATION_CHANGED' && !turnStarted) {
       error.beforeTurn = true;
-      error.continuation = threadId ? { threadId } : input.continuation;
+      error.continuation = input.continuation;
     }
     throw nativeError || error;
   } finally {

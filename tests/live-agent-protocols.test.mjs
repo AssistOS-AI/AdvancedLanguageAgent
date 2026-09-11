@@ -59,13 +59,15 @@ test('isolated Codex checks the executing process before thread restoration and 
   }
 });
 
-test('late native plugin registration reconfigures before one model turn in the same new thread', async () => {
+for (const resume of [false, true]) {
+test(`late registration preserves existing conversations, discards provisional threads (resume=${resume})`, async () => {
   let processes = 0;
   const methods = [];
   const saved = [];
   const registrations = [];
   const late = '/home/ala/.codex/plugins/late/SKILL.md';
   const result = await runCodexLive({ workspace: '/workspace', prompt: 'Work',
+    continuation: resume ? { threadId: 'same-new-thread' } : null,
     sandbox: { isolatedSkills: true, mounts: [] }, onSession: async (value) => saved.push(value.threadId),
     onSkillRegistration: (value) => registrations.push(value),
     spawnImpl: (options) => {
@@ -82,11 +84,18 @@ test('late native plugin registration reconfigures before one model turn in the 
             ? [{ path: late, enabled: index === 3 }] : [] }] };
         }
         if (['thread/start', 'thread/resume'].includes(request.method)) {
-          if (request.method === 'thread/resume') assert.equal(request.params.threadId, 'same-new-thread');
+          if (request.method === 'thread/resume') {
+            assert.ok(resume, 'an unmaterialized new thread cannot be resumed');
+            assert.equal(request.params.threadId, 'same-new-thread');
+          }
           result = { thread: { id: 'same-new-thread' }, approvalPolicy: 'never',
             approvalsReviewer: 'user', sandbox: { type: 'dangerFullAccess' } };
         }
-        if (request.method === 'turn/start') result = { turn: { id: 'only-turn' } };
+        if (request.method === 'turn/start') {
+          assert.deepEqual(saved, resume ? ['same-new-thread', 'same-new-thread'] : [],
+            'do not publish a new thread before its first accepted turn');
+          result = { turn: { id: 'only-turn' } };
+        }
         emit({ id: request.id, result });
         if (request.method === 'turn/start') {
           emit({ method: 'item/completed', params: { threadId: 'same-new-thread', item: { type: 'agentMessage', text: 'done' } } });
@@ -95,14 +104,15 @@ test('late native plugin registration reconfigures before one model turn in the 
       })(options);
     } });
   assert.equal(result.outputText, 'done');
-  assert.deepEqual(saved, ['same-new-thread', 'same-new-thread']);
+  assert.deepEqual(saved, resume ? ['same-new-thread', 'same-new-thread'] : ['same-new-thread']);
   assert.equal(processes, 6);
-  assert.equal(methods.filter((method) => method === 'thread/start').length, 1);
-  assert.equal(methods.filter((method) => method === 'thread/resume').length, 1);
+  assert.equal(methods.filter((method) => method === 'thread/start').length, resume ? 0 : 2);
+  assert.equal(methods.filter((method) => method === 'thread/resume').length, resume ? 2 : 0);
   assert.equal(methods.filter((method) => method === 'turn/start').length, 1);
   assert.equal(registrations[0].state, 'reconfigure');
   assert.deepEqual(registrations[1], { state: 'verified', reconfigurations: 1, threadId: 'same-new-thread' });
 });
+}
 
 test('native requests stay separate from outgoing replies, including integer and string ID collisions', async (t) => {
   let emit;
