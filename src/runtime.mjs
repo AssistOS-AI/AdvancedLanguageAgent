@@ -36,6 +36,7 @@ export async function createRuntime({
   repositories,
   codingAgents = [],
   codingAgentModels = {},
+  codingAgentEfforts = {},
   workspace = null,
   home = null,
   mcpServers = null,
@@ -75,11 +76,15 @@ export async function createRuntime({
     return catalogSelectionPrompt(skills, prompt);
   }
   const invocationModels = { ...codingAgentModels };
+  const invocationEfforts = { ...codingAgentEfforts };
   if (options.agent && options.model) {
     const selectedAgent = options.agent === 'auto'
       ? sessionState?.record.agent || codingAgents.find((record) => record.available)?.name
       : options.agent;
-    if (selectedAgent) invocationModels[selectedAgent] = options.model;
+    if (selectedAgent) {
+      if (options.model !== invocationModels[selectedAgent]) delete invocationEfforts[selectedAgent];
+      invocationModels[selectedAgent] = options.model;
+    }
   }
   const codingAgentService = createCodingAgentService({
     agents: codingAgents,
@@ -90,6 +95,7 @@ export async function createRuntime({
     isolatedSkills: options.skillCatalog !== undefined || options.skillSets !== undefined,
     mcpServers,
     models: invocationModels,
+    efforts: invocationEfforts,
     websearch,
     permissionMode,
     permissionRequests,

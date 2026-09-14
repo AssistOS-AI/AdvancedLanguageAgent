@@ -4,13 +4,14 @@ import { codexMcpOverrides } from './mcp-servers.mjs';
 import { runCodexLive } from './live-agents.mjs';
 
 export function buildCodexArguments({
-  prompt, continuation = null, model = null, websearch = false, mcpServers = [], permissionMode = 'full-access'
+  prompt, continuation = null, model = null, effort = null, websearch = false, mcpServers = [], permissionMode = 'full-access'
 }) {
   if (permissionMode !== 'full-access') {
     throw new Error('Codex ask-for-approval requires the native app-server adapter, not codex exec.');
   }
   const common = codexMcpOverrides(mcpServers);
   if (model) common.push('--model', model);
+  if (effort) common.push('--config', `model_reasoning_effort=${JSON.stringify(effort)}`);
   if (websearch) common.push('--search');
   else common.push('--config', 'web_search="disabled"');
   // ALA already confines Codex with Bubblewrap. Asking Codex to create its own
@@ -99,14 +100,14 @@ export async function runCodex(input) {
   requireSandbox(input.sandbox);
   if (input.sandbox.isolatedSkills) return runCodexLive(input);
   const {
-    binary, prompt, workspace, continuation, model, websearch, mcpServers, env, signal, sandbox, onVisibleText,
+    binary, prompt, workspace, continuation, model, effort, websearch, mcpServers, env, signal, sandbox, onVisibleText,
     permissionMode = 'full-access'
   } = input;
   const parser = createCodexEventParser({ threadId: continuation?.threadId, onText: onVisibleText });
   const stderrParser = createCodexStderrParser({ onText: onVisibleText });
   const result = await runProcess({
     binary,
-    args: buildCodexArguments({ prompt, continuation, model, websearch, mcpServers, permissionMode }),
+    args: buildCodexArguments({ prompt, continuation, model, effort, websearch, mcpServers, permissionMode }),
     cwd: workspace,
     env,
     signal,
@@ -126,7 +127,7 @@ export async function runCodex(input) {
   return parsed;
 }
 
-export function listCodexModels({ binary, cwd, env = process.env, signal, sandbox }) {
+export function listCodexModels({ binary, cwd, env = process.env, signal, sandbox, details = false }) {
   return new Promise((resolve, reject) => {
     let child;
     try {
@@ -176,7 +177,11 @@ export function listCodexModels({ binary, cwd, env = process.env, signal, sandbo
       if (message.error) return finish(new Error(`Codex model listing failed: ${message.error.message || 'request failed'}`));
       for (const entry of message.result?.data || []) {
         const model = String(entry?.id || entry?.model || '').trim();
-        if (model && !models.includes(model)) models.push(model);
+        if (model && !models.some((entry) => (typeof entry === 'string' ? entry : entry.id) === model)) {
+          models.push(details ? { id: model, label: entry.displayName || model,
+            efforts: (entry.supportedReasoningEfforts || []).map((value) => value.reasoningEffort),
+            defaultEffort: entry.defaultReasoningEffort || null } : model);
+        }
       }
       if (message.result?.nextCursor) requestModels(message.result.nextCursor);
       else finish(null, models);

@@ -210,7 +210,8 @@ export async function executeOpenCodeTurn(server, input) {
       throw new Error(`OpenCode refused the requested ${permissionMode} session permission policy.`);
     }
     const body = { messageID, parts: [{ type: 'text', text: prompt }],
-      ...(model ? { model: nativeModel(model) } : {}) };
+      ...(model ? { model: nativeModel(model) } : {}),
+      ...(input.effort ? { variant: input.effort } : {}) };
     submitted = true;
     await request(`${sessionPath()}/prompt_async`, { method: 'POST', body });
     let reconciling = false;

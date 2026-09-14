@@ -215,6 +215,7 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
                 ...activeConfig,
                 codingAgents: {
                   ...activeConfig.codingAgents,
+                  efforts: Object.fromEntries(Object.entries(activeConfig.codingAgents.efforts || {}).filter(([name]) => name !== action)),
                   models: nextModels
                 }
               };
@@ -395,6 +396,7 @@ async function runExecution(options, io, env) {
     repositories,
     codingAgents,
     codingAgentModels: config.codingAgents.models,
+    codingAgentEfforts: config.codingAgents.efforts,
     workspace: options.cwd ? executionCwd : null,
     home: executionHome,
     mcpServers: options.mcpServers,

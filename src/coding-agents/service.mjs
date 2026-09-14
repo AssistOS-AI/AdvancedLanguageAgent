@@ -66,6 +66,7 @@ export function createCodingAgentService({
   isolatedSkills = false,
   mcpServers = null,
   models = {},
+  efforts = {},
   websearch = false,
   cwd = process.cwd(),
   env = process.env,
@@ -98,6 +99,7 @@ export function createCodingAgentService({
   let sendLive = null;
   let executing = false;
   const configuredModels = { ...models };
+  const configuredEfforts = { ...efforts };
   let websearchEnabled = Boolean(websearch);
   let outputSink = null;
 
@@ -159,6 +161,8 @@ export function createCodingAgentService({
       if (executing) throw new Error('Coding-agent session is already executing.');
       const selected = select(agent);
       const turnPermissionMode = requestedPermissionMode;
+      const turnModel = configuredModels[selected.name] || null;
+      const turnEffort = configuredEfforts[selected.name] || null;
       if (selected.name === 'pi' && turnPermissionMode === 'ask-for-approval') {
         throw new ALAError(
           'Pi does not support ask-for-approval; select full-access or use Codex/OpenCode.',
@@ -188,6 +192,13 @@ export function createCodingAgentService({
         controller.signal.throwIfAborted();
         await ensureWorkspace();
         controller.signal.throwIfAborted();
+        if (turnEffort) {
+          const catalog = await modelListers[selected.name]({ binary: selected.binary,
+            cwd: SANDBOX_WORKSPACE, env, signal: controller.signal, details: true, ...executionContext(selected) });
+          if (!catalog.find((entry) => entry.id === turnModel)?.efforts?.includes(turnEffort)) {
+            throw new ALAError('The selected model does not advertise this effort: ' + turnEffort, EXIT_CODES.usage);
+          }
+        }
         activeName = selected.name;
         await sessionState?.save({ agent: activeName });
         controller.signal.throwIfAborted();
@@ -206,7 +217,8 @@ export function createCodingAgentService({
           prompt,
           ...executionContext(selected),
           continuation,
-          model: configuredModels[selected.name] || null,
+          model: turnModel,
+          effort: turnEffort,
           websearch: websearchEnabled,
           permissionMode: turnPermissionMode,
           permissionRequests,
@@ -245,22 +257,25 @@ export function createCodingAgentService({
       if (!sendLive) return { delivery: 'queued' };
       return sendLive(message);
     },
-    async listModels(name, { signal = null } = {}) {
+    async listModels(name, { signal = null, details = false } = {}) {
       const selected = available.find((record) => record.name === name);
       if (!selected) throw new ALAError(`Coding agent is not available: ${name}`, EXIT_CODES.execution);
       await ensureWorkspace();
       return modelListers[name]({
         binary: selected.binary,
+        details,
         cwd: SANDBOX_WORKSPACE,
         env,
         signal,
         ...executionContext(selected)
       });
     },
-    setModel(name, model) {
+    setModel(name, model, effort = null) {
       if (!['codex', 'opencode', 'pi'].includes(name)) {
         throw new ALAError(`Unknown coding agent: ${name}`, EXIT_CODES.usage);
       }
+      if (effort) configuredEfforts[name] = effort;
+      else delete configuredEfforts[name];
       if (model === null || model === undefined || String(model).trim() === '') delete configuredModels[name];
       else configuredModels[name] = String(model).trim();
     },

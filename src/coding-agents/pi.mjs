@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { openJsonChannel } from './json-channel.mjs';
 import { executionError, requireSandbox, runProcess } from './process.mjs';
 import { appendBoundedTail, contentText, createLineDecoder, unseenText } from './streaming.mjs';
 import { requirePiVersion } from './pi-version.mjs';
@@ -76,18 +77,19 @@ export function createPiEventParser({ onText = () => {} } = {}) {
   };
 }
 
-export function buildPiArguments({ prompt, sessionId, sessionDir, model = null }) {
+export function buildPiArguments({ prompt, sessionId, sessionDir, model = null, effort = null }) {
   const args = [
     '--mode', 'json', '--session-id', sessionId, '--session-dir', sessionDir,
     '--no-context-files'
   ];
   if (model) args.push('--model', model);
+  if (effort) args.push('--thinking', effort);
   args.push('--approve', prompt);
   return args;
 }
 
 export async function runPi({
-  binary, prompt, workspace, hostWorkspace, continuation, model, env, signal, sandbox, onVisibleText,
+  binary, prompt, workspace, hostWorkspace, continuation, model, effort, env, signal, sandbox, onVisibleText,
   permissionMode = 'full-access'
 }) {
   requireSandbox(sandbox);
@@ -96,7 +98,7 @@ export async function runPi({
   const hostSessionDir = join(hostWorkspace, '.ala-pi-sessions');
   const sessionDir = join(workspace, '.ala-pi-sessions');
   await mkdir(hostSessionDir, { recursive: true, mode: 0o700 });
-  const args = buildPiArguments({ prompt, sessionId, sessionDir, model });
+  const args = buildPiArguments({ prompt, sessionId, sessionDir, model, effort });
   const parser = createPiEventParser({ onText: onVisibleText });
   const result = await runProcess({
     binary, args, cwd: workspace, env, signal, sandbox,
@@ -125,9 +127,33 @@ export function parsePiModels(stdout) {
   }).filter(Boolean);
 }
 
-export async function listPiModels({ binary, cwd, env, signal, sandbox }) {
+export async function listPiModels({ binary, cwd, env, signal, sandbox, details = false }) {
+  if (details) return listPiModelDetails({ binary, workspace: cwd, env, signal, sandbox });
   requireSandbox(sandbox);
   const result = await runProcess({ binary, args: ['--list-models'], cwd, env, signal, sandbox });
   if (result.code !== 0) throw executionError('Pi model listing', result);
   return parsePiModels(result.stdout);
+}
+
+export function piModelDetails(model) {
+  const levels = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+  return { id: model.provider + '/' + model.id, label: model.name || model.id,
+    efforts: model.reasoning ? levels.filter((level) => {
+      const mapped = model.thinkingLevelMap?.[level];
+      return mapped !== null && (!['xhigh', 'max'].includes(level) || mapped !== undefined);
+    }) : [] };
+}
+
+async function listPiModelDetails(input) {
+  const rpc = openJsonChannel(input, ['--mode', 'rpc', '--no-session', '--no-extensions', '--no-skills']);
+  const abort = () => { void rpc.close(); };
+  input.signal?.addEventListener('abort', abort, { once: true });
+  try {
+    input.signal?.throwIfAborted();
+    const result = await rpc.request({ type: 'get_available_models' });
+    return (result.models || result).map(piModelDetails);
+  } finally {
+    input.signal?.removeEventListener('abort', abort);
+    await rpc.close();
+  }
 }

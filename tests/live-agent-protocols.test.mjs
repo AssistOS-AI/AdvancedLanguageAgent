@@ -215,7 +215,7 @@ test('Codex resumes a thread, steers its active turn and returns the final respo
   let saved;
   let delivered;
   const methods = [];
-  const result = await runCodexLive({ workspace: '/workspace', prompt: 'Continue.',
+  const result = await runCodexLive({ workspace: '/workspace', prompt: 'Continue.', effort: 'high',
     continuation: { threadId: 'saved-thread' }, onSession: async (value) => { saved = value; },
     setMessageHandler: (handler) => { if (handler) delivered = handler('check tests'); },
     spawnImpl: processFixture((request, emit) => {
@@ -228,6 +228,7 @@ test('Codex resumes a thread, steers its active turn and returns the final respo
           sandbox: { type: 'dangerFullAccess' } };
       }
       if (request.method === 'turn/start') {
+        assert.equal(request.params.effort, 'high');
         assert.equal(saved.threadId, 'saved-thread'); result = { turn: { id: 'turn-1' } };
       }
       emit({ id: request.id, result });
@@ -308,12 +309,12 @@ test('Pi records its session before prompting and waits for settled after low-le
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   let saved;
   let delivered;
-  const result = await runPiLive({ workspace: '/workspace', hostWorkspace: root, prompt: 'work',
+  const result = await runPiLive({ workspace: '/workspace', hostWorkspace: root, prompt: 'work', effort: 'high',
     onSession: async (value) => { saved = value; },
     setMessageHandler: (handler) => { if (handler) delivered = handler('new instruction'); },
     spawnImpl: processFixture((request, emit) => {
       const data = request.type === 'get_state'
-        ? { sessionId: 'pi-id', sessionFile: '/workspace/.ala-pi-sessions/pi.jsonl' } : {};
+        ? { sessionId: 'pi-id', thinkingLevel: 'high', sessionFile: '/workspace/.ala-pi-sessions/pi.jsonl' } : {};
       if (request.type === 'prompt') assert.equal(saved.sessionId, 'pi-id');
       emit({ id: request.id, type: 'response', success: true, data });
       if (request.type === 'steer') {

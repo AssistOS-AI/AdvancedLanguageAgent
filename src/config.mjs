@@ -61,11 +61,17 @@ function validateConfig(value, configPath) {
     }
     models[name] = model.trim();
   }
+  const efforts = value.codingAgents?.efforts ?? {};
+  if (!efforts || typeof efforts !== 'object' || Array.isArray(efforts)
+    || Object.entries(efforts).some(([name, effort]) => !validNames.has(name)
+      || !models[name] || typeof effort !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(effort))) {
+    throw new ALAError('codingAgents.efforts must map configured backends to native effort names.', EXIT_CODES.usage);
+  }
   const websearch = value.codingAgents?.websearch ?? false;
   if (typeof websearch !== 'boolean') {
     throw new ALAError(`codingAgents.websearch must be a boolean in ${configPath}.`, EXIT_CODES.usage);
   }
-  return { version: CONFIG_VERSION, taskRepositories, codingAgents: { priority, models, websearch } };
+  return { version: CONFIG_VERSION, taskRepositories, codingAgents: { priority, models, efforts, websearch } };
 }
 
 export async function loadConfig(configPath) {
@@ -77,7 +83,7 @@ export async function loadConfig(configPath) {
       return {
         version: CONFIG_VERSION,
         taskRepositories: [],
-        codingAgents: { priority: [...DEFAULT_CODING_AGENT_PRIORITY], models: {}, websearch: false }
+        codingAgents: { priority: [...DEFAULT_CODING_AGENT_PRIORITY], models: {}, efforts: {}, websearch: false }
       };
     }
     if (error instanceof SyntaxError) {

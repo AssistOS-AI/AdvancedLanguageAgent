@@ -36,7 +36,7 @@ test('saves and loads versioned configuration atomically with restrictive mode',
   const config = {
     version: 1,
     taskRepositories: [{ path: '/tasks/one' }],
-    codingAgents: { priority: ['codex', 'opencode', 'pi'], models: { codex: 'gpt-test' }, websearch: true }
+    codingAgents: { priority: ['codex', 'opencode', 'pi'], models: { codex: 'gpt-test' }, efforts: { codex: 'high' }, websearch: true }
   };
   await saveConfig(configPath, config);
   assert.deepEqual(await loadConfig(configPath), config);

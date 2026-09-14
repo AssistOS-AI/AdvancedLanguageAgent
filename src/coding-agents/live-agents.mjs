@@ -104,7 +104,8 @@ async function runCodexLiveAttempt(input) {
     const complete = rpc.wait((event) => event.method === 'turn/completed' && event.params?.threadId === threadId);
     turnStarted = true;
     const started = await rpc.request({ method: 'turn/start', params: {
-      threadId, input: [{ type: 'text', text: input.prompt }]
+      threadId, input: [{ type: 'text', text: input.prompt }],
+      ...(input.effort ? { effort: input.effort } : {})
     } });
     turnId = started.turn.id;
     if (!input.continuation?.threadId) await input.onSession?.({ threadId });
@@ -152,7 +153,8 @@ export async function runPiLive(input) {
     await fs.access(path.join(input.hostWorkspace, '.ala-pi-sessions', path.basename(previous)));
   }
   const rpc = openJsonChannel(input, ['--mode', 'rpc', '--session-dir', sessionDir, '--approve',
-    ...(previous ? ['--session', previous] : []), ...(input.model ? ['--model', input.model] : [])]);
+    ...(previous ? ['--session', previous] : []), ...(input.model ? ['--model', input.model] : []),
+    ...(input.effort ? ['--thinking', input.effort] : [])]);
   const parser = createPiEventParser({ onText: input.onVisibleText });
   rpc.events.on('event', (event) => parser.push(Buffer.from(`${JSON.stringify(event)}\n`)));
   let cancelTimer;
@@ -163,6 +165,9 @@ export async function runPiLive(input) {
   input.signal?.addEventListener('abort', abort, { once: true });
   try {
     const state = await rpc.request({ type: 'get_state' });
+    if (input.effort && state.thinkingLevel !== input.effort) {
+      throw new Error('Pi did not apply the requested thinking level: ' + input.effort);
+    }
     if (!state.sessionFile || !state.sessionId) throw new Error('Pi did not expose a persistent session.');
     if (previous && (state.sessionFile !== previous || state.sessionId !== input.continuation.sessionId)) {
       throw new Error('Pi did not restore the requested native session.');

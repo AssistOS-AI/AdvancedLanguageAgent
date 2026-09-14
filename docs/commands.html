@@ -150,7 +150,8 @@ ala --home /robots/analyst/home --cwd /projects/app --ca auto \
         </tbody>
       </table>
     </div>
-  </article></main>
+  <p>Coding-agent reasoning effort is stored beside the model map as <code>codingAgents.efforts</code>, keyed by backend, in <code>.ala/config.json</code>. Each effort requires an explicit model. Native catalog metadata defines valid values: Codex <code>supportedReasoningEfforts</code>, Pi reasoning and <code>thinkingLevelMap</code>, and connected OpenCode model variants. Unsupported values fail before a model turn. Codex exec receives <code>model_reasoning_effort</code>, Codex app-server receives <code>turn/start.effort</code>, Pi receives <code>--thinking</code>, and OpenCode receives <code>prompt_async.variant</code>. These values apply to new and resumed executions; omitted values preserve native defaults. Changing or clearing a model clears its effort override. Direct LLMAgent <code>--reasoning-effort</code> remains separate.</p>
+</article></main>
   <div data-include="partials/footer.html"></div>
   <script src="partials-loader.js"></script>
 </body>
