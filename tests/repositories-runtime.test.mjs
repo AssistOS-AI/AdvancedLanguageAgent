@@ -154,9 +154,8 @@ test('asks a coding agent to select from the Anthropic catalog by default', asyn
   context.after(() => runtime.close());
   assert.equal((await runtime.execute('route me')).result, 'delegated');
   assert.deepEqual(calls[1].slice(0, 2), ['skill', 'coding-agent']);
-  assert.match(calls[1][2], /Use the skills in \.agents\/skills/u);
+  assert.equal(calls[1][2], 'route me');
   assert.doesNotMatch(calls[1][2], /Echo supplied text/);
-  assert.match(calls[1][2], /User request:\nroute me/u);
   assert.deepEqual(calls[1][3].tags, ['testing']);
 });
 
@@ -182,7 +181,7 @@ test('refreshes task repositories without recreating the interactive runtime', a
   assert.deepEqual(runtime.skills.map((skill) => skill.name), ['second-skill']);
   assert.equal(runtime.getSymbolicDetection(), true);
   await runtime.execute('route after refresh');
-  assert.match(calls.at(-1)[2], /Use the skills in \.agents\/skills/u);
+  assert.equal(calls.at(-1)[2], 'route after refresh');
   assert.doesNotMatch(calls.at(-1)[2], /Use the second method/);
   assert.doesNotMatch(calls.at(-1)[2], /first-skill/u);
 });
@@ -223,13 +222,13 @@ test('ALA alone wraps mounted skills and honors explicit skill selection with a 
       }
       await runtime.execute('Inspect');
       const prompt = calls.find(call => call[0] === 'skill')[2];
-      assert.equal(prompt.split('User request:').length, 2);
+      assert.equal(prompt.split('User request:').length, skill ? 2 : 1);
       assert.match(prompt, /Inspect/);
       if (skill) {
         assert.match(prompt, /Execute the user request with the Anthropic-style skill "review"/);
         assert.doesNotMatch(prompt, /Available skills:/);
       } else {
-        assert.match(prompt, /Use the skills in \.agents\/skills/);
+        assert.equal(prompt, 'Inspect');
         assert.doesNotMatch(prompt, /review test skill|Available skills:/);
       }
     } finally { await runtime.close(); }

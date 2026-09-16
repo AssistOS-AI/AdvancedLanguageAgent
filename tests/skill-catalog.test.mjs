@@ -98,8 +98,8 @@ if (process.argv.includes('app-server')) {
     assert.equal(code, 0, stderr.read());
     assert.deepEqual((await readFile(join(home, '.codex/visible-skills'), 'utf8')).trim().split('\n').filter(Boolean), names);
     const prompt = await readFile(join(home, '.codex/arguments'), 'utf8');
-    assert.match(prompt, /Use the skills in \.agents\/skills/);
-    assert.match(prompt, /supersedes earlier catalog messages/);
+    assert.match(prompt, /Task skills are mounted in \.agents\/skills/);
+    assert.doesNotMatch(prompt, /supersedes earlier catalog messages/);
     assert.doesNotMatch(prompt, /selected test skill|selected-revision|empty-revision/);
     assert.deepEqual(await readdir(join(workspace, '.agents/skills')), ['unselected']);
     assert.deepEqual(await readdir(join(skills, 'skills', 'selected')), ['SKILL.md']);

@@ -125,12 +125,11 @@ test('manifest executions convey authoritative filtered or empty state on every 
       const catalogEvents = events.filter(event => event.type === 'skill-catalog');
       assert.equal(catalogEvents.length, 2);
       assert.deepEqual(catalogEvents[0].entries.map(entry => entry.name), names);
+      assert.deepEqual(calls, ['Continue', 'Continue again']);
       for (const prompt of calls) {
-        assert.match(prompt, /supersedes earlier catalog messages/);
         assert.equal(prompt.includes(catalogEvents[0].revision), false);
         assert.doesNotMatch(prompt, /selected test skill|excluded test skill|Available skills:/);
-        if (!names.length) assert.match(prompt, /no task skills are selected/);
-        else assert.doesNotMatch(prompt, /excluded/);
+        assert.doesNotMatch(prompt, /excluded/);
       }
       await assert.rejects(runtime.refreshRepositories([]), /cannot be replaced interactively/);
       assert.equal(await readFile(file, 'utf8'), contents);

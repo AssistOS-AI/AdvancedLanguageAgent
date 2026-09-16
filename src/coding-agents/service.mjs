@@ -2,6 +2,7 @@ import { mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { catalogSelectionPrompt } from '../anthropic-skills.mjs';
 import { ALAError, EXIT_CODES } from '../errors.mjs';
 import { createPermissionRequestManager, validatePermissionMode } from '../permission-requests.mjs';
 import { listCodexModels, runCodex } from './codex.mjs';
@@ -214,7 +215,8 @@ export function createCodingAgentService({
           : runners[selected.name];
         const result = await runner({
           binary: selected.binary,
-          prompt,
+          prompt: !continuation && (activeSkills.length || isolatedSkills)
+            ? catalogSelectionPrompt(activeSkills, prompt) : prompt,
           ...executionContext(selected),
           continuation,
           model: turnModel,

@@ -43,11 +43,9 @@ test('every explicit empty execution and direct agent route conveys current revi
   t.after(() => runtime.close());
   await runtime.execute('Continue the earlier work');
   await runtime.executeAgent('Continue again');
+  assert.deepEqual(calls, ['Continue the earlier work', 'Continue again']);
   for (const prompt of calls) {
     assert.doesNotMatch(prompt, /empty-revision|policyVersion|entries|diagnostics/);
-    assert.match(prompt, /no task skills are selected/);
-    assert.match(prompt, /supersedes earlier catalog messages/);
-    assert.match(prompt, /Skills absent from this directory are unavailable/);
   }
   const catalogs = events.filter((event) => event.type === 'skill-catalog');
   assert.equal(catalogs.length, 2);
@@ -99,8 +97,7 @@ test('interactive refresh preserves exact standalone filters and rejects a missi
   await runtime.refreshRepositories([root]);
   assert.deepEqual(runtime.skills.map(({ name }) => name), ['selected']);
   await runtime.execute('Use the method');
-  assert.match(calls.at(-1), /again for this execution even if previously read/);
-  assert.match(calls.at(-1), /Reread every helper or asset/);
+  assert.equal(calls.at(-1), 'Use the method');
   assert.doesNotMatch(calls.at(-1), /unselected/);
   await assert.rejects(() => runtime.refreshRepositories([]), /not found: selected/);
   assert.deepEqual(runtime.skills.map(({ name }) => name), ['selected']);

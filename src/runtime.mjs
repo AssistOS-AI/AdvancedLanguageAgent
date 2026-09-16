@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 
-import { catalogSelectionPrompt, selectedSkillPrompt } from './anthropic-skills.mjs';
+import { selectedSkillPrompt } from './anthropic-skills.mjs';
 import { createCodingAgentService } from './coding-agents/service.mjs';
 import { createSkillRegistry, discoverTaskSkills } from './repositories.mjs';
 import { ALAError, EXIT_CODES } from './errors.mjs';
@@ -73,7 +73,7 @@ export async function createRuntime({
   }
   function catalogPrompt(prompt) {
     emitCatalog();
-    return catalogSelectionPrompt(skills, prompt);
+    return prompt;
   }
   const invocationModels = { ...codingAgentModels };
   const invocationEfforts = { ...codingAgentEfforts };
