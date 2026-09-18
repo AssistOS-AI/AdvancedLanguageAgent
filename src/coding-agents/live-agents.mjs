@@ -5,37 +5,14 @@ import { codexMcpOverrides } from './mcp-servers.mjs';
 import { createPiEventParser } from './pi.mjs';
 import { requirePiVersion } from './pi-version.mjs';
 import { attachCodexApprovals, codexThreadPolicy, verifyCodexPolicy } from './codex-approvals.mjs';
-import { codexSkillPolicyOverrides, verifyCodexSkillPolicy } from './codex-skill-policy.mjs';
 
 function checkAbort(signal) {
   if (signal?.aborted) throw Object.assign(new Error('Coding-agent execution was interrupted.'), { name: 'AbortError' });
 }
 
 export async function runCodexLive(input) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      const result = await runCodexLiveAttempt(input);
-      if (input.sandbox?.isolatedSkills) input.onSkillRegistration?.({ state: 'verified', reconfigurations: attempt,
-        threadId: result.continuation.threadId });
-      return result;
-    }
-    catch (error) {
-      if (error.code !== 'CODEX_SKILL_REGISTRATION_CHANGED' || !error.beforeTurn || attempt === 2) throw error;
-      input.onSkillRegistration?.({ state: 'reconfigure', attempt: attempt + 1,
-        threadId: error.continuation?.threadId || null, observedCount: error.skillPaths.length });
-      // Only incoming conversations are resumable across process restarts.
-      // A fresh thread has no rollout until its first turn is accepted.
-      input = { ...input, continuation: error.continuation || input.continuation,
-        nativeSkillPaths: [...new Set([...(input.nativeSkillPaths || []), ...error.skillPaths])] };
-    }
-  }
-}
-
-async function runCodexLiveAttempt(input) {
   checkAbort(input.signal);
-  const skillOverrides = await codexSkillPolicyOverrides(input);
-  checkAbort(input.signal);
-  const rpc = openJsonChannel(input, [...skillOverrides, ...codexMcpOverrides(input.mcpServers || []),
+  const rpc = openJsonChannel(input, [...codexMcpOverrides(input.mcpServers || []),
     '--config', `web_search=${JSON.stringify(input.websearch ? 'live' : 'disabled')}`, 'app-server']);
   let threadId = input.continuation?.threadId;
   let turnId = null;
@@ -86,7 +63,6 @@ async function runCodexLiveAttempt(input) {
     await rpc.request({ method: 'initialize', params: { clientInfo: { name: 'ala', version: '1' } } });
     rpc.send({ method: 'initialized', params: {} });
     checkAbort(input.signal);
-    await verifyCodexSkillPolicy(input, rpc, 'before thread restoration');
     const policy = codexThreadPolicy(input.permissionMode);
     const thread = await rpc.request({ method: threadId ? 'thread/resume' : 'thread/start', params: {
       ...(threadId ? { threadId } : {}), cwd: input.workspace,
@@ -100,7 +76,6 @@ async function runCodexLiveAttempt(input) {
     verifyCodexPolicy(thread, policy);
     if (input.continuation?.threadId) await input.onSession?.({ threadId });
     checkAbort(input.signal);
-    await verifyCodexSkillPolicy(input, rpc);
     const complete = rpc.wait((event) => event.method === 'turn/completed' && event.params?.threadId === threadId);
     turnStarted = true;
     const started = await rpc.request({ method: 'turn/start', params: {
@@ -125,10 +100,6 @@ async function runCodexLiveAttempt(input) {
     if (!finalText) throw new Error('Codex completed without a final assistant message.');
     return { outputText: finalText, continuation: { threadId } };
   } catch (error) {
-    if (error.code === 'CODEX_SKILL_REGISTRATION_CHANGED' && !turnStarted) {
-      error.beforeTurn = true;
-      error.continuation = input.continuation;
-    }
     throw nativeError || error;
   } finally {
     approvals.close();

@@ -1,17 +1,10 @@
-import { registeredRepositoryName } from './repository-sources.mjs';
+const COMMANDS = Object.freeze(['/help', '/agent', '/permissions', '/websearch', '/quit', '/exit']);
 
-const removePrefix = '/repo remove ';
-
-export function repositoryCompletionNames(repositoryPaths) {
-  return [...new Set(repositoryPaths.map(registeredRepositoryName).filter(Boolean))].sort();
-}
-
-export function createInteractiveCompleter(getRepositoryPaths) {
+export function createInteractiveCompleter() {
   return (line) => {
     const input = String(line);
-    if (!removePrefix.startsWith(input) && !input.startsWith(removePrefix)) return [[], input];
-    const candidates = repositoryCompletionNames(getRepositoryPaths())
-      .map((name) => `${removePrefix}${name}`);
-    return [candidates.filter((candidate) => candidate.startsWith(input)), input];
+    if (!input.startsWith('/')) return [[], input];
+    const candidates = COMMANDS.filter((command) => command.startsWith(input) && command !== input);
+    return [candidates, input];
   };
 }

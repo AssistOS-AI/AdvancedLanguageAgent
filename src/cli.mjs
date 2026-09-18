@@ -1,33 +1,19 @@
-import { readFile, realpath, rm, stat } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 
 import { HELP_TEXT, parseArguments } from './arguments.mjs';
 import { loadAchillesAgentLib } from './achilles-loader.mjs';
-import {
-  canonicalRepositoryPath,
-  loadConfig,
-  resolveActiveRepositories,
-  resolveConfigPath,
-  saveConfig
-} from './config.mjs';
+import { loadConfig, resolveConfigPath, saveConfig } from './config.mjs';
 import { ALAError, asALAError, EXIT_CODES } from './errors.mjs';
 import { composePrompt, loadRequest } from './input.mjs';
 import { createInteractiveCompleter } from './interactive-completion.mjs';
 import { createPermissionCommand } from './interactive-permissions.mjs';
 import { createThinkingIndicator } from './interactive-status.mjs';
 import { writeResult } from './output.mjs';
-import { validateTaskRepository } from './repositories.mjs';
-import {
-  isGitRepositoryUrl,
-  managedRepositoryPath,
-  prepareRepositorySource,
-  registeredRepositoryName,
-  repositorySourceName
-} from './repository-sources.mjs';
-import { readSkillCatalog } from './skill-catalog.mjs';
-import { createRuntime, feedbackPrompt } from './runtime.mjs';
+import { SANDBOX_WORKSPACE } from './coding-agents/paths.mjs';
+import { createRuntime } from './runtime.mjs';
 import { createRuntimeEventSink } from './runtime-events.mjs';
 import { discoverCodingAgents } from './coding-agents/discovery.mjs';
 import { openSessionState } from './session-state.mjs';
@@ -46,11 +32,6 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
   /agent codex <prompt>          Delegate to Codex
   /agent opencode <prompt>       Delegate to OpenCode
   /agent pi <prompt>             Delegate to Pi
-  /repo add <git-url>             Clone, register, and load a task repository
-  /repo list                      List registered task repositories
-  /repo remove <name>             Unregister a task repository; TAB completes names
-  /symbolic detection on         Enable symbolic task routing
-  /symbolic detection off        Disable symbolic task routing
   /websearch on                  Persist and enable coding-agent web search
   /websearch off                 Persist and disable coding-agent web search
   /permissions [mode]            Show or set ask-for-approval or full-access for this session
@@ -59,87 +40,6 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
 async function packageVersion() {
   const manifest = JSON.parse(await readFile(resolve(packageRoot, 'package.json'), 'utf8'));
   return manifest.version;
-}
-
-async function runRepositoryCommand(options, io, env, afterMutation = null) {
-  if (options.help) {
-    io.stdout.write(`${HELP_TEXT}\n`);
-    return EXIT_CODES.success;
-  }
-  if (options.action === 'add' && !isGitRepositoryUrl(options.target)) {
-    throw new ALAError('ala repo add requires a Git URL.', EXIT_CODES.usage);
-  }
-  const configPath = resolveConfigPath({ cliPath: options.configPath, env, cwd: io.cwd });
-  const config = await loadConfig(configPath);
-  if (options.action === 'list') {
-    const paths = config.taskRepositories.map((entry) => entry.path);
-    const rendered = options.json ? `${JSON.stringify(paths, null, 2)}\n` : paths.map((entry) => `${entry}\n`).join('');
-    io.stdout.write(rendered);
-    return EXIT_CODES.success;
-  }
-
-  if (options.action === 'add') {
-    let created = false;
-    let registered = false;
-    let repositoryPath;
-    try {
-      ({ repositoryPath, created } = await prepareRepositorySource(options.target, env));
-      await validateTaskRepository(repositoryPath);
-      if (!config.taskRepositories.some((entry) => entry.path === repositoryPath)) {
-        config.taskRepositories.push({ path: repositoryPath });
-        await saveConfig(configPath, config);
-        registered = true;
-      }
-      try {
-        await afterMutation?.(config);
-      } catch (error) {
-        if (registered) {
-          config.taskRepositories = config.taskRepositories.filter((entry) => entry.path !== repositoryPath);
-          await saveConfig(configPath, config);
-        }
-        throw error;
-      }
-    } catch (error) {
-      if (created && repositoryPath) await rm(repositoryPath, { recursive: true, force: true });
-      throw error;
-    }
-    io.stdout.write(`${repositoryPath}\n`);
-    return EXIT_CODES.success;
-  }
-
-  const lexicalPath = isGitRepositoryUrl(options.target)
-    ? managedRepositoryPath(options.target, env)
-    : resolve(io.cwd, options.target);
-  let canonicalPath = lexicalPath;
-  try { canonicalPath = await canonicalRepositoryPath(options.target, io.cwd); } catch {}
-  let index = config.taskRepositories.findIndex(
-    (entry) => entry.path === canonicalPath || entry.path === lexicalPath
-  );
-  if (index === -1 && !isGitRepositoryUrl(options.target) && !/[\\/]/u.test(options.target)) {
-    const requestedName = repositorySourceName(options.target);
-    const matches = config.taskRepositories
-      .map((entry, entryIndex) => ({ entry, entryIndex }))
-      .filter(({ entry }) => registeredRepositoryName(entry.path) === requestedName);
-    if (matches.length > 1) {
-      throw new ALAError(
-        `Task repository name is ambiguous: ${requestedName}. Use its registered path or Git URL.`,
-        EXIT_CODES.repository
-      );
-    }
-    if (matches.length === 1) index = matches[0].entryIndex;
-  }
-  if (index === -1) throw new ALAError(`Task repository is not registered: ${options.target}`, EXIT_CODES.repository);
-  const [removed] = config.taskRepositories.splice(index, 1);
-  await saveConfig(configPath, config);
-  try {
-    await afterMutation?.(config);
-  } catch (error) {
-    config.taskRepositories.splice(index, 0, removed);
-    await saveConfig(configPath, config);
-    throw error;
-  }
-  io.stdout.write(`${removed.path}\n`);
-  return EXIT_CODES.success;
 }
 
 async function runAgentCommand(options, io, env) {
@@ -156,11 +56,18 @@ async function runAgentCommand(options, io, env) {
   return EXIT_CODES.success;
 }
 
+function workspaceAliasTarget(alias) {
+  if (alias === undefined) return null;
+  if (typeof alias !== 'string' || !alias.trim() || ['.', '..'].includes(alias) || /[/\\\0]/u.test(alias)) {
+    throw new ALAError('--cwd alias must be a single nonempty folder name.', EXIT_CODES.usage);
+  }
+  return `${SANDBOX_WORKSPACE}/${alias}`;
+}
+
 async function interactiveLoop(runtime, initialPrompt, initialInstruction, options, io, env, signal) {
   const permissionCommand = createPermissionCommand(runtime, options.permissionMode);
   const configPath = resolveConfigPath({ cliPath: options.configPath, env, cwd: io.cwd });
   let activeConfig = await loadConfig(configPath);
-  let repositoryPaths = activeConfig.taskRepositories.map((entry) => entry.path);
   const terminalDiagnostics = Boolean(io.stdin.isTTY && io.stderr.isTTY);
   const thinking = createThinkingIndicator(io.stderr, {
     enabled: terminalDiagnostics
@@ -174,7 +81,7 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
     input: io.stdin,
     output: io.stderr,
     terminal: Boolean(io.stdin.isTTY),
-    completer: createInteractiveCompleter(() => repositoryPaths)
+    completer: createInteractiveCompleter()
   });
   let previousResult = null;
   try {
@@ -235,47 +142,6 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
             } else {
               throw new ALAError(`Unknown interactive command: ${line}`, EXIT_CODES.usage);
             }
-          } else if (parts[0] === '/repo') {
-            const action = parts[1];
-            if (options.skillCatalog && action !== 'list') {
-              throw new ALAError('The caller-selected skill catalog cannot be changed in this session.', EXIT_CODES.usage);
-            }
-            if (!['add', 'remove', 'list'].includes(action)) {
-              throw new ALAError('Usage: /repo add <git-url> | /repo remove <name-or-path-or-git-url> | /repo list', EXIT_CODES.usage);
-            }
-            const target = parts.slice(2).join(' ').trim() || null;
-            if (['add', 'remove'].includes(action) && !target) {
-              const targetDescription = action === 'add' ? 'a Git URL' : 'a repository name, path, or Git URL';
-              throw new ALAError(`/repo ${action} requires ${targetDescription}.`, EXIT_CODES.usage);
-            }
-            if (action === 'add' && !isGitRepositoryUrl(target)) {
-              throw new ALAError('/repo add requires a Git URL.', EXIT_CODES.usage);
-            }
-            if (action === 'list' && target) {
-              throw new ALAError('/repo list does not accept a repository name, path, or Git URL.', EXIT_CODES.usage);
-            }
-            const refresh = action === 'list' ? null : async (config) => {
-              const repositories = await resolveActiveRepositories({
-                config,
-                env,
-                cwd: io.cwd
-              });
-              await runtime.refreshRepositories(repositories);
-              activeConfig = config;
-              repositoryPaths = config.taskRepositories.map((entry) => entry.path);
-            };
-            await runRepositoryCommand({
-              command: 'repo', action, target, configPath: options.configPath, json: false, help: false
-            }, io, env, refresh);
-            if (action !== 'list') {
-              io.stderr.write(`ala: repository catalog refreshed (${runtime.skills.length} skills)\n`);
-            }
-          } else if (parts[0] === '/symbolic') {
-            if (parts[1] !== 'detection' || !['on', 'off'].includes(parts[2])) {
-              throw new ALAError('Usage: /symbolic detection on|off', EXIT_CODES.usage);
-            }
-            runtime.setSymbolicDetection(parts[2] === 'on');
-            io.stderr.write(`ala: symbolic detection ${parts[2]}\n`);
           } else if (parts[0] === '/permissions') {
             io.stderr.write(`ala: ${permissionCommand(parts)}\n`);
           } else if (parts[0] === '/websearch') {
@@ -300,8 +166,7 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
         }
         return false;
       }
-      const prompt = options.skill && previousResult !== null ? feedbackPrompt(previousResult, line) : line;
-      previousResult = await thinking.run(() => runtime.execute(prompt, { signal }));
+      previousResult = await thinking.run(() => runtime.execute(line, { signal }));
       await writeResult(previousResult, { stdout: io.stdout });
       return false;
     };
@@ -331,10 +196,11 @@ async function runExecution(options, io, env) {
   }
   if (options.modelConfigPath) env.LLM_MODELS_CONFIG_PATH = resolve(io.cwd, options.modelConfigPath);
 
-  const executionCwd = options.cwd ? await realpath(resolve(io.cwd, options.cwd)) : io.cwd;
-  if (options.cwd && !(await stat(executionCwd)).isDirectory()) {
+  const executionCwd = options.cwd ? await realpath(resolve(io.cwd, options.cwd)) : null;
+  if (executionCwd && !(await stat(executionCwd)).isDirectory()) {
     throw new ALAError('--cwd must reference an existing directory.', EXIT_CODES.usage);
   }
+  const workspaceTarget = workspaceAliasTarget(options.cwdAlias);
   const executionHome = options.home ? await realpath(resolve(io.cwd, options.home)) : null;
   if ((options.resumeSession || options.controlStdin) && !options.sessionId) {
     throw new ALAError('--resume-session and --control-stdin require --session-id.', EXIT_CODES.usage);
@@ -356,7 +222,7 @@ async function runExecution(options, io, env) {
     const taskFile = resolve(io.cwd, options.taskFile);
     options.instructionParts.unshift(await readFile(taskFile, 'utf8'));
   }
-  const configPath = resolveConfigPath({ cliPath: options.configPath, env: runtimeEnv, cwd: executionCwd });
+  const configPath = resolveConfigPath({ cliPath: options.configPath, env: runtimeEnv, cwd: executionCwd || io.cwd });
   const config = await loadConfig(configPath);
   const inferredInteractive = options.interactive || (options.instructionParts.length === 0 && io.stdin.isTTY);
   if (options.sessionId && inferredInteractive) {
@@ -364,15 +230,6 @@ async function runExecution(options, io, env) {
   }
   const eventSink = createRuntimeEventSink({ stream: io.stderr,
     env: options.sessionId ? { ...env, ALA_EVENT_STREAM: '1' } : env });
-  let repositories = options.skillCatalog !== undefined ? [] : await resolveActiveRepositories({
-    config,
-    env: runtimeEnv,
-    cwd: executionCwd
-  });
-  if (options.skillCatalog !== undefined) {
-    options.skillCatalog = resolve(io.cwd, options.skillCatalog);
-    repositories = await readSkillCatalog(options.skillCatalog);
-  }
   const achilles = await loadAchillesAgentLib({
     overridePath: options.achillesPath,
     env,
@@ -393,16 +250,16 @@ async function runExecution(options, io, env) {
   let runtime;
   try { runtime = await createRuntime({
     achillesModule: achilles.module,
-    repositories,
     codingAgents,
     codingAgentModels: config.codingAgents.models,
     codingAgentEfforts: config.codingAgents.efforts,
-    workspace: options.cwd ? executionCwd : null,
+    workspace: executionCwd,
+    workspaceTarget,
     home: executionHome,
     mcpServers: options.mcpServers,
     websearch: options.websearch ?? config.codingAgents.websearch,
     permissionMode: options.permissionMode,
-    cwd: executionCwd,
+    cwd: executionCwd || io.cwd,
     options,
     env: runtimeEnv,
     diagnostics: io.stderr,
@@ -462,7 +319,6 @@ export async function runCli({
   const io = { stdin, stdout, stderr, cwd, fetch: fetchImpl };
   try {
     const options = parseArguments(argv);
-    if (options.command === 'repo') return await runRepositoryCommand(options, io, env);
     if (options.command === 'agent') return await runAgentCommand(options, io, env);
     return await runExecution(options, io, env);
   } catch (error) {

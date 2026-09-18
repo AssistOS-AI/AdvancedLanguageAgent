@@ -1,4 +1,4 @@
-import { mkdir, readFile, realpath, rename, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -25,15 +25,6 @@ function validateConfig(value, configPath) {
   if (value.version !== CONFIG_VERSION) {
     throw new ALAError(`Unsupported ALA configuration version in ${configPath}.`, EXIT_CODES.usage);
   }
-  if (!Array.isArray(value.taskRepositories)) {
-    throw new ALAError(`taskRepositories must be an array in ${configPath}.`, EXIT_CODES.usage);
-  }
-  const taskRepositories = value.taskRepositories.map((entry) => {
-    if (!entry || typeof entry.path !== 'string' || !entry.path.trim()) {
-      throw new ALAError(`Every task repository must contain a non-empty path in ${configPath}.`, EXIT_CODES.usage);
-    }
-    return { path: entry.path };
-  });
   const configuredPriority = value.codingAgents?.priority ?? DEFAULT_CODING_AGENT_PRIORITY;
   if (!Array.isArray(configuredPriority)) {
     throw new ALAError(`codingAgents.priority must be an array in ${configPath}.`, EXIT_CODES.usage);
@@ -71,7 +62,7 @@ function validateConfig(value, configPath) {
   if (typeof websearch !== 'boolean') {
     throw new ALAError(`codingAgents.websearch must be a boolean in ${configPath}.`, EXIT_CODES.usage);
   }
-  return { version: CONFIG_VERSION, taskRepositories, codingAgents: { priority, models, efforts, websearch } };
+  return { version: CONFIG_VERSION, codingAgents: { priority, models, efforts, websearch } };
 }
 
 export async function loadConfig(configPath) {
@@ -82,7 +73,6 @@ export async function loadConfig(configPath) {
     if (error?.code === 'ENOENT') {
       return {
         version: CONFIG_VERSION,
-        taskRepositories: [],
         codingAgents: { priority: [...DEFAULT_CODING_AGENT_PRIORITY], models: {}, efforts: {}, websearch: false }
       };
     }
@@ -104,35 +94,4 @@ export async function saveConfig(configPath, config) {
   } finally {
     await unlink(temporaryPath).catch(() => {});
   }
-}
-
-export async function canonicalRepositoryPath(candidate, cwd = process.cwd()) {
-  const absolutePath = resolve(cwd, candidate);
-  try {
-    return await realpath(absolutePath);
-  } catch (error) {
-    throw new ALAError(`Task repository does not exist: ${absolutePath}`, EXIT_CODES.repository, { cause: error });
-  }
-}
-
-export function environmentRepositories(env = process.env) {
-  if (!env.ALA_TASK_REPOSITORIES) return [];
-  return env.ALA_TASK_REPOSITORIES.split(process.platform === 'win32' ? ';' : ':').filter(Boolean);
-}
-
-export async function resolveActiveRepositories({ config, env = process.env, cwd = process.cwd() }) {
-  const candidates = [
-    ...config.taskRepositories.map((entry) => entry.path),
-    ...environmentRepositories(env)
-  ];
-  const repositories = [];
-  const seen = new Set();
-  for (const candidate of candidates) {
-    const canonical = await canonicalRepositoryPath(candidate, cwd);
-    if (!seen.has(canonical)) {
-      seen.add(canonical);
-      repositories.push(canonical);
-    }
-  }
-  return repositories;
 }

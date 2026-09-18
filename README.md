@@ -1,12 +1,10 @@
 # Advanced Language Agent
 
-[Advanced Language Agent](docs/index.html) (ALA) is a command-line application for language and documentation tasks. It can execute general requests without [task repositories](docs/wiki.html#definition-task-repository) and can load [task skills](docs/wiki.html#definition-a-skill) from them when specialized methods are needed. Task skills use the Anthropic `SKILL.md` format and are executed by an installed coding agent. ALA writes the result to standard output or a file.
-
-A task skill is a procedure defined in an independent task repository through an Anthropic-style `SKILL.md` with `name` and `description` frontmatter. ALA discovers these descriptors recursively and makes them available to Codex, OpenCode, or Pi in an isolated workspace. ALA does not require or search task repositories for AchillesAgentLib `cskill.md`, `oskill.md`, `tskill.md`, or `dcgskill.md` descriptors.
+[Advanced Language Agent](docs/index.html) (ALA) is a command-line application for language and documentation tasks. It executes general requests through AchillesAgentLib and delegates bounded work to an installed coding agent. ALA mounts exactly the directories the caller supplies through `--cwd` and `--folder`; it does not discover, create, mount or overlay task skills. ALA writes the result to standard output or a file.
 
 ## Install
 
-ALA requires Node.js 20 or newer, npm, and Git. Coding-agent execution additionally requires Linux with Bubblewrap (`bwrap`); ALA fails closed instead of starting Codex, OpenCode, or Pi without it. Coding-agent CLIs remain installed once in their normal system or user locations: ALA never reinstalls or copies them into a task workspace. It resolves each launcher to its existing runtime prefix, mounts that prefix read-only, and prefers its matching executable path inside the sandbox. Prefixes below `/workspace` use a private runtime path so the task workspace mount cannot hide the installed executable; other prefixes retain their existing paths. An external target of `/etc/resolv.conf` is mounted read-only when systemd-resolved stores it under `/run`. Codex and OpenCode also require Bubblewrap to mount a private procfs; ALA never substitutes the caller's `/proc`. It first uses a private user namespace. In a capability-bounded nested container where that extra user namespace cannot mount procfs, ALA may use the outer sandbox capability to construct the PID namespace and private procfs, then drops all capabilities before starting the coding agent. Codex is told not to construct a second native sandbox: its `danger-full-access` setting is scoped inside ALA's Bubblewrap boundary, where only the selected workspace and controlled home remain writable. Direct MainAgent execution remains available without a coding agent. From the repository root, run:
+ALA requires Node.js 20 or newer, npm, and Git. Coding-agent execution additionally requires Linux with Bubblewrap (`bwrap`); ALA fails closed instead of starting Codex, OpenCode, or Pi without it. Coding-agent CLIs remain installed once in their normal system or user locations: ALA never reinstalls or copies them. It resolves each launcher to its existing runtime prefix, mounts that prefix read-only, and prefers its matching executable path inside the sandbox. Prefixes below the mounted working directory use a private runtime path so the workspace mount cannot hide the installed executable; other prefixes retain their existing paths. An external target of `/etc/resolv.conf` is mounted read-only when systemd-resolved stores it under `/run`. Codex and OpenCode also require Bubblewrap to mount a private procfs; ALA never substitutes the caller's `/proc`. It first uses a private user namespace. In a capability-bounded nested container where that extra user namespace cannot mount procfs, ALA may use the outer sandbox capability to construct the PID namespace and private procfs, then drops all capabilities before starting the coding agent. Codex is told not to construct a second native sandbox: its `danger-full-access` setting is scoped inside ALA's Bubblewrap boundary, where only the mounted directories and controlled home remain writable. Direct MainAgent execution remains available without a coding agent. From the repository root, run:
 
 ```sh
 npm install
@@ -54,15 +52,7 @@ ala --model fast "Summarize this text" --file report.md
 export ALA_MODEL=fast
 ```
 
-No task repository is required for general use. To add specialized task methods, register a task repository:
-
-```sh
-ala repo add https://example.com/owner/task-repository.git
-ala repo list
-ala repo remove task-repository
-```
-
-ALA accepts only a Git URL for persistent `repo add` operations and saves the resulting registration in `$HOME/.ala/config.json`. Set `ALA_CONFIG_PATH` to another root directory when an embedding application needs isolated ALA state; ALA then uses `<ALA_CONFIG_PATH>/.ala/config.json`. The explicit `--config <file>` option remains available for a one-command file override. The repository is cloned into `$XDG_DATA_HOME/ala/repositories`, or `~/.local/share/ala/repositories` when `XDG_DATA_HOME` is not set. `repo remove` accepts the Git repository name without `.git`, its registered path, or the original Git URL. Removing its registration does not delete the managed clone. `ALA_TASK_REPOSITORIES` supplies platform-delimited local repository paths through the environment.
+User configuration lives in `$HOME/.ala/config.json`. Set `ALA_CONFIG_PATH` to another root directory when an embedding application needs isolated ALA state; ALA then uses `<ALA_CONFIG_PATH>/.ala/config.json`. The explicit `--config <file>` option remains available for a one-command file override. Legacy `taskRepositories` fields in existing files are ignored.
 
 ALA does not store prompt or result transcripts itself. Coding agents own their native conversation history. Embedding applications can resume a native conversation through explicit session options and consume the structured event stream for visible logs.
 
@@ -74,18 +64,12 @@ ala agent list
 
 ## Run a single task
 
-A single-task command runs in one-shot mode. Without `--cwd`, ALA creates and later removes a temporary coding-agent workspace. With `--cwd`, it uses the existing directory directly and never deletes it. Reusing cwd alone does not resume a conversation.
+A single-task command runs in one-shot mode. Without `--cwd`, ALA creates a temporary working directory and retains it after the command finishes. With `--cwd`, it uses the existing directory directly and never deletes it. Reusing cwd alone does not resume a conversation.
 
-Run a general request without a task repository:
+Run a general request:
 
 ```sh
 ala "Summarize the supplied report" --file report.md
-```
-
-When task repositories are configured and a coding agent is available, that agent can select a matching task skill automatically. Select a skill explicitly when its name is known:
-
-```sh
-ala --skill translate "Translate this document to Romanian" --file document.md
 ```
 
 Write the result to a file:
@@ -101,16 +85,16 @@ ala --ca codex "Research this topic and produce a verified summary"
 ala --ca auto "Plan and validate this multi-step language task"
 ```
 
-The selected coding-agent CLI must already be authenticated through its own login mechanism. By default ALA passes no model option, so each selected CLI uses its own default model. In an interactive session, `/agent <codex|opencode|pi> models` asks that backend for its available model identifiers, `/agent <codex|opencode|pi> model <model-name>` persists a backend-specific selection, and `/agent <codex|opencode|pi> model default` removes that override so the agent CLI chooses its default again. ALA applies each change to every subsequent invocation. ALA's `--model`, `--tag`, `--reasoning-effort`, and `--model-config` settings continue to apply only to direct LLMAgent execution and do not override coding-agent model selection. Anthropic task-skill execution also requires one detected coding agent. ALA runs every agent and model-catalog process inside Bubblewrap, clears inherited environment variables before restoring a backend-specific allowlist, exposes its temporary workspace read-write at `/workspace`, mounts discovered task-skill directories strictly read-only under `/workspace/.agents/skills`, exposes the existing backend runtime read-only, exposes only controlled authentication/state directories read-write, and removes the workspace when the command or interactive session closes.
+The selected coding-agent CLI must already be authenticated through its own login mechanism. By default ALA passes no model option, so each selected CLI uses its own default model. In an interactive session, `/agent <codex|opencode|pi> models` asks that backend for its available model identifiers, `/agent <codex|opencode|pi> model <model-name>` persists a backend-specific selection, and `/agent <codex|opencode|pi> model default` removes that override so the agent CLI chooses its default again. ALA applies each change to every subsequent invocation. ALA's `--model`, `--tag`, `--reasoning-effort`, and `--model-config` settings continue to apply only to direct LLMAgent execution and do not override coding-agent model selection. ALA runs every agent and model-catalog process inside Bubblewrap, clears inherited environment variables before restoring a backend-specific allowlist, mounts the caller's `--cwd` and `--folder` directories at their canonical or aliased paths, exposes the existing backend runtime read-only, exposes only controlled authentication/state directories read-write, and retains the temporary directory it created when `--cwd` is omitted.
 
-Embedding applications can select a persistent coding-agent home, an existing work tree, skill sets, a prompt file, and Streamable HTTP MCP servers explicitly:
+Embedding applications can select a persistent coding-agent home, an existing work tree, extra directories, a prompt file, and Streamable HTTP MCP servers explicitly:
 
 ```sh
-ala --home /robot/home --cwd /workspace/project --skillSets pdf2Html,writeArticle \
+ala --home /robot/home --cwd /project --folder /shared --folder /scratch write \
   --taskFile task.prompt --MCPServers desktop=http://127.0.0.1:48100/mcp --ca codex
 ```
 
-`--home` is bound as the sandbox home and supplies saved agent authentication and configuration. `--cwd` is bound read-write at `/workspace`. `--skillSets` restricts the discovered catalog, `--task` or `--taskFile` supplies the prompt, and `--MCPServers` injects temporary URL configuration into Codex without rewriting its saved config. Read-only extra directories use `--folder <path> [as <alias>]`; interactive `/folder` commands are not supported.
+`--home` is bound as the sandbox home and supplies saved agent authentication and configuration. `--cwd <path> [as <alias>]` is the writable working directory, mounted at its canonical path or under `/workspace/<alias>`. `--folder <path> [write] [as <alias>]` mounts extra directories read-only unless marked `write`. `--task` or `--taskFile` supplies the prompt, and `--MCPServers` injects temporary URL configuration into Codex without rewriting its saved config. Interactive folder mounts are not supported.
 
 Coding-agent web search is off by default. Use bare `--websearch` to enable it for one invocation, `--websearch on|off` as an explicit invocation-only override, or persist the setting during an interactive session:
 
@@ -125,14 +109,12 @@ The interactive command saves `codingAgents.websearch` in the selected ALA confi
 
 ## Continue a coding-agent task
 
-An embedding host can pass `--skill-catalog <path>` to register only its selected Anthropic skills. The path may name a JSON file containing an array of absolute individual skill directory paths, or a canonical catalog directory. JSON manifests preserve canonical path deduplication, require one valid `SKILL.md` directly in each selected directory, reject nested descriptors and duplicate or reserved native names, and accept `[]` as an authoritative empty selection. Their revision hashes selected source paths, file contents, executable modes and symlink text. The caller owns source lifetime and must remove deleted paths before the next invocation; ALA never rewrites the manifest. See [skill manifests and mounts](docs/integration.html#skill-manifests). This overrides configured and environment-provided task repositories, accepts an empty catalog, and mounts selected skill folders read-only behind an isolated `.agents/skills` view without changing project files. The host owns immutable execution copies and may pass a new catalog at the next idle or resumed execution while retaining the same session ID, home, cwd, backend and native history. Live steering keeps the active execution catalog. Every catalog, including an empty selection, supersedes earlier skill availability; native agents must reread descriptors and resources when used. The standalone `--skillSets` exact-name filter remains in force after interactive repository refresh; missing selected names fail visibly. A directory catalog may contain `.catalog.json` with version `1`, a content revision, numeric `policyVersion`, `entries` containing qualified `identity` and native `name`, and `diagnostics`. Versioned catalogs require exactly `<name>/SKILL.md` for every entry and reject nested descriptors. Metadata-free legacy catalogs retain their existing layout and receive a content-and-mode digest. Malformed metadata fails explicitly. The structured `skill-catalog` event reports the execution envelope. Isolated Codex execution also verifies native registration through `skills/list` and temporary `skills.config` arguments, disabling unselected home and system skills without editing configuration. The actual app-server process rechecks registration before thread start/resume and before the model turn. Observed late registrations can trigger at most two process reconfigurations before any model turn, resuming existing conversations unchanged and recreating only provisional new threads that have not started a turn. Structured `coding-agent-skill-registration` events report those retries. Isolated one-shot calls use the same path. This verifies observed native registration; it does not atomically prevent a native plugin or external installation from introducing a new path after the final inventory. Plugin tools remain enabled. Unsupported native protocols fail visibly; OpenCode and Pi registration semantics need separate native validation.
-
 Use a new UUID to create a persistent session. Later invocations require the same home, cwd, session id, and coding backend. `--ca auto` selects a backend once and then keeps that choice.
 
 ```sh
-ala --home /robot/home --cwd /workspace/project --ca codex \
+ala --home /robot/home --cwd /project --ca codex \
   --session-id 11111111-1111-4111-8111-111111111111 --task "Inspect the project"
-ala --home /robot/home --cwd /workspace/project --ca codex \
+ala --home /robot/home --cwd /project --ca codex \
   --session-id 11111111-1111-4111-8111-111111111111 --resume-session --task "Add tests"
 ```
 
@@ -142,22 +124,15 @@ An embedding process can add `--control-stdin` and send JSONL messages such as `
 
 Select native permission policy with `--permissions ask-for-approval|full-access`; the standalone default is full-access inside Bubblewrap. An embedding host must attach control stdin to display and answer native approval requests. Codex uses native app-server approval decisions; OpenCode uses its authenticated native server and once/always/reject replies, without changing project `opencode.json`. Pi supports full-access only and requires version 0.85.1 or a verified compatible RPC release. An older installation must be upgraded separately or selected through `PI_BIN`; ALA does not modify global installations. Missing reply capability declines an operation requiring approval rather than granting access. Native remembered grants are not an ALA authorization cache and need not survive a new native process.
 
-
 ## Run interactively
 
-Start an interactive session. This works without a task repository:
+Start an interactive session:
 
 ```sh
 ala
 ```
 
-Unlike one-shot execution, this process retains one ALA runtime across prompts. MainAgent conversation state remains available, the coding-agent workspace is reused after its first creation, and the first coding backend used by the session is pinned with its native continuation until the session exits.
-
-Start an interactive session with a specific task skill:
-
-```sh
-ala --interactive --skill translate
-```
+Unlike one-shot execution, this process retains one ALA runtime across prompts. MainAgent conversation state remains available, the working directory is reused after its first creation, and the first coding backend used by the session is pinned with its native continuation until the session exits.
 
 Interactive sessions also accept local slash commands. `/agent ...` commands are handled by ALA and are never sent to the LLM:
 
@@ -169,11 +144,6 @@ Interactive sessions also accept local slash commands. `/agent ...` commands are
 /agent codex model default
 /agent codex Review this task
 /agent auto Produce a verified multi-step summary
-/repo add https://example.com/owner/task-repository.git
-/repo list
-/repo remove task-repository
-/symbolic detection on
-/symbolic detection off
 /permissions
 /permissions ask-for-approval
 /permissions full-access
@@ -182,9 +152,11 @@ Interactive sessions also accept local slash commands. `/agent ...` commands are
 /quit
 ```
 
-`/help` lists every interactive command. `/agent` commands discover a backend, inspect or select its native model, and delegate prompts; `/websearch on|off` controls supported search tools. `/repo` commands manage persistent task-repository registrations and refresh the active read-only skill set without resetting workspace files, backend selection, native continuation, or MainAgent conversation. While a terminal waits, ALA renders a transient thinking indicator and supported live backend events on standard error, leaving the normalized final result on standard output. Symbolic detection remains off unless enabled with `/symbolic detection on`. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session. Arbitrary interactive folder mounts are no longer supported.
+`/help` lists every interactive command. `/agent` commands discover a backend, inspect or select its native model, and delegate prompts; `/websearch on|off` controls supported search tools. While a terminal waits, ALA renders a transient thinking indicator and supported live backend events on standard error, leaving the normalized final result on standard output. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
 
 `/permissions` reports the requested native policy. Supplying `ask-for-approval` or `full-access` changes subsequent executions in this interactive session without resetting the native conversation or saving configuration. The initial policy comes from `--permissions`, defaulting to `full-access`. Pi rejects ask-for-approval. The command does not add a reply channel: without a reply-capable embedding host, native operations requiring approval are declined.
+
+Expose a caller-owned directory with `--folder /absolute/path as runtime`. It appears read-only at `/workspace/runtime`; without `as`, it appears at the original absolute path. Repeat `--folder` for separate destinations, and add `write` to make one writable. ALA only validates and mounts directories; the caller prepares dependencies and owns any socket protocol and cleanup.
 
 ## More information
 
@@ -201,5 +173,3 @@ npm run docs:verify
 ## License
 
 See [LICENSE](LICENSE).
-
-Expose a caller-owned directory read-only with `--folder /absolute/path as runtime`. It appears at `/workspace/runtime`; without `as`, it appears at the original absolute path. Repeat `--folder` for separate destinations. ALA only validates and mounts directories; the caller prepares dependencies and owns any socket protocol and cleanup.

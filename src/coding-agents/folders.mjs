@@ -1,11 +1,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { ALAError, EXIT_CODES } from '../errors.mjs';
+import { SANDBOX_WORKSPACE } from './paths.mjs';
 
 const invalid = message => new ALAError(`--folder ${message}`, EXIT_CODES.usage);
 const within = (a, b) => a === b || a.startsWith(`${b}/`);
 const overlaps = (a, b) => within(a, b) || within(b, a);
-const reserved = ['/usr', '/bin', '/sbin', '/lib', '/lib64', '/proc', '/dev', '/etc', '/home', '/workspace/.agents'];
+
+// ALA mounts exactly what the caller supplies. Canonical hosts paths are
+// mounted at their original absolute path; an optional alias mounts the same
+// source at a fixed name under the sandbox workspace root to avoid collisions.
+const reserved = ['/usr', '/bin', '/sbin', '/lib', '/lib64', '/proc', '/dev', '/etc', '/home/ala',
+  `${SANDBOX_WORKSPACE}/.agents`];
 
 export function resolveFolderMounts(folders = [], cwd = process.cwd()) {
   if (!Array.isArray(folders)) throw invalid('must be a list of directories.');
@@ -22,29 +28,17 @@ export function resolveFolderMounts(folders = [], cwd = process.cwd()) {
         || ['.', '..'].includes(folder.alias) || /[/\\\0]/u.test(folder.alias))) {
       throw invalid('alias must be a single nonempty folder name.');
     }
-    const target = folder.alias !== undefined ? path.join('/workspace', folder.alias) : folder.target || requested;
+    // Honor an already-resolved destination so repeated resolution is
+    // idempotent; the service resolves once and the sandbox re-resolves.
+    const target = folder.alias !== undefined ? path.join(SANDBOX_WORKSPACE, folder.alias)
+      : folder.target !== undefined ? path.resolve(folder.target) : requested;
     if (!path.isAbsolute(target) || path.normalize(target) !== target || target.includes('\0')
-        || overlaps(target, '/workspace') && !within(target, '/workspace')
-        || target === '/workspace' || reserved.some(entry => overlaps(target, entry))) {
+        || target === SANDBOX_WORKSPACE || (overlaps(target, SANDBOX_WORKSPACE) && !within(target, SANDBOX_WORKSPACE))
+        || target === '/home' || reserved.some(entry => overlaps(target, entry))) {
       throw invalid(`destination conflicts with sandbox paths: ${target}`);
     }
     if (result.some(entry => overlaps(entry.target, target))) throw invalid(`destinations overlap: ${target}`);
-    result.push({ source, target });
+    result.push({ source, target, writable: Boolean(folder.writable) });
   }
   return result;
-}
-
-export function validateFolderTargets(folders, workspace, mounts) {
-  for (const { target } of folders) {
-    if (mounts.some(mount => overlaps(target, mount.target))) throw invalid(`destination conflicts with another mount: ${target}`);
-    if (!within(target, '/workspace')) continue;
-    let current = workspace;
-    for (const part of path.relative('/workspace', target).split('/')) {
-      current = path.join(current, part);
-      try {
-        const stat = fs.lstatSync(current);
-        if (stat.isSymbolicLink() || !stat.isDirectory()) throw invalid(`destination is not a plain directory: ${target}`);
-      } catch (error) { if (error.code !== 'ENOENT') throw error; }
-    }
-  }
 }

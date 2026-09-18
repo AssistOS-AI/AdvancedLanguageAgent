@@ -18,7 +18,7 @@ import { requireSandbox, runProcess } from '../src/coding-agents/process.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
 import { canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
 import { createRuntime } from '../src/runtime.mjs';
-import { captureStream, writeAnthropicSkill } from './helpers.mjs';
+import { captureStream } from './helpers.mjs';
 
 const sandboxSupported = canStartBubblewrap();
 
@@ -199,7 +199,7 @@ test('forwards cancellation to an active coding-agent process', async () => {
   await assert.rejects(running, { name: 'AbortError' });
 });
 
-test('pins continuation to one agent and removes its temporary workspace', async () => {
+test('pins continuation to one agent and retains its temporary workspace', async () => {
   const calls = [];
   const runners = {
     codex: async (input) => {
@@ -216,70 +216,9 @@ test('pins continuation to one agent and removes its temporary workspace', async
   assert.equal(calls[0].workspace, calls[1].workspace);
   assert.deepEqual(calls[1].continuation, { threadId: 'thread-1' });
   const workspace = calls[0].hostWorkspace;
+  await writeFile(join(workspace, 'artifact.txt'), 'retained');
   await service.close();
-  await assert.rejects(() => access(workspace));
-});
-
-test('mounts Anthropic skill directories in the coding-agent workspace', async (context) => {
-  const root = await mkdtemp(join(tmpdir(), 'ala-agent-skills-'));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  const directoryPath = await writeAnthropicSkill(root, 'echo');
-  const service = createCodingAgentService({
-    agents: [{ name: 'codex', available: true, binary: '/fake/codex' }],
-    skills: [{ name: 'echo', directoryPath }],
-    runners: {
-      codex: async ({ workspace, sandbox }) => {
-        assert.equal(workspace, '/workspace');
-        const mount = sandbox.mounts.find((entry) => entry.target === '/workspace/.agents/skills/echo');
-        return { outputText: await readFile(join(mount.source, 'SKILL.md'), 'utf8'), continuation: null };
-      }
-    }
-  });
-  context.after(() => service.close());
-  assert.match(await service.execute('use echo'), /name: echo/u);
-});
-
-test('refreshes skill links while preserving workspace artifacts and native continuation', async (context) => {
-  const root = await mkdtemp(join(tmpdir(), 'ala-agent-refresh-'));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  const firstDirectory = await writeAnthropicSkill(join(root, 'first'), 'first-skill');
-  const secondDirectory = await writeAnthropicSkill(join(root, 'second'), 'second-skill');
-  const calls = [];
-  const service = createCodingAgentService({
-    agents: [{ name: 'codex', available: true, binary: '/fake/codex' }],
-    skills: [{ name: 'first-skill', directoryPath: firstDirectory }],
-    runners: {
-      codex: async (input) => {
-        calls.push(input);
-        return { outputText: 'done', continuation: { threadId: 'thread-1' } };
-      }
-    }
-  });
-  context.after(() => service.close());
-
-  await service.execute('first');
-  const workspace = calls[0].hostWorkspace;
-  await writeFile(join(workspace, 'artifact.txt'), 'preserved');
-  await service.refreshSkills([{ name: 'second-skill', directoryPath: secondDirectory }]);
-
-  assert.equal(await readFile(join(workspace, 'artifact.txt'), 'utf8'), 'preserved');
-  await assert.rejects(() => access(join(workspace, '.agents', 'skills', 'first-skill')));
-  await service.execute('second');
-  assert.equal(calls[1].hostWorkspace, workspace);
-  assert.deepEqual(calls[1].continuation, { threadId: 'thread-1' });
-  assert.deepEqual(calls[1].sandbox.mounts.filter((mount) => mount.purpose === 'task-skill').map((mount) => mount.target), [
-    '/workspace/.agents/skills/second-skill'
-  ]);
-  await assert.rejects(() => service.refreshSkills([
-    { name: 'duplicate', directoryPath: firstDirectory },
-    { name: 'duplicate', directoryPath: secondDirectory }
-  ]));
-  await service.refreshSkills([]);
-  await assert.rejects(() => access(join(workspace, '.agents', 'skills', 'second-skill')));
-  assert.equal(await readFile(join(workspace, 'artifact.txt'), 'utf8'), 'preserved');
-  await service.execute('third');
-  assert.equal(calls[2].hostWorkspace, workspace);
-  assert.deepEqual(calls[2].continuation, { threadId: 'thread-1' });
+  assert.equal(await readFile(join(workspace, 'artifact.txt'), 'utf8'), 'retained');
 });
 
 test('does not switch backends after a delegated process fails', async () => {

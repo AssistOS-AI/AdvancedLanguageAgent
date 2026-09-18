@@ -4,8 +4,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { ALAError, EXIT_CODES } from '../errors.mjs';
-import { SANDBOX_WORKSPACE } from './paths.mjs';
-import { resolveFolderMounts, validateFolderTargets } from './folders.mjs';
+import { resolveFolderMounts } from './folders.mjs';
 
 const SANDBOX_HOME = '/home/ala';
 const PROBE_CACHE_TTL_MS = 30_000;
@@ -178,11 +177,11 @@ function runtimeSearchPaths(runtimeMounts) {
   return candidates;
 }
 
-export function sandboxRuntimeMounts(sources) {
+export function sandboxRuntimeMounts(sources, sandboxWorkspace = null) {
   return [...sources].map((source, index) => ({
     source,
-    // The later workspace bind hides prefixes installed below the launch workspace.
-    target: source === SANDBOX_WORKSPACE || source.startsWith(`${SANDBOX_WORKSPACE}/`)
+    // The workspace bind may hide prefixes installed below it.
+    target: sandboxWorkspace && (source === sandboxWorkspace || source.startsWith(`${sandboxWorkspace}/`))
       ? `/run/ala-agent-runtime/${index}/${path.basename(source)}` : source,
     writable: false,
     purpose: 'agent-runtime'
@@ -268,43 +267,18 @@ function normalizedMounts(mounts) {
   return result;
 }
 
-function addSkillCatalogOverlay(args, hostWorkspace) {
-  const source = path.join(hostWorkspace, '.agents');
-  const target = `${SANDBOX_WORKSPACE}/.agents`;
-  let entries = [];
-  try {
-    if (!fs.lstatSync(source).isDirectory()) {
-      throw new ALAError('Selected-skill execution requires .agents to be a directory, not a symlink.', EXIT_CODES.execution);
-    }
-    entries = fs.readdirSync(source, { withFileTypes: true });
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-  }
-  // The parent overlay keeps missing skill mount points off the writable host filesystem.
-  args.push('--tmpfs', target);
-  for (const entry of entries) {
-    if (entry.name === 'skills') continue;
-    const entrySource = path.join(source, entry.name);
-    const entryTarget = `${target}/${entry.name}`;
-    if (entry.isSymbolicLink()) args.push('--symlink', fs.readlinkSync(entrySource), entryTarget);
-    else args.push('--bind', entrySource, entryTarget);
-  }
-  args.push('--dir', `${target}/skills`);
-}
-
 export function buildSandboxArgs({
   workspace,
+  workspaceTarget = null,
   backend,
   binary,
   args = [],
-  mounts = [],
   env = process.env,
   bwrap = findBubblewrap(),
   privateProc = canMountPrivateProc(bwrap),
   home = null,
   folders = [],
-  isolatedSkills = false,
-  chdir = SANDBOX_WORKSPACE
+  chdir = null
 }) {
   if (!bwrap) {
     throw new ALAError(
@@ -313,11 +287,14 @@ export function buildSandboxArgs({
     );
   }
   if (process.platform !== 'linux') {
-    throw new ALAError('Coding-agent execution through Bubblewrap is supported only on Linux.', EXIT_CODES.execution);
+    throw new ALAError(
+      'Coding-agent execution through Bubblewrap is supported only on Linux.',
+      EXIT_CODES.execution
+    );
   }
   const hostWorkspace = resolveExisting(workspace);
   const command = resolveExisting(binary);
-  const folderMounts = resolveFolderMounts(folders);
+  const folderMounts = resolveFolderMounts(folders, process.cwd());
   if (!hostWorkspace || !command) {
     throw new ALAError('Coding-agent sandbox workspace or executable is unavailable.', EXIT_CODES.execution);
   }
@@ -327,6 +304,10 @@ export function buildSandboxArgs({
       `${backend === 'codex' ? 'Codex' : 'OpenCode'} requires a private /proc inside Bubblewrap, but the capability probe failed${diagnostic ? ` (${diagnostic})` : ''}.`,
       EXIT_CODES.execution
     );
+  }
+  const target = workspaceTarget ? path.resolve(workspaceTarget) : hostWorkspace;
+  if (folderMounts.some((mount) => mount.target === target)) {
+    throw new ALAError('A mounted folder duplicates the working directory.', EXIT_CODES.execution);
   }
   const outerCapabilityProc = privateProcModes.get(bwrap) === 'outer-cap';
   const sandboxArgs = ['--die-with-parent', '--new-session'];
@@ -348,29 +329,27 @@ export function buildSandboxArgs({
     ...collectAgentRuntimeMounts(command),
     ...collectAgentRuntimeMounts(process.execPath)
   ]);
-  const runtimeMounts = sandboxRuntimeMounts(runtimeSources);
+  const runtimeMounts = sandboxRuntimeMounts(runtimeSources, target);
   for (const mount of normalizedMounts(runtimeMounts)) {
     addParentDirs(sandboxArgs, mount.target);
     sandboxArgs.push('--ro-bind', mount.source, mount.target);
   }
 
-  addParentDirs(sandboxArgs, SANDBOX_WORKSPACE);
-  sandboxArgs.push('--bind', hostWorkspace, SANDBOX_WORKSPACE);
-  if (folderMounts.length || isolatedSkills) {
-    addSkillCatalogOverlay(sandboxArgs, hostWorkspace);
-  }
-
-
   const stateMounts = explicitHome ? [] : collectAgentStateMounts(backend, env).map((mount) => ({ ...mount }));
-  const allMounts = normalizedMounts([...stateMounts, ...mounts]);
-  for (const mount of allMounts) {
+  for (const mount of normalizedMounts(stateMounts)) {
     addParentDirs(sandboxArgs, mount.target);
     sandboxArgs.push(mount.writable ? '--bind' : '--ro-bind', mount.source, mount.target);
   }
-  validateFolderTargets(folderMounts, hostWorkspace, [...runtimeMounts, ...allMounts]);
-  for (const mount of folderMounts) {
+
+  // Mount ancestors before their descendants so a read-only parent cannot hide
+  // the writable working directory mounted below it.
+  const orderedMounts = [
+    { source: hostWorkspace, target, writable: true, purpose: 'workspace' },
+    ...folderMounts
+  ].sort((left, right) => left.target.length - right.target.length);
+  for (const mount of normalizedMounts(orderedMounts)) {
     addParentDirs(sandboxArgs, mount.target);
-    sandboxArgs.push('--ro-bind', mount.source, mount.target);
+    sandboxArgs.push(mount.writable ? '--bind' : '--ro-bind', mount.source, mount.target);
   }
   sandboxArgs.push('--remount-ro', '/');
   for (const [name, value] of Object.entries(sandboxEnvironment(backend, runtimeMounts, env))) {
@@ -380,6 +359,6 @@ export function buildSandboxArgs({
     .sort((left, right) => right.source.length - left.source.length)[0];
   const sandboxCommand = commandMount
     ? path.join(commandMount.target, path.relative(commandMount.source, command)) : command;
-  sandboxArgs.push('--chdir', chdir, '--', sandboxCommand, ...args);
+  sandboxArgs.push('--chdir', chdir || target, '--', sandboxCommand, ...args);
   return sandboxArgs;
 }

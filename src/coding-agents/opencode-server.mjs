@@ -125,13 +125,13 @@ export async function startOpenCodeServer(input) {
   const lifetime = AbortSignal.any([failed.signal, ...(signal ? [signal] : [])]);
   const request = async (path, { method = 'GET', body, signal: requestSignal = lifetime, stream = false } = {}) => {
     const url = new URL(path, base);
-    url.searchParams.set('directory', '/workspace');
+    url.searchParams.set('directory', workspace);
     const timeout = new AbortController();
     const timer = setTimeout(() => timeout.abort(new Error('OpenCode HTTP request timed out.')), 15_000);
     try {
       const response = await fetch(url, {
         method, redirect: 'error', signal: AbortSignal.any([requestSignal, timeout.signal]),
-        headers: { authorization, 'x-opencode-directory': '/workspace',
+        headers: { authorization, 'x-opencode-directory': workspace,
           ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
       });

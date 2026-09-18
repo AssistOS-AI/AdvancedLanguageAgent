@@ -1,12 +1,10 @@
-import { mkdir, mkdtemp, readdir, rm, stat } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { catalogSelectionPrompt } from '../anthropic-skills.mjs';
 import { ALAError, EXIT_CODES } from '../errors.mjs';
 import { createPermissionRequestManager, validatePermissionMode } from '../permission-requests.mjs';
 import { listCodexModels, runCodex } from './codex.mjs';
-import { SANDBOX_WORKSPACE } from './paths.mjs';
 import { listOpenCodeModels, runOpenCode } from './opencode.mjs';
 import { listPiModels, runPi } from './pi.mjs';
 import { resolveFolderMounts } from './folders.mjs';
@@ -17,54 +15,12 @@ import { runCodexLive, runPiLive } from './live-agents.mjs';
 const adapters = Object.freeze({ codex: runCodex, opencode: runOpenCode, pi: runPi });
 const modelAdapters = Object.freeze({ codex: listCodexModels, opencode: listOpenCodeModels, pi: listPiModels });
 
-async function validateSkills(skills) {
-  const names = new Set();
-  for (const skill of skills) {
-    if (names.has(skill.name)) throw new Error(`Duplicate task skill name: ${skill.name}`);
-    names.add(skill.name);
-    if (!(await stat(skill.directoryPath)).isDirectory()) {
-      throw new Error(`Task skill source is not a directory: ${skill.directoryPath}`);
-    }
-  }
-}
-
-async function syncMountPointDirectories(parent, names) {
-  await mkdir(parent, { recursive: true, mode: 0o700 });
-  const expected = new Set(names);
-  for (const entry of await readdir(parent, { withFileTypes: true })) {
-    if (!expected.has(entry.name)) await rm(join(parent, entry.name), { recursive: true, force: true });
-  }
-  for (const name of expected) await mkdir(join(parent, name), { recursive: true, mode: 0o700 });
-}
-
-async function syncWorkspaceLayout(workspace, skills) {
-  await validateSkills(skills);
-  await syncMountPointDirectories(join(workspace, '.agents', 'skills'), skills.map((skill) => skill.name));
-}
-
-async function ensureSkillMountPoints(workspace, skills) {
-  await validateSkills(skills);
-  for (const skill of skills) {
-    await mkdir(join(workspace, '.agents', 'skills', skill.name), { recursive: true, mode: 0o700 });
-  }
-}
-
-function sandboxMounts(skills) {
-  return skills.map((skill) => ({
-      source: skill.directoryPath,
-      target: `${SANDBOX_WORKSPACE}/.agents/skills/${skill.name}`,
-      writable: false,
-      purpose: 'task-skill'
-    }));
-}
-
 export function createCodingAgentService({
   agents,
-  skills = [],
   workspace: requestedWorkspace = null,
+  workspaceTarget = null,
   home = null,
   folders = [],
-  isolatedSkills = false,
   mcpServers = null,
   models = {},
   efforts = {},
@@ -81,7 +37,6 @@ export function createCodingAgentService({
 }) {
   let requestedPermissionMode = validatePermissionMode(permissionMode);
   const folderMounts = resolveFolderMounts(folders, cwd);
-  const overlaySkills = Boolean(folderMounts.length || isolatedSkills);
   permissionRequests ??= createPermissionRequestManager({ eventSink, logger });
   let activeController = null;
   const available = agents.filter((record) => record.available);
@@ -90,9 +45,8 @@ export function createCodingAgentService({
     bwrap,
     privateProc: canMountPrivateProc(bwrap)
   };
-  let activeSkills = skills;
   let workspace = requestedWorkspace;
-  const ownsWorkspace = !requestedWorkspace;
+  let sandboxWorkspace = workspaceTarget;
   let workspacePrepared = false;
   const configuredMcpServers = parseMcpServers(mcpServers);
   let activeName = sessionState?.record.agent || null;
@@ -105,17 +59,11 @@ export function createCodingAgentService({
   let outputSink = null;
 
   async function prepareWorkspace() {
-    const nextWorkspace = requestedWorkspace || await mkdtemp(join(tmpdir(), 'ala-agent-'));
-    try {
-      if (overlaySkills) await validateSkills(activeSkills);
-      else if (ownsWorkspace) await syncWorkspaceLayout(nextWorkspace, activeSkills);
-      else await ensureSkillMountPoints(nextWorkspace, activeSkills);
-      workspace = nextWorkspace;
-      workspacePrepared = true;
-    } catch (error) {
-      if (ownsWorkspace) await rm(nextWorkspace, { recursive: true, force: true });
-      throw error;
-    }
+    // A caller-supplied cwd is used as-is. Without one ALA retains an owned
+    // temporary directory so the execution can be inspected after it finishes.
+    if (!workspace) workspace = await mkdtemp(join(tmpdir(), 'ala-agent-'));
+    if (!sandboxWorkspace) sandboxWorkspace = workspace;
+    workspacePrepared = true;
   }
 
   async function ensureWorkspace() {
@@ -141,14 +89,13 @@ export function createCodingAgentService({
   function executionContext(selected) {
     return {
       hostWorkspace: workspace,
-      workspace: SANDBOX_WORKSPACE,
+      workspace: sandboxWorkspace,
       sandbox: {
         hostWorkspace: workspace,
+        workspaceTarget: sandboxWorkspace,
         backend: selected.name,
         ...(home ? { home } : {}),
         folders: folderMounts,
-        isolatedSkills: overlaySkills,
-        mounts: sandboxMounts(activeSkills),
         bwrap: sandboxCapabilities.bwrap,
         ...(sandboxCapabilities.privateProc ? { privateProc: true } : {})
       }
@@ -195,7 +142,7 @@ export function createCodingAgentService({
         controller.signal.throwIfAborted();
         if (turnEffort) {
           const catalog = await modelListers[selected.name]({ binary: selected.binary,
-            cwd: SANDBOX_WORKSPACE, env, signal: controller.signal, details: true, ...executionContext(selected) });
+            cwd: sandboxWorkspace, env, signal: controller.signal, details: true, ...executionContext(selected) });
           if (!catalog.find((entry) => entry.id === turnModel)?.efforts?.includes(turnEffort)) {
             throw new ALAError('The selected model does not advertise this effort: ' + turnEffort, EXIT_CODES.usage);
           }
@@ -203,7 +150,7 @@ export function createCodingAgentService({
         activeName = selected.name;
         await sessionState?.save({ agent: activeName });
         controller.signal.throwIfAborted();
-        logger?.debug?.(`coding-agent: backend=${selected.name}, workspace=${SANDBOX_WORKSPACE}`);
+        logger?.debug?.(`coding-agent: backend=${selected.name}, workspace=${sandboxWorkspace}`);
         eventSink?.({
           type: 'coding-agent-selected',
           agent: selected.name,
@@ -215,8 +162,7 @@ export function createCodingAgentService({
           : runners[selected.name];
         const result = await runner({
           binary: selected.binary,
-          prompt: !continuation && (activeSkills.length || isolatedSkills)
-            ? catalogSelectionPrompt(activeSkills, prompt) : prompt,
+          prompt,
           ...executionContext(selected),
           continuation,
           model: turnModel,
@@ -228,7 +174,6 @@ export function createCodingAgentService({
           env,
           signal: controller.signal,
           onVisibleText,
-          onSkillRegistration: (value) => eventSink?.({ type: 'coding-agent-skill-registration', agent: selected.name, ...value }),
           onSession: async (value) => {
             continuation = value;
             await sessionState?.save({ continuation });
@@ -266,7 +211,7 @@ export function createCodingAgentService({
       return modelListers[name]({
         binary: selected.binary,
         details,
-        cwd: SANDBOX_WORKSPACE,
+        cwd: sandboxWorkspace,
         env,
         signal,
         ...executionContext(selected)
@@ -290,25 +235,6 @@ export function createCodingAgentService({
     setOutputSink(nextOutputSink) {
       outputSink = typeof nextOutputSink === 'function' ? nextOutputSink : null;
     },
-    async refreshSkills(nextSkills) {
-      if (executing) throw new Error('Cannot refresh skills during an active coding-agent execution.');
-      await validateSkills(nextSkills);
-      if (executing) throw new Error('Cannot refresh skills during an active coding-agent execution.');
-      const previous = activeSkills;
-      activeSkills = nextSkills;
-      try {
-        if (workspace && !overlaySkills) {
-          if (ownsWorkspace) await syncWorkspaceLayout(workspace, activeSkills);
-          else await ensureSkillMountPoints(workspace, activeSkills);
-        }
-      } catch (error) {
-        activeSkills = previous;
-        if (workspace && ownsWorkspace && !overlaySkills) {
-          await syncWorkspaceLayout(workspace, activeSkills).catch(() => {});
-        }
-        throw error;
-      }
-    },
     cancel(reason = 'cancelled') {
       activeController?.abort(new ALAError(`Execution interrupted: ${reason}`, EXIT_CODES.interrupted));
       permissionRequests.cancelAll('cancelled');
@@ -316,9 +242,6 @@ export function createCodingAgentService({
     async close() {
       this.cancel('closed');
       permissionRequests.setReplyCapability(false);
-      if (workspace && ownsWorkspace) await rm(workspace, { recursive: true, force: true });
-      workspace = null;
-      workspacePrepared = false;
       continuation = null;
       activeName = null;
     }

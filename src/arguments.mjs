@@ -1,9 +1,7 @@
 import { ALAError, EXIT_CODES } from './errors.mjs';
-import { isGitRepositoryUrl } from './repository-sources.mjs';
 import { validatePermissionMode } from './permission-requests.mjs';
 
 const valueOptions = new Map([
-  ['--skill', 'skill'],
   ['--text', 'text'],
   ['--file', 'file'],
   ['--url', 'url'],
@@ -18,10 +16,7 @@ const valueOptions = new Map([
   ['--agent', 'agent'],
   ['--ca', 'agent'],
   ['--home', 'home'],
-  ['--cwd', 'cwd'],
-  ['--skill-catalog', 'skillCatalog'],
   ['--session-id', 'sessionId'],
-  ['--skillSets', 'skillSets'],
   ['--taskFile', 'taskFile'],
   ['--task', 'task'],
   ['--MCPServers', 'mcpServers']
@@ -58,52 +53,9 @@ function defaultExecutionOptions() {
   };
 }
 
-function parseRepoCommand(argv) {
-  const options = {
-    command: 'repo',
-    action: argv[1] || null,
-    target: null,
-    configPath: null,
-    json: false,
-    help: false
-  };
-
-  if (!['add', 'remove', 'list'].includes(options.action)) {
-    throw new ALAError(
-      'Usage: ala repo add <git-url> | ala repo remove <name-or-path-or-git-url> | ala repo list.',
-      EXIT_CODES.usage
-    );
-  }
-
-  for (let index = 2; index < argv.length; index += 1) {
-    const token = argv[index];
-    if (token === '--config') {
-      options.configPath = optionValue(argv, index, token);
-      index += 1;
-    } else if (token === '--json' && options.action === 'list') {
-      options.json = true;
-    } else if (token === '--help') {
-      options.help = true;
-    } else if (token.startsWith('-')) {
-      throw new ALAError(`Unknown repository option: ${token}`, EXIT_CODES.usage);
-    } else if (options.target === null) {
-      options.target = token;
-    } else {
-      throw new ALAError(`Unexpected repository argument: ${token}`, EXIT_CODES.usage);
-    }
-  }
-
-  if (['add', 'remove'].includes(options.action) && !options.target && !options.help) {
-    const targetDescription = options.action === 'add' ? 'a Git URL' : 'a repository name, path, or Git URL';
-    throw new ALAError(`ala repo ${options.action} requires ${targetDescription}.`, EXIT_CODES.usage);
-  }
-  if (options.action === 'add' && options.target && !options.help && !isGitRepositoryUrl(options.target)) {
-    throw new ALAError('ala repo add requires a Git URL.', EXIT_CODES.usage);
-  }
-  if (options.action === 'list' && options.target) {
-    throw new ALAError('ala repo list does not accept a repository name, path, or Git URL.', EXIT_CODES.usage);
-  }
-  return options;
+function parseAlias(argv, index, option) {
+  if (argv[index + 1] !== 'as') return { alias: undefined, index };
+  return { alias: optionValue(argv, index + 1, `${option} as`), index: index + 2 };
 }
 
 function parseAgentCommand(argv) {
@@ -126,7 +78,6 @@ function parseAgentCommand(argv) {
 }
 
 export function parseArguments(argv) {
-  if (argv[0] === 'repo') return parseRepoCommand(argv);
   if (argv[0] === 'agent') return parseAgentCommand(argv);
 
   const options = defaultExecutionOptions();
@@ -150,12 +101,19 @@ export function parseArguments(argv) {
     else if (token === '--folder') {
       const source = optionValue(argv, index, token);
       index += 1;
-      let alias;
-      if (argv[index + 1] === 'as') {
-        alias = optionValue(argv, index + 1, '--folder as');
-        index += 2;
-      }
-      options.folders.push({ source, ...(alias !== undefined ? { alias } : {}) });
+      let writable = false;
+      if (argv[index + 1] === 'write') { writable = true; index += 1; }
+      const { alias, index: nextIndex } = parseAlias(argv, index, '--folder');
+      index = nextIndex;
+      options.folders.push({ source, ...(writable ? { writable: true } : {}), ...(alias !== undefined ? { alias } : {}) });
+    }
+    else if (token === '--cwd') {
+      const source = optionValue(argv, index, token);
+      options.cwd = source;
+      index += 1;
+      const { alias, index: nextIndex } = parseAlias(argv, index, '--cwd');
+      options.cwdAlias = alias;
+      index = nextIndex;
     }
     else if (token === '--stdin') options.sources.push({ type: 'stdin' });
     else if (valueOptions.has(token)) {
@@ -187,23 +145,17 @@ export const HELP_TEXT = `Advanced Language Agent
 
 Usage:
   ala [options] [instruction...]
-  ala repo add <git-url> [--config <path>]
-  ala repo remove <name-or-path-or-git-url> [--config <path>]
-  ala repo list [--config <path>] [--json]
   ala agent list [--config <path>] [--json]
 
 Execution options:
-  --skill <name>             Execute a task skill explicitly
   --ca <name>                Coding agent: auto, codex, opencode, or pi
-  --permissions <mode>      ask-for-approval or full-access (default: full-access)
-  --skill-catalog <path>    JSON skill-path array or canonical catalog directory; empty selects none
+  --permissions <mode>       ask-for-approval or full-access (default: full-access)
   --home <path>              Explicit coding-agent home/configuration directory
-  --cwd <path>               Existing working directory; disables temporary workspace creation
-  --folder <path> [as <alias>]  Mount a directory read-only; alias is relative to /workspace
+  --cwd <path> [as <alias>]  Writable working directory; omit to use a retained temporary directory
+  --folder <path> [write] [as <alias>]  Mount a directory read-only, or writable with "write"
   --session-id <uuid>        Persistent conversation identity; requires --home, --cwd and --ca
   --resume-session           Resume the exact saved session, never create a replacement
   --control-stdin            Accept JSONL messages and interaction responses while executing
-  --skillSets <a,b>          Expose only these exact skill names; callers resolve skillsets
   --task <prompt>            Task prompt
   --taskFile <path>          UTF-8 file containing a detailed task prompt
   --MCPServers <addresses>   Comma-separated name=URL or host:port MCP servers
@@ -222,8 +174,6 @@ Execution options:
   --achilles-path <path>     Override AchillesAgentLib resolution
   --config <path>            Override the ALA configuration file
   Interactive: /help         Show every interactive command and its behavior
-  Interactive: /repo <add|remove|list>  Manage persistent task repositories
-  Interactive: /symbolic detection on|off  Toggle symbolic routing in a session
   Interactive: /websearch on|off  Persist and toggle coding-agent web search
   --help, -h                 Show help
   --version, -v              Show version`;

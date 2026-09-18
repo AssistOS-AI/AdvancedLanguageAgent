@@ -1,7 +1,6 @@
 import { executionError, requireSandbox, runProcess, spawnProcess } from './process.mjs';
 import { appendBoundedTail, createLineDecoder } from './streaming.mjs';
 import { codexMcpOverrides } from './mcp-servers.mjs';
-import { runCodexLive } from './live-agents.mjs';
 
 export function buildCodexArguments({
   prompt, continuation = null, model = null, effort = null, websearch = false, mcpServers = [], permissionMode = 'full-access'
@@ -98,7 +97,6 @@ export function createCodexStderrParser({ onText = () => {} } = {}) {
 
 export async function runCodex(input) {
   requireSandbox(input.sandbox);
-  if (input.sandbox.isolatedSkills) return runCodexLive(input);
   const {
     binary, prompt, workspace, continuation, model, effort, websearch, mcpServers, env, signal, sandbox, onVisibleText,
     permissionMode = 'full-access'

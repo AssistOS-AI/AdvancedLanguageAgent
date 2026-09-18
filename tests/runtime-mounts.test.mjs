@@ -25,7 +25,7 @@ try { fs.writeFileSync(state, 'changed'); runtimeWritable = true; } catch {}
 const session = process.env.HOME + '/native-thread.txt';
 const previous = fs.existsSync(session) ? fs.readFileSync(session, 'utf8') : null;
 if (!previous) fs.writeFileSync(session, 'native-thread-1');
-fs.writeFileSync('/workspace/result.txt', 'task result');
+fs.writeFileSync(process.cwd() + '/result.txt', 'task result');
 console.log(JSON.stringify({ cwd: process.cwd(), home: process.env.HOME,
   runtime: import.meta.url, runtimeWritable, previous,
   thread: fs.readFileSync(session, 'utf8'), argument: process.argv[2] }));
@@ -38,7 +38,7 @@ console.log(JSON.stringify({ cwd: process.cwd(), home: process.env.HOME,
 test('relocates only prefixes hidden by the workspace bind and preserves node_modules lookup', () => {
   const sources = ['/workspace/.data/tools/generation', '/workspace/repo/node_modules',
     '/data/tools/generation', '/opt/tools', '/tmp/install', '/workspace-other/tools'];
-  const mounts = sandboxRuntimeMounts(sources);
+  const mounts = sandboxRuntimeMounts(sources, '/workspace');
   assert.deepEqual(mounts.map((mount) => mount.target), [
     '/run/ala-agent-runtime/0/generation', '/run/ala-agent-runtime/1/node_modules', ...sources.slice(2)
   ]);
@@ -50,8 +50,8 @@ test('keeps noncolliding package paths read-only without widening the exposed in
   skip: process.platform !== 'linux'
 }, async (context) => {
   const f = await fixture(context);
-  const args = buildSandboxArgs({ workspace: f.workspace, backend: 'codex', binary: f.binary,
-    args: ['unchanged argument'], home: f.home, isolatedSkills: true, bwrap: '/fake/bwrap', privateProc: true });
+  const args = buildSandboxArgs({ workspace: f.workspace, workspaceTarget: f.workspace, backend: 'codex',
+    binary: f.binary, args: ['unchanged argument'], home: f.home, bwrap: '/fake/bwrap', privateProc: true });
   const runtimeMount = args.findIndex((value, index) => value === '--ro-bind' && args[index + 1] === f.prefix);
   assert.notEqual(runtimeMount, -1);
   assert.equal(args[runtimeMount + 2], f.prefix);
@@ -66,15 +66,15 @@ test('keeps noncolliding package paths read-only without widening the exposed in
   assert.equal(args.some((value, index) => value === '--bind' && args[index + 1] === f.home
     && args[index + 2] === '/home/ala'), true);
   assert.equal(args.some((value, index) => value === '--bind' && args[index + 1] === f.workspace
-    && args[index + 2] === '/workspace'), true);
+    && args[index + 2] === f.workspace), true);
 });
 
 test('runtime stays read-only across processes with the same home, cwd and native state', {
   skip: canStartBubblewrap(findBubblewrap()) ? false : 'Bubblewrap cannot start in this test process'
 }, async (context) => {
   const f = await fixture(context);
-  const input = { binary: f.binary, args: ['unchanged argument'], cwd: '/workspace',
-    sandbox: { backend: 'pi', hostWorkspace: f.workspace, home: f.home, mounts: [], isolatedSkills: true } };
+  const input = { binary: f.binary, args: ['unchanged argument'], cwd: f.workspace,
+    sandbox: { backend: 'pi', hostWorkspace: f.workspace, workspaceTarget: f.workspace, home: f.home } };
   const results = [];
   for (let index = 0; index < 2; index += 1) {
     const result = await runProcess(input);
@@ -82,7 +82,7 @@ test('runtime stays read-only across processes with the same home, cwd and nativ
     results.push(JSON.parse(result.stdout));
   }
   for (const result of results) {
-    assert.equal(result.cwd, '/workspace');
+    assert.equal(result.cwd, f.workspace);
     assert.equal(result.home, '/home/ala');
     assert.equal(result.runtime, `file://${f.prefix}/lib/node_modules/native-agent/agent.mjs`);
     assert.equal(result.runtimeWritable, false);
@@ -106,8 +106,8 @@ test('preserves absolute in-prefix interpreters and helper symlinks outside the 
   await writeFile(join(f.prefix, 'bin/value'), 'absolute-helper-preserved');
   await symlink(join(f.prefix, 'bin/value'), helper);
   await writeFile(binary, `#!${interpreter}\ncat '${helper}'\n`, { mode: 0o755 });
-  const result = await runProcess({ binary, args: [], cwd: '/workspace',
-    sandbox: { backend: 'pi', hostWorkspace: f.workspace, home: f.home, mounts: [] } });
+  const result = await runProcess({ binary, args: [], cwd: f.workspace,
+    sandbox: { backend: 'pi', hostWorkspace: f.workspace, workspaceTarget: f.workspace, home: f.home } });
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.stdout, 'absolute-helper-preserved');
 });

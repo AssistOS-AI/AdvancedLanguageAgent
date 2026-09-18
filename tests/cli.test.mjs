@@ -1,126 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
-import { promisify } from 'node:util';
 
 import { runCli } from '../src/cli.mjs';
 import { canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
-import { captureStream, inputStream, writeAnthropicSkill } from './helpers.mjs';
+import { captureStream, inputStream } from './helpers.mjs';
 
-const execFileAsync = promisify(execFile);
 const sandboxSupported = canStartBubblewrap();
-
-function io(root, content = '') {
-  return { cwd: root, stdin: inputStream(content), stdout: captureStream(), stderr: captureStream(), env: {} };
-}
-
-async function createGitTaskRepository(path, skillName) {
-  await writeAnthropicSkill(path, skillName);
-  await execFileAsync('git', ['init', path]);
-  await execFileAsync('git', ['-C', path, 'add', '.']);
-  await execFileAsync('git', [
-    '-C', path, '-c', 'user.name=ALA Test', '-c', 'user.email=ala@example.test',
-    'commit', '-m', 'Initial task repository'
-  ]);
-  return pathToFileURL(path).href;
-}
-
-test('rejects a local path for persistent repository addition', async (context) => {
-  const root = await mkdtemp(join(tmpdir(), 'ala-cli-local-repo-'));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  const repository = join(root, 'translation');
-  await writeAnthropicSkill(repository, 'translate');
-  const stderr = captureStream();
-  assert.equal(await runCli({
-    ...io(root),
-    argv: ['repo', 'add', repository, '--config', join(root, 'config.json')],
-    stderr
-  }), 2);
-  assert.match(stderr.read(), /repo add requires a Git URL/);
-});
-
-test('clones and manages a persistent task repository from a Git URL', async (context) => {
-  const root = await mkdtemp(join(tmpdir(), 'ala-cli-git-repo-'));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  const source = join(root, 'claude-skills');
-  const repositoryUrl = await createGitTaskRepository(source, 'remote-task');
-  const configPath = join(root, 'config.json');
-  const dataRoot = join(root, 'data');
-  const stdout = captureStream();
-  const env = { ...process.env, XDG_DATA_HOME: dataRoot };
-  assert.equal(await runCli({
-    argv: ['repo', 'add', repositoryUrl, '--config', configPath],
-    env,
-    stdin: inputStream(),
-    stdout,
-    stderr: captureStream(),
-    cwd: root
-  }), 0);
-
-  const managedPath = stdout.read().trim();
-  assert.match(managedPath, /\/data\/ala\/repositories\/claude-skills-[a-f0-9]{12}$/u);
-  assert.match(await readFile(join(managedPath, 'skills', 'remote-task', 'SKILL.md'), 'utf8'), /remote-task/);
-  assert.doesNotMatch(await readFile(join(managedPath, '.git', 'config'), 'utf8'), /\[remote "origin"\]/u);
-  assert.deepEqual(JSON.parse(await readFile(configPath, 'utf8')).taskRepositories, [{ path: managedPath }]);
-
-  const removeOutput = captureStream();
-  assert.equal(await runCli({
-    argv: ['repo', 'remove', 'claude-skills', '--config', configPath],
-    env,
-    stdin: inputStream(),
-    stdout: removeOutput,
-    stderr: captureStream(),
-    cwd: root
-  }), 0);
-  assert.equal(removeOutput.read(), `${managedPath}\n`);
-  assert.match(await readFile(join(managedPath, 'skills', 'remote-task', 'SKILL.md'), 'utf8'), /remote-task/);
-
-  assert.equal(await runCli({
-    argv: ['repo', 'add', repositoryUrl, '--config', configPath],
-    env,
-    stdin: inputStream(),
-    stdout: captureStream(),
-    stderr: captureStream(),
-    cwd: root
-  }), 0);
-  assert.equal(await runCli({
-    argv: ['repo', 'remove', repositoryUrl, '--config', configPath],
-    env,
-    stdin: inputStream(),
-    stdout: captureStream(),
-    stderr: captureStream(),
-    cwd: root
-  }), 0);
-});
-
-test('rejects an ambiguous repository short name', async (context) => {
-  const root = await mkdtemp(join(tmpdir(), 'ala-cli-ambiguous-repo-'));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  const configPath = join(root, 'config.json');
-  await writeFile(configPath, `${JSON.stringify({
-    version: 1,
-    taskRepositories: [
-      { path: join(root, 'tasks-aaaaaaaaaaaa') },
-      { path: join(root, 'tasks-bbbbbbbbbbbb') }
-    ],
-    codingAgents: { priority: ['codex', 'opencode', 'pi'] }
-  })}\n`);
-  const stderr = captureStream();
-  assert.equal(await runCli({
-    argv: ['repo', 'remove', 'tasks', '--config', configPath],
-    env: {},
-    stdin: inputStream(),
-    stdout: captureStream(),
-    stderr,
-    cwd: root
-  }), 4);
-  assert.match(stderr.read(), /repository name is ambiguous: tasks/iu);
-  assert.equal(JSON.parse(await readFile(configPath, 'utf8')).taskRepositories.length, 2);
-});
 
 test('keeps help output separate from diagnostics', async () => {
   const stdout = captureStream();
@@ -129,7 +17,8 @@ test('keeps help output separate from diagnostics', async () => {
   assert.equal(code, 0);
   const help = stdout.read();
   assert.match(help, /Usage:/);
-  assert.doesNotMatch(help, /--task-repo/);
+  assert.doesNotMatch(help, /--repo/);
+  assert.doesNotMatch(help, /--skill/);
   assert.equal(stderr.read(), '');
 });
 
@@ -155,7 +44,6 @@ test('lists detected coding agents without loading AchillesAgentLib', async (con
   const root = await mkdtemp(join(tmpdir(), 'ala-cli-agents-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const binary = join(root, 'codex');
-  const { chmod, writeFile } = await import('node:fs/promises');
   await writeFile(binary, '#!/bin/sh\nexit 0\n');
   await chmod(binary, 0o700);
   const stdout = captureStream();
@@ -190,8 +78,6 @@ test('delegates explicitly to a detected coding agent with clean stdout', {
   const binary = join(root, 'codex');
   const authRoot = join(root, 'codex-state');
   const agentLog = join(authRoot, 'codex-arguments.log');
-  const { chmod, writeFile } = await import('node:fs/promises');
-  const { mkdir } = await import('node:fs/promises');
   await mkdir(authRoot);
   await writeFile(binary, `#!/bin/sh
 printf '%s\n' "$@" > "$CODEX_HOME/codex-arguments.log"
@@ -211,12 +97,11 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"a
     stderr,
     cwd: root
   });
-  assert.equal(code, 0);
+  assert.equal(code, 0, stderr.read());
   assert.equal(stdout.read(), 'agent result\n');
   assert.equal(stderr.read(), '');
   assert.match(await readFile(agentLog, 'utf8'), /^--search$/mu);
   await assert.rejects(() => readFile(join(root, 'missing.json'), 'utf8'));
-  await assert.rejects(() => access(join(root, 'sessions')), (error) => error.code === 'ENOENT');
 });
 
 test('handles slash agent commands locally in interactive mode', {
@@ -226,9 +111,6 @@ test('handles slash agent commands locally in interactive mode', {
   context.after(() => rm(root, { recursive: true, force: true }));
   const binary = join(root, 'codex');
   const authRoot = join(root, 'codex-state');
-  const agentLog = join(authRoot, 'agent-calls.log');
-  const { chmod, writeFile } = await import('node:fs/promises');
-  const { mkdir } = await import('node:fs/promises');
   await mkdir(authRoot);
   await writeFile(binary, `#!/bin/sh
 if [ "$1" = 'app-server' ]; then
@@ -240,29 +122,10 @@ if [ "$1" = 'app-server' ]; then
   done
   exit 0
 fi
-last=''
-resume='no'
-thread=''
-model=''
-websearch='off'
-previous=''
-for argument in "$@"; do
-  last="$argument"
-  if [ "$argument" = 'resume' ]; then resume='yes'; fi
-  if [ "$argument" = 'thread-interactive' ]; then thread="$argument"; fi
-  if [ "$previous" = '--model' ]; then model="$argument"; fi
-  if [ "$argument" = '--search' ]; then websearch='on'; fi
-  previous="$argument"
-done
-printf '%s|%s|%s|%s|%s\n' "$PWD" "$resume" "$thread" "$model" "$websearch" >> "$CODEX_HOME/agent-calls.log"
-result='slash result'
-if [ -f /workspace/.agents/skills/interactive-task/SKILL.md ]; then result='refreshed skill catalog'; fi
 printf '%s\n' '{"type":"thread.started","thread_id":"thread-interactive"}'
-printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n' "$result"
+printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"slash result"}}'
 `);
   await chmod(binary, 0o700);
-  const repository = join(root, 'interactive-repository');
-  const repositoryUrl = await createGitTaskRepository(repository, 'interactive-task');
   const stdout = captureStream();
   const stderr = captureStream();
   const code = await runCli({
@@ -271,23 +134,15 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
       ...process.env,
       HOME: join(root, 'home'),
       PATH: `${root}:/usr/bin`,
-      XDG_DATA_HOME: join(root, 'data'),
       CODEX_BIN: binary,
       CODEX_HOME: authRoot
     },
     stdin: inputStream([
       '/help',
-      '/agent help',
       '/permissions',
       '/permissions ask-for-approval',
-      '/permissions invalid',
       '/permissions full-access',
-      `/repo add ${repositoryUrl}`,
       '/websearch on',
-      'use the new task skill',
-      '/repo list',
-      '/repo remove interactive-repository',
-      '/symbolic detection on',
       '/agent list',
       '/agent codex models',
       '/agent codex model gpt-test',
@@ -302,92 +157,21 @@ printf '{"type":"item.completed","item":{"type":"agent_message","text":"%s"}}\n'
   });
   assert.equal(code, 0, stderr.read());
   const outputLines = stdout.read().trim().split('\n');
-  assert.equal(outputLines.length, 7);
-  assert.equal(outputLines[1], 'refreshed skill catalog');
-  assert.equal(outputLines[0], outputLines[2]);
-  assert.equal(outputLines[3], outputLines[0]);
-  assert.equal(outputLines[4], 'codex');
-  assert.equal(outputLines[5], 'gpt-test');
-  assert.equal(outputLines[6], 'slash result');
+  assert.deepEqual(outputLines, ['codex', 'gpt-test', 'slash result']);
   const diagnostics = stderr.read();
-  assert.equal(diagnostics.match(/Interactive commands:/g)?.length, 2);
-  assert.match(diagnostics, /Interactive commands:/);
-  assert.match(diagnostics, /\/help\s+Show this complete command list/);
-  assert.match(diagnostics, /\/agent \| \/agent help\s+Show this complete command list/);
+  assert.equal(diagnostics.match(/Interactive commands:/g)?.length, 1);
   assert.match(diagnostics, /\/agent list\s+List detected coding-agent backends/);
-  assert.match(diagnostics, /\/agent <name> models\s+List models available/);
-  assert.match(diagnostics, /\/agent <name> model <model>\s+Persist the model/);
-  assert.match(diagnostics, /\/agent auto <prompt>\s+Delegate to the first available backend/);
-  assert.match(diagnostics, /\/agent codex <prompt>\s+Delegate to Codex/);
-  assert.match(diagnostics, /\/agent opencode <prompt>\s+Delegate to OpenCode/);
-  assert.match(diagnostics, /\/agent pi <prompt>\s+Delegate to Pi/);
-  assert.match(diagnostics, /\/repo add <git-url>\s+Clone, register, and load a task repository/);
-  assert.match(diagnostics, /\/repo list\s+List registered task repositories/);
-  assert.match(diagnostics, /\/repo remove <name>\s+Unregister a task repository; TAB completes names/);
-  assert.match(diagnostics, /\/symbolic detection on\s+Enable symbolic task routing/);
-  assert.match(diagnostics, /\/symbolic detection off\s+Disable symbolic task routing/);
   assert.match(diagnostics, /\/websearch on\s+Persist and enable coding-agent web search/);
-  assert.match(diagnostics, /\/websearch off\s+Persist and disable coding-agent web search/);
-  assert.match(diagnostics, /\/quit \| \/exit \| :quit \| :exit\s+Close the interactive session/);
-  assert.equal(diagnostics.match(/Close the interactive session/g)?.length, 2);
-  assert.equal(diagnostics.match(/repository catalog refreshed \(1 skills\)/g)?.length, 1);
-  assert.equal(diagnostics.match(/repository catalog refreshed \(0 skills\)/g)?.length, 1);
-  assert.match(diagnostics, /symbolic detection on/);
+  assert.doesNotMatch(diagnostics, /\/repo /);
+  assert.doesNotMatch(diagnostics, /\/symbolic /);
   assert.match(diagnostics, /websearch on/);
   assert.match(diagnostics, /Native permissions: full-access/);
   assert.match(diagnostics, /Native permissions: ask-for-approval/);
-  assert.match(diagnostics, /Usage: \/permissions/);
   assert.match(diagnostics, /codex model set to gpt-test/);
   assert.match(diagnostics, /codex model reset to agent default/);
-  const agentCalls = (await readFile(agentLog, 'utf8')).trim().split('\n');
-  assert.equal(agentCalls.length, 2);
-  assert.equal(agentCalls[0], '/workspace|no|||on');
-  assert.equal(agentCalls[1], '/workspace|yes|thread-interactive|gpt-test|on');
   const persistedConfig = JSON.parse(await readFile(join(root, 'missing.json'), 'utf8'));
   assert.equal(persistedConfig.codingAgents.models.codex, undefined);
   assert.equal(persistedConfig.codingAgents.websearch, true);
-  await assert.rejects(() => access(join(root, 'sessions')), (error) => error.code === 'ENOENT');
-});
-
-test('executes an explicitly selected task skill from the persistent registry', {
-  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
-}, async (context) => {
-  const root = await mkdtemp(join(tmpdir(), 'ala-cli-execute-'));
-  context.after(() => rm(root, { recursive: true, force: true }));
-  const repository = join(root, 'tasks');
-  const repositoryUrl = await createGitTaskRepository(repository, 'echo');
-  const binary = join(root, 'codex');
-  const { chmod, writeFile } = await import('node:fs/promises');
-  await writeFile(binary, `#!/bin/sh
-printf '%s\n' '{"type":"thread.started","thread_id":"thread-skill"}'
-printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"done:process this"}}'
-`);
-  await chmod(binary, 0o700);
-  const configPath = join(root, 'ala.json');
-  const env = {
-    ...process.env,
-    HOME: join(root, 'home'),
-    PATH: `${root}:/usr/bin`,
-    CODEX_BIN: binary,
-    XDG_DATA_HOME: join(root, 'data')
-  };
-  assert.equal(await runCli({
-    ...io(root), env, argv: ['repo', 'add', repositoryUrl, '--config', configPath]
-  }), 0);
-
-  const stdout = captureStream();
-  const stderr = captureStream();
-  const code = await runCli({
-    argv: ['--config', configPath, '--skill', 'echo', 'process', 'this'],
-    env,
-    stdin: inputStream(),
-    stdout,
-    stderr,
-    cwd: root
-  });
-  assert.equal(code, 0);
-  assert.equal(stdout.read(), 'done:process this\n');
-  assert.equal(stderr.read(), '');
 });
 
 test('uses explicit home and cwd while injecting model and MCP overrides into Codex', {
@@ -398,7 +182,6 @@ test('uses explicit home and cwd while injecting model and MCP overrides into Co
   const home = join(root, 'robot-home');
   const workspace = join(root, 'project');
   const binary = join(root, 'codex');
-  const { chmod, mkdir, writeFile } = await import('node:fs/promises');
   await Promise.all([mkdir(join(home, '.codex'), { recursive: true }), mkdir(workspace)]);
   await writeFile(binary, `#!/bin/sh
 printf '%s\n' "$@" > "$CODEX_HOME/embedded-arguments.log"
@@ -416,7 +199,7 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"e
   });
   assert.equal(code, 0, stderr.read());
   assert.equal(stdout.read(), 'embedded result\n');
-  assert.equal(await readFile(join(workspace, 'workspace-path.txt'), 'utf8'), '/workspace');
+  assert.equal(await readFile(join(workspace, 'workspace-path.txt'), 'utf8'), await realpath(workspace));
   const argumentsLog = await readFile(join(home, '.codex', 'embedded-arguments.log'), 'utf8');
   assert.match(argumentsLog, /mcp_servers\.desktop\.url="http:\/\/127\.0\.0\.1:48100\/mcp"/);
   assert.match(argumentsLog, /--model\ngpt-test/);

@@ -93,21 +93,18 @@ test('builds a fail-closed Bubblewrap namespace with explicit mount access', asy
   const root = await mkdtemp(join(tmpdir(), 'ala-sandbox-args-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const workspace = join(root, 'workspace');
-  const skill = join(root, 'skill');
+  const readOnly = join(root, 'read-only');
   const writable = join(root, 'writable');
   const home = join(root, 'home');
   const codexState = join(home, '.codex');
-  await Promise.all([mkdir(join(workspace, 'folders'), { recursive: true }), mkdir(skill), mkdir(writable), mkdir(codexState, { recursive: true })]);
+  await Promise.all([mkdir(workspace), mkdir(readOnly), mkdir(writable), mkdir(codexState, { recursive: true })]);
   const args = buildSandboxArgs({
     workspace,
     backend: 'codex',
     binary: process.execPath,
     args: ['--version'],
     env: { HOME: home },
-    mounts: [
-      { source: skill, target: '/workspace/.agents/skills/test', writable: false },
-      { source: writable, target: '/workspace/folders/write', writable: true }
-    ],
+    folders: [{ source: readOnly }, { source: writable, writable: true }],
     bwrap,
     privateProc: true
   });
@@ -115,11 +112,10 @@ test('builds a fail-closed Bubblewrap namespace with explicit mount access', asy
   assert.equal(args.includes('--clearenv'), true);
   assert.equal(args.some((value, index) => value === '--remount-ro' && args[index + 1] === '/'), true);
   assert.equal(args.some((value, index) => (
-    value === '--bind' && args[index + 1] === writable
-      && args[index + 2] === '/workspace/folders/write'
+    value === '--bind' && args[index + 1] === writable && args[index + 2] === writable
   )), true);
-  assert.equal(args.some((value, index) => value === '--ro-bind' && args[index + 1] === skill), true);
-  assert.equal(args.some((value, index) => value === '--bind' && args[index + 2] === '/workspace'), true);
+  assert.equal(args.some((value, index) => value === '--ro-bind' && args[index + 1] === readOnly && args[index + 2] === readOnly), true);
+  assert.equal(args.some((value, index) => value === '--bind' && args[index + 1] === workspace && args[index + 2] === workspace), true);
   assert.equal(args.some((value, index) => (
     value === '--bind' && args[index + 1] === codexState && args[index + 2] === '/home/ala/.codex'
   )), true);
@@ -180,61 +176,49 @@ test('uses backend-specific state and environment profiles', async (context) => 
   assert.equal(pi.PI_OFFLINE, '1');
 });
 
-test('enforces read-only skill and explicit sandbox mounts', {
+test('enforces read-only and writable folder mounts at their canonical paths', {
   skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
 }, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-sandbox-live-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const workspace = join(root, 'workspace');
-  const skill = join(root, 'skill');
   const readOnly = join(root, 'read-only');
   const writable = join(root, 'writable');
   const outside = join(root, 'outside.txt');
-  await Promise.all([
-    mkdir(join(workspace, '.agents', 'skills', 'test'), { recursive: true }),
-    mkdir(join(workspace, 'folders', 'read'), { recursive: true }),
-    mkdir(join(workspace, 'folders', 'write'), { recursive: true }),
-    mkdir(skill), mkdir(readOnly), mkdir(writable)
-  ]);
-  await Promise.all([
-    writeFile(join(skill, 'SKILL.md'), 'strict skill'),
-    writeFile(join(readOnly, 'book.txt'), 'book data'),
-    writeFile(outside, 'outside')
-  ]);
+  await Promise.all([mkdir(workspace), mkdir(readOnly), mkdir(writable)]);
+  await Promise.all([writeFile(join(readOnly, 'book.txt'), 'book data'), writeFile(outside, 'outside')]);
   const script = `
 const fs = require('node:fs');
 const result = {
   cwd: process.cwd(),
-  skill: fs.readFileSync('/workspace/.agents/skills/test/SKILL.md', 'utf8'),
-  book: fs.readFileSync('/workspace/folders/read/book.txt', 'utf8')
+  book: fs.readFileSync(${JSON.stringify(join(readOnly, 'book.txt'))}, 'utf8')
 };
-for (const [name, target] of Object.entries({ skillWrite: '/workspace/.agents/skills/test/new.txt', readWrite: '/workspace/folders/read/new.txt' })) {
+for (const [name, target] of Object.entries({ readWrite: ${JSON.stringify(join(readOnly, 'new.txt'))} })) {
   try { fs.writeFileSync(target, 'denied'); result[name] = 'allowed'; } catch { result[name] = 'denied'; }
 }
-fs.writeFileSync('/workspace/folders/write/result.txt', 'persisted');
-fs.writeFileSync('/workspace/artifact.txt', 'workspace');
+fs.writeFileSync(${JSON.stringify(join(writable, 'result.txt'))}, 'persisted');
+fs.writeFileSync(${JSON.stringify(join(workspace, 'artifact.txt'))}, 'workspace');
 try { fs.readFileSync(${JSON.stringify(outside)}); result.outside = 'visible'; } catch { result.outside = 'hidden'; }
 process.stdout.write(JSON.stringify(result));
 `;
   const result = await runProcess({
     binary: process.execPath,
     args: ['-e', script],
-    cwd: '/workspace',
+    cwd: workspace,
     env: { HOME: join(root, 'missing-home') },
     sandbox: {
       hostWorkspace: workspace,
+      workspaceTarget: workspace,
       backend: 'codex',
-      mounts: [
-        { source: skill, target: '/workspace/.agents/skills/test', writable: false },
-        { source: readOnly, target: '/workspace/folders/read', writable: false },
-        { source: writable, target: '/workspace/folders/write', writable: true }
+      folders: [
+        { source: readOnly },
+        { source: writable, writable: true }
       ]
     }
   });
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), {
-    cwd: '/workspace', skill: 'strict skill', book: 'book data',
-    skillWrite: 'denied', readWrite: 'denied', outside: 'hidden'
+    cwd: workspace, book: 'book data', readWrite: 'denied', outside: 'hidden'
   });
   assert.equal(await readFile(join(writable, 'result.txt'), 'utf8'), 'persisted');
   assert.equal(await readFile(join(workspace, 'artifact.txt'), 'utf8'), 'workspace');
@@ -251,10 +235,10 @@ test('cancels the Bubblewrap process tree through the active child handle', {
   const execution = runProcess({
     binary: process.execPath,
     args: ['-e', 'setInterval(() => {}, 1000)'],
-    cwd: '/workspace',
+    cwd: workspace,
     env: { HOME: join(root, 'missing-home') },
     signal: controller.signal,
-    sandbox: { hostWorkspace: workspace, backend: 'codex', mounts: [] }
+    sandbox: { hostWorkspace: workspace, workspaceTarget: workspace, backend: 'codex' }
   });
   setTimeout(() => controller.abort(), 25);
   await assert.rejects(execution, { name: 'AbortError' });
@@ -283,12 +267,29 @@ test('runs a prefix-installed ESM backend with sibling dependencies and the Node
   await writeFile(binary, '#!/usr/bin/env node\nimport value from "native-dependency";\n'
     + 'console.log(JSON.stringify({value,node:process.versions.node}));\n', { mode: 0o755 });
   const result = await runProcess({
-    binary, args: [], cwd: '/workspace',
+    binary, args: [], cwd: workspace,
     env: { HOME: join(root, 'missing-home') },
-    sandbox: { hostWorkspace: workspace, backend: 'pi', mounts: [] }
+    sandbox: { hostWorkspace: workspace, workspaceTarget: workspace, backend: 'pi' }
   });
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), {
     value: 'dependency-loaded', node: process.versions.node
   });
+});
+
+test('mounts a writable cwd and a read-only parent at their canonical paths', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-canonical-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const workspace = join(root, 'robot');
+  await mkdir(workspace);
+  const args = buildSandboxArgs({ workspace, workspaceTarget: workspace, backend: 'pi', binary: process.execPath,
+    bwrap: '/usr/bin/bwrap', privateProc: false,
+    folders: [{ source: root }] });
+  const parent = args.findIndex((value, index) => value === '--ro-bind' && args[index + 1] === root);
+  const child = args.findIndex((value, index) => value === '--bind' && args[index + 1] === workspace);
+  assert.ok(parent >= 0 && child >= 0);
+  assert.equal(args[parent + 2], root);
+  assert.equal(args[child + 2], workspace);
+  assert.equal(args[args.indexOf('--chdir') + 1], workspace);
+  assert.equal(args.some(value => value.includes('.agents')), false);
 });

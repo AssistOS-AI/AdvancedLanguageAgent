@@ -32,16 +32,15 @@ export function spawnProcess({ binary, args, cwd, env = process.env, stdio, sand
   const bwrap = sandbox.bwrap || findBubblewrap();
   return spawn(bwrap || '/usr/bin/bwrap', buildSandboxArgs({
     workspace: sandbox.hostWorkspace,
+    workspaceTarget: sandbox.workspaceTarget,
     backend: sandbox.backend,
     binary,
     args,
-    mounts: sandbox.mounts,
     env: executionEnv,
     bwrap,
     privateProc: sandbox.privateProc,
     home: sandbox.home,
     folders: sandbox.folders,
-    isolatedSkills: sandbox.isolatedSkills,
     chdir: cwd
   }), {
     cwd: sandbox.hostWorkspace,
