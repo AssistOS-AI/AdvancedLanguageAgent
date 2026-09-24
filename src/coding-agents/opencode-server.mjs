@@ -53,7 +53,7 @@ export function requireOpenCodeApi(document) {
   }
 }
 
-export function openCodeEnvironment(env, websearch) {
+export function openCodeEnvironment(env, websearch, mcpServers = []) {
   let overlay = {};
   if (env?.OPENCODE_CONFIG_CONTENT) {
     try { overlay = JSON.parse(env.OPENCODE_CONFIG_CONTENT); }
@@ -66,15 +66,27 @@ export function openCodeEnvironment(env, websearch) {
     ? { '*': overlay.permission } : { ...overlay.permission };
   Object.assign(permission, { question: 'deny', plan_enter: 'deny', plan_exit: 'deny' });
   if (!websearch) Object.assign(permission, { websearch: 'deny', webfetch: 'deny' });
+  const configuredMcp = overlay.mcp && typeof overlay.mcp === 'object' && !Array.isArray(overlay.mcp)
+    ? { ...overlay.mcp } : {};
+  for (const server of Array.isArray(mcpServers) ? mcpServers : []) {
+    const name = typeof server?.name === 'string' ? server.name.trim() : '';
+    const url = typeof server?.url === 'string' ? server.url.trim() : '';
+    if (!name || !url) continue;
+    configuredMcp[name] = { type: 'remote', url, enabled: true };
+  }
   return {
     ...env, OPENCODE_ENABLE_EXA: websearch ? '1' : '0',
-    OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...overlay, permission })
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({
+      ...overlay,
+      permission,
+      ...(Object.keys(configuredMcp).length ? { mcp: configuredMcp } : {})
+    })
   };
 }
 
 export async function startOpenCodeServer(input) {
   const { binary, workspace, sandbox, signal, websearch } = input;
-  const env = openCodeEnvironment(input.env, websearch);
+  const env = openCodeEnvironment(input.env, websearch, input.mcpServers);
   const versionResult = await runProcess({
     binary, args: ['--version'], cwd: workspace, env, sandbox,
     signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(30_000)])

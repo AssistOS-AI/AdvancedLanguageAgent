@@ -83,7 +83,7 @@ ala --home /robots/analyst/home --cwd /projects/app --ca auto \
           <tr><td><code>--resume-session</code></td><td>Resumes the exact saved native conversation and pinned backend.</td></tr>
           <tr><td><code>--control-stdin</code></td><td>Reserves stdin for JSONL control messages while a task executes.</td></tr>
           <tr><td><code>--task &lt;text&gt;</code> / <code>--taskFile &lt;path&gt;</code></td><td>Supplies an inline or file-backed task prompt.</td></tr>
-          <tr><td><code>--MCPServers &lt;addresses&gt;</code></td><td>Injects comma-separated Streamable HTTP MCP URLs into Codex for this invocation only.</td></tr>
+          <tr><td><code>--MCPServers &lt;addresses&gt;</code></td><td>Injects comma-separated Streamable HTTP MCP URLs into the selected coding agent (Codex or OpenCode) for this invocation only.</td></tr>
           <tr><td><code>--permissions &lt;mode&gt;</code></td><td>Selects native <code>ask-for-approval</code> or <code>full-access</code> policy; defaults to full-access inside Bubblewrap. Pi rejects ask-for-approval.</td></tr>
           <tr><td><code>--model &lt;value&gt;</code></td><td>Selects a configured model name or semantic model value for this invocation.</td></tr>
           <tr><td><code>--tag &lt;tag&gt;</code></td><td>Adds a model-selection tag. The option may be repeated, and command-line tags replace <code>ALA_TAGS</code>.</td></tr>

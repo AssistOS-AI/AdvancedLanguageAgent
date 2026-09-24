@@ -94,7 +94,7 @@ ala --home /robot/home --cwd /project --folder /shared --folder /scratch write \
   --taskFile task.prompt --MCPServers desktop=http://127.0.0.1:48100/mcp --ca codex
 ```
 
-`--home` is bound as the sandbox home and supplies saved agent authentication and configuration. `--cwd <path> [as <alias>]` is the writable working directory, mounted at its canonical path or under `/workspace/<alias>`. `--folder <path> [write] [as <alias>]` mounts extra directories read-only unless marked `write`. `--task` or `--taskFile` supplies the prompt, and `--MCPServers` injects temporary URL configuration into Codex without rewriting its saved config. Interactive folder mounts are not supported.
+`--home` is bound as the sandbox home and supplies saved agent authentication and configuration. `--cwd <path> [as <alias>]` is the writable working directory, mounted at its canonical path or under `/workspace/<alias>`. `--folder <path> [write] [as <alias>]` mounts extra directories read-only unless marked `write`. `--task` or `--taskFile` supplies the prompt, and `--MCPServers` injects temporary URL configuration into the selected coding agent (Codex or OpenCode) without rewriting its saved config. Interactive folder mounts are not supported.
 
 Coding-agent web search is off by default. Use bare `--websearch` to enable it for one invocation, `--websearch on|off` as an explicit invocation-only override, or persist the setting during an interactive session:
 

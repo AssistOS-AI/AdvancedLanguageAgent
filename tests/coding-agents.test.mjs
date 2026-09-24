@@ -13,6 +13,7 @@ import {
 } from '../src/coding-agents/codex.mjs';
 import { discoverCodingAgents } from '../src/coding-agents/discovery.mjs';
 import { parseOpenCodeModels } from '../src/coding-agents/opencode.mjs';
+import { openCodeEnvironment } from '../src/coding-agents/opencode-server.mjs';
 import { buildPiArguments, createPiEventParser, parsePiModels, parsePiOutput } from '../src/coding-agents/pi.mjs';
 import { requireSandbox, runProcess } from '../src/coding-agents/process.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
@@ -44,8 +45,23 @@ test('discovers configured and PATH coding-agent executables in configured prior
   assert.equal(agents[2].binary, codex);
 });
 
-test('builds and parses native coding-agent protocols', () => {
-  const defaultCodexArguments = buildCodexArguments({ prompt: 'continue', continuation: { threadId: 'thread-1' } });
+test('injects streamable MCP servers into the OpenCode in-memory config only', () => {
+  const webchatServers = [{ name: 'browser', url: 'http://127.0.0.1:48100/mcp' }];
+  const offline = JSON.parse(openCodeEnvironment({}, false, webchatServers).OPENCODE_CONFIG_CONTENT);
+  assert.deepEqual(offline.mcp, { browser: { type: 'remote', url: 'http://127.0.0.1:48100/mcp', enabled: true } });
+  assert.equal(offline.permission.webfetch, 'deny');
+  const web = JSON.parse(openCodeEnvironment({}, true, webchatServers).OPENCODE_CONFIG_CONTENT);
+  assert.equal(web.permission.webfetch, undefined);
+  assert.equal(web.mcp.browser.url, 'http://127.0.0.1:48100/mcp');
+  const inherited = JSON.parse(openCodeEnvironment({
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({ mcp: { docs: { type: 'remote', url: 'https://docs.example/mcp', enabled: true } } })
+  }, false, [{ name: 'desktop', url: 'http://127.0.0.1:48101/mcp' }]).OPENCODE_CONFIG_CONTENT);
+  assert.equal(inherited.mcp.docs.url, 'https://docs.example/mcp');
+  assert.equal(inherited.mcp.desktop.type, 'remote');
+  assert.deepEqual(JSON.parse(openCodeEnvironment({}, false, []).OPENCODE_CONFIG_CONTENT).mcp, undefined);
+});
+
+test('builds and parses native coding-agent protocols', () => {  const defaultCodexArguments = buildCodexArguments({ prompt: 'continue', continuation: { threadId: 'thread-1' } });
   assert.equal(defaultCodexArguments.includes('--model'), false);
   assert.deepEqual(defaultCodexArguments.slice(
     defaultCodexArguments.indexOf('--sandbox'),
