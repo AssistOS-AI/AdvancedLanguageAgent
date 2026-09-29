@@ -20,7 +20,7 @@ export async function runCodexLive(input) {
   let finalText = '';
   let pendingMessage = '';
   const flushProgress = () => {
-    if (pendingMessage) input.onVisibleText?.(pendingMessage);
+    if (pendingMessage) input.onVisibleText?.(pendingMessage, { outputKind: 'assistant', outputComplete: true });
     pendingMessage = '';
   };
   let cancelTimer;
@@ -46,7 +46,7 @@ export async function runCodexLive(input) {
     if (event.method === 'item/completed' && item?.type === 'agentMessage') {
       flushProgress();
       const text = item.text || '';
-      if (item.phase === 'commentary') input.onVisibleText?.(text);
+      if (item.phase === 'commentary') input.onVisibleText?.(text, { outputKind: 'assistant', outputComplete: true });
       else {
         finalText = text;
         // Older native protocols omit phase. Keep the last message for the result;

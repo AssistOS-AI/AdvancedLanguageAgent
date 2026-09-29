@@ -41,6 +41,8 @@ Every completed request emits `{type:'coding-agent-request-resolved',id,reason}`
 
 Interactive `/permissions` must report the requested native policy, initialized from `--permissions` or `full-access`. `/permissions ask-for-approval|full-access` must update only subsequent coding-agent executions in the existing runtime, without resetting workspace, pinned backend or native continuation and without persisting configuration. Invalid input must leave the prior value unchanged. Changing policy must not create an approval-response channel; absent a reply-capable host, operations requiring approval remain declined. Pi's unsupported-policy rejection remains authoritative.
 
+Structured coding-agent-message events identify assistant text with outputKind="assistant" and other visible output with outputKind="output". Streaming assistant messages carry outputId when available; outputComplete marks a completed message and may accompany an empty message. Consumers can use these fields to distinguish assistant output from tool output and diagnostics without parsing visible text. ALA does not interpret or persist consumer-specific markers.
+
 ## Conclusion
 
 ALA exposes explicit working directories, configuration homes, and resumable conversations while preserving fail-closed isolation and retained-workspace behavior for callers that rely on ALA's temporary directory.

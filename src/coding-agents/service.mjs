@@ -128,13 +128,18 @@ export function createCodingAgentService({
       if (signal?.aborted) abort();
       let emitted = false;
       let endsWithNewline = true;
-      const onVisibleText = outputSink || eventSink ? (value) => {
+      const onVisibleText = outputSink || eventSink ? (value, metadata = {}) => {
         const text = String(value || '');
-        if (!text) return;
-        emitted = true;
-        endsWithNewline = text.endsWith('\n');
-        outputSink?.(text);
-        eventSink?.({ type: 'coding-agent-message', agent: selected.name, message: text });
+        if (!text && !metadata.outputComplete) return;
+        if (text) {
+          emitted = true;
+          endsWithNewline = text.endsWith('\n');
+          outputSink?.(text);
+        }
+        eventSink?.({ type: 'coding-agent-message', agent: selected.name, message: text,
+          outputKind: metadata.outputKind === 'assistant' ? 'assistant' : 'output',
+          outputComplete: metadata.outputComplete === true,
+          ...(typeof metadata.outputId === 'string' ? { outputId: metadata.outputId } : {}) });
       } : null;
       try {
         controller.signal.throwIfAborted();

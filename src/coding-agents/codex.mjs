@@ -61,13 +61,13 @@ export function createCodexEventParser({ threadId = '', onText = () => {} } = {}
       resolvedThreadId = String(event.thread_id || event.threadId || '').trim() || resolvedThreadId;
     }
     if (event.type === 'item.completed' && event.item?.type === 'agent_message') {
-      if (pendingAgentMessage) emit(pendingAgentMessage);
+      if (pendingAgentMessage) emit(pendingAgentMessage, { outputKind: 'assistant', outputComplete: true });
       pendingAgentMessage = String(event.item.text || '');
       outputText = appendBoundedTail('', pendingAgentMessage);
       return;
     }
     if (pendingAgentMessage && visibleCodexText(event)) {
-      emit(pendingAgentMessage);
+      emit(pendingAgentMessage, { outputKind: 'assistant', outputComplete: true });
       pendingAgentMessage = '';
     }
     const visible = visibleCodexText(event);

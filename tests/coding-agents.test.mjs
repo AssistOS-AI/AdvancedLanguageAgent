@@ -147,7 +147,7 @@ test('streams supported Codex and Pi events across chunk boundaries', () => {
   pi.push(Buffer.from('{"type":"tool_execution_end","toolCallId":"one","result":{"content":"abcd"}}'));
   pi.finish();
   assert.equal(pi.finalText(), 'hello');
-  assert.deepEqual(piText, ['hello', 'abc', 'd']);
+  assert.deepEqual(piText, ['hello', '', 'abc', 'd']);
 });
 
 
@@ -196,7 +196,7 @@ test('forwards live backend text and terminates an incomplete diagnostic line', 
   assert.deepEqual(visible, ['working', '\n']);
   assert.deepEqual(events, [
     { type: 'coding-agent-selected', agent: 'codex', permissionMode: 'full-access' },
-    { type: 'coding-agent-message', agent: 'codex', message: 'working' },
+    { type: 'coding-agent-message', agent: 'codex', message: 'working', outputKind: 'output', outputComplete: false },
     { type: 'coding-agent-final', agent: 'codex', message: 'done' }
   ]);
   await service.close();

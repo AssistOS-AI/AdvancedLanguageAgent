@@ -143,7 +143,12 @@ export async function executeOpenCodeTurn(server, input) {
       if (info?.id === messageID || (info?.role === 'assistant' && info.parentID === messageID)) {
         workSeen = true;
         idle = false;
-        if (info.role === 'assistant') assistants.add(info.id);
+        if (info.role === 'assistant') {
+          assistants.add(info.id);
+          if (info.time?.completed) onVisibleText?.('', {
+            outputKind: 'assistant', outputId: info.id, outputComplete: true
+          });
+        }
       }
     }
     if (event.type === 'message.part.updated' && assistants.has(p.part?.messageID)) {
@@ -153,12 +158,12 @@ export async function executeOpenCodeTurn(server, input) {
         const previous = parts.get(part.id) ?? '';
         const delta = text.startsWith(previous) ? text.slice(previous.length) : text;
         parts.set(part.id, text);
-        if (delta) onVisibleText?.(delta);
+        if (delta) onVisibleText?.(delta, { outputKind: part.type === 'text' ? 'assistant' : 'output', outputId: part.messageID });
       }
     }
     if (event.type === 'message.part.delta' && assistants.has(p.messageID) && p.field === 'text') {
       parts.set(p.partID, (parts.get(p.partID) ?? '') + p.delta);
-      onVisibleText?.(p.delta);
+      onVisibleText?.(p.delta, { outputKind: 'assistant', outputId: p.messageID });
     }
     if (event.type === 'session.status') {
       idle = workSeen && p.status?.type === 'idle';

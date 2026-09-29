@@ -28,6 +28,8 @@ export function createPiEventParser({ onText = () => {} } = {}) {
   const emit = typeof onText === 'function' ? onText : () => {};
   const toolOutput = new Map();
   let currentAssistantText = '';
+  let messageSequence = 0;
+  const assistantMetadata = () => ({ outputKind: 'assistant', outputId: `pi-${messageSequence}` });
   let finalAssistantText = '';
   let errorMessage = '';
   const lines = createLineDecoder((line) => {
@@ -38,6 +40,7 @@ export function createPiEventParser({ onText = () => {} } = {}) {
       return;
     }
     if (event?.type === 'message_start' && event.message?.role === 'assistant') {
+      messageSequence++;
       currentAssistantText = '';
       return;
     }
@@ -45,14 +48,14 @@ export function createPiEventParser({ onText = () => {} } = {}) {
       const update = event.assistantMessageEvent;
       if (update?.type === 'text_delta' && typeof update.delta === 'string') {
         currentAssistantText = appendBoundedTail(currentAssistantText, update.delta);
-        emit(update.delta);
+        emit(update.delta, assistantMetadata());
       }
       return;
     }
     if (event?.type === 'message_end' && event.message?.role === 'assistant') {
       const complete = contentText(event.message.content);
       const suffix = unseenText(currentAssistantText, complete);
-      if (suffix) emit(suffix);
+      emit(suffix, { ...assistantMetadata(), outputComplete: true });
       if (complete) finalAssistantText = appendBoundedTail('', complete);
       errorMessage ||= assistantError(event.message);
       currentAssistantText = '';
