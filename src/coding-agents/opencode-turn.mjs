@@ -1,13 +1,14 @@
 import { randomBytes } from 'node:crypto';
 
 import { createPermissionRequestManager, validatePermissionMode } from '../permission-requests.mjs';
-import { appendBoundedTail } from './streaming.mjs';
 import { consumeOpenCodeEvents } from './opencode-server.mjs';
 
 export function openCodePermissionRules(mode, websearch) {
   validatePermissionMode(mode);
   return [
     { permission: '*', pattern: '*', action: mode === 'full-access' ? 'allow' : 'ask' },
+    // OpenCode subagents inherit explicit external_directory rules, but not wildcard allows.
+    ...(mode === 'full-access' ? [{ permission: 'external_directory', pattern: '*', action: 'allow' }] : []),
     ...(!websearch ? ['websearch', 'webfetch'] : []).map((permission) => ({ permission, pattern: '*', action: 'deny' })),
     ...['question', 'plan_enter', 'plan_exit'].map((permission) => ({ permission, pattern: '*', action: 'deny' }))
   ];
@@ -119,8 +120,8 @@ export async function executeOpenCodeTurn(server, input) {
     if (!last?.info?.time?.completed) return;
     if (last.info.error) throw new Error(`OpenCode execution failed: ${nativeErrorMessage(last.info.error)}`);
     if (!last.info.finish || ['tool-calls', 'unknown'].includes(last.info.finish)) return;
-    const outputText = appendBoundedTail('', (last.parts ?? [])
-      .filter((part) => part.type === 'text' && typeof part.text === 'string').map((part) => part.text).join('')).trim();
+    const outputText = (last.parts ?? [])
+      .filter((part) => part.type === 'text' && typeof part.text === 'string').map((part) => part.text).join('').trim();
     if (!outputText) throw new Error('OpenCode completed without a final response.');
     finished = true;
     resolveFinal({ outputText, continuation: { sessionId: sessionID } });
