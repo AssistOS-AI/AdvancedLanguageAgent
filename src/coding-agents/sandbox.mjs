@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 
 import { ALAError, EXIT_CODES } from '../errors.mjs';
 import { resolveFolderMounts } from './folders.mjs';
+import { ignoredMountTargets } from './ignored-paths.mjs';
 
 const SANDBOX_HOME = '/home/ala';
 const PROBE_CACHE_TTL_MS = 30_000;
@@ -278,6 +279,7 @@ export function buildSandboxArgs({
   privateProc = canMountPrivateProc(bwrap),
   home = null,
   folders = [],
+  ignoredPaths = [],
   chdir = null
 }) {
   if (!bwrap) {
@@ -350,6 +352,11 @@ export function buildSandboxArgs({
   for (const mount of normalizedMounts(orderedMounts)) {
     addParentDirs(sandboxArgs, mount.target);
     sandboxArgs.push(mount.writable ? '--bind' : '--ro-bind', mount.source, mount.target);
+  }
+  const exposedMounts = [...runtimeMounts, ...stateMounts, ...orderedMounts,
+    ...(explicitHome ? [{ source: explicitHome, target: SANDBOX_HOME }] : [])];
+  for (const ignored of ignoredMountTargets(ignoredPaths, exposedMounts, chdir || target)) {
+    sandboxArgs.push('--perms', '0555', '--tmpfs', ignored, '--remount-ro', ignored);
   }
   sandboxArgs.push('--remount-ro', '/');
   for (const [name, value] of Object.entries(sandboxEnvironment(backend, runtimeMounts, env))) {

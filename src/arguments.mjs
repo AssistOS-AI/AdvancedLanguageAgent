@@ -16,13 +16,14 @@ const valueOptions = new Map([
   ['--agent', 'agent'],
   ['--ca', 'agent'],
   ['--home', 'home'],
+  ['--ignore', 'ignoredPaths'],
   ['--session-id', 'sessionId'],
   ['--taskFile', 'taskFile'],
   ['--task', 'task'],
   ['--MCPServers', 'mcpServers']
 ]);
 
-const repeatableOptions = new Set(['tags']);
+const repeatableOptions = new Set(['tags', 'ignoredPaths']);
 const sourceOptions = new Map([
   ['--text', 'text'],
   ['--file', 'file'],
@@ -43,6 +44,7 @@ function defaultExecutionOptions() {
     instructionParts: [],
     sources: [],
     folders: [],
+    ignoredPaths: [],
     tags: [],
     interactive: false,
     websearch: null,
@@ -153,6 +155,7 @@ Execution options:
   --home <path>              Explicit coding-agent home/configuration directory
   --cwd <path> [as <alias>]  Writable working directory; omit to use a retained temporary directory
   --folder <path> [write] [as <alias>]  Mount a directory read-only, or writable with "write"
+  --ignore <absolute-path>  Mask an existing directory with an empty read-only mount (repeatable)
   --session-id <uuid>        Persistent conversation identity; requires --home, --cwd and --ca
   --resume-session           Resume the exact saved session, never create a replacement
   --control-stdin            Accept JSONL messages and interaction responses while executing

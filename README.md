@@ -26,6 +26,14 @@ ala --version
 ala --help
 ```
 
+## Private directories
+
+Pass repeatable `--ignore /absolute/directory` options to mask existing directories inside the coding-agent sandbox. Each masked directory appears empty and read-only; its name remains visible and its host contents remain unchanged. Masks cover canonical paths, folder aliases, and mounts sourced from ignored subdirectories. Invalid, missing, unmounted paths and masks covering the working directory are rejected. Supply the options again when resuming a session. This option selects sandboxed coding-agent execution.
+
+```sh
+ala --ca auto --cwd /work/project --ignore /work/project/.private --task "Review the project"
+```
+
 ## Configure
 
 ALA can use [Soul Gateway](docs/wiki.html#definition-soul-gateway) or your own AchillesAgentLib-compatible model configuration.

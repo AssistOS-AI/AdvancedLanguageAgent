@@ -45,6 +45,10 @@ Interactive `/permissions` must report the requested native policy, initialized 
 
 Structured coding-agent-message events identify assistant text with outputKind="assistant" and other visible output with outputKind="output". Streaming assistant messages carry outputId when available; outputComplete marks a completed message and may accompany an empty message. Consumers can use these fields to distinguish assistant output from tool output and diagnostics without parsing visible text. ALA does not interpret or persist consumer-specific markers.
 
+### Ignored directories
+
+The repeatable `--ignore <absolute-directory>` argument masks an existing directory in the coding-agent sandbox with an empty read-only mount. It does not remove the directory name from listings or change host contents. ALA resolves canonical source paths and applies masks at every exposed destination, including folder aliases, the explicit home and direct mounts of ignored descendants. Invalid, missing or unmounted directories and masks covering the sandbox working directory must fail before backend execution. Bubblewrap mount failure must never fall back to an unmasked execution. Ignore options select the coding-agent execution path and must be supplied on each invocation, including resume; interactive turns retain the invocation's masks.
+
 ## Conclusion
 
 ALA exposes explicit working directories, configuration homes, and resumable conversations while preserving fail-closed isolation and retained-workspace behavior for callers that rely on ALA's temporary directory.

@@ -94,6 +94,7 @@ export async function createRuntime({
     workspaceTarget,
     home,
     folders: options.folders,
+    ignoredPaths: options.ignoredPaths,
     mcpServers,
     models: invocationModels,
     efforts: invocationEfforts,
@@ -178,7 +179,7 @@ export async function createRuntime({
           codingAgentPreference: options.agent || 'auto'
         }
       };
-      if (options.agent || options.folders?.length) {
+      if (options.agent || options.folders?.length || options.ignoredPaths?.length) {
         return mainAgent.executeSkill('coding-agent', prompt, common);
       }
       return mainAgent.executePrompt(prompt, common);

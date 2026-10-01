@@ -21,6 +21,7 @@ export function createCodingAgentService({
   workspaceTarget = null,
   home = null,
   folders = [],
+  ignoredPaths = [],
   mcpServers = null,
   models = {},
   efforts = {},
@@ -96,6 +97,7 @@ export function createCodingAgentService({
         backend: selected.name,
         ...(home ? { home } : {}),
         folders: folderMounts,
+        ignoredPaths,
         bwrap: sandboxCapabilities.bwrap,
         ...(sandboxCapabilities.privateProc ? { privateProc: true } : {})
       }
