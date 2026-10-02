@@ -6,6 +6,10 @@
   "bin": {
     "ala": "bin/ala.mjs"
   },
+  "exports": {
+    "./transcript": "./src/transcript.mjs",
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "test": "node scripts/run_tests.mjs",
     "check": "node scripts/run_tests.mjs && bash fileSizesCheck.sh",

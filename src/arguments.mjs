@@ -18,6 +18,8 @@ const valueOptions = new Map([
   ['--home', 'home'],
   ['--ignore', 'ignoredPaths'],
   ['--session-id', 'sessionId'],
+  ['--turn-id', 'turnId'],
+  ['--user-message-file', 'userMessageFile'],
   ['--taskFile', 'taskFile'],
   ['--task', 'task'],
   ['--MCPServers', 'mcpServers']
@@ -156,7 +158,11 @@ Execution options:
   --cwd <path> [as <alias>]  Writable working directory; omit to use a retained temporary directory
   --folder <path> [write] [as <alias>]  Mount a directory read-only, or writable with "write"
   --ignore <absolute-path>  Mask an existing directory with an empty read-only mount (repeatable)
-  --session-id <uuid>        Persistent conversation identity; requires --home, --cwd and --ca
+  --session-id <uuid>        Persistent conversation identity; requires --home, --cwd and --ca.
+                             The transcript is appended to $ALA_SESSIONS/sessions/<uuid>.jsonl
+                             (default: <cwd>/.ala)
+  --turn-id <id>             Identifier recorded on this turn's transcript records
+  --user-message-file <path> UTF-8 file with the user's own message, recorded instead of the task prompt
   --resume-session           Resume the exact saved session, never create a replacement
   --control-stdin            Accept JSONL messages and interaction responses while executing
   --task <prompt>            Task prompt

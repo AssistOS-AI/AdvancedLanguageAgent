@@ -16,7 +16,9 @@ import { SANDBOX_WORKSPACE } from './coding-agents/paths.mjs';
 import { createRuntime } from './runtime.mjs';
 import { createRuntimeEventSink } from './runtime-events.mjs';
 import { discoverCodingAgents } from './coding-agents/discovery.mjs';
-import { openSessionState } from './session-state.mjs';
+import { openSessionState, resolveSessionsRoot } from './session-state.mjs';
+import { createTranscriptRecorder } from './transcript-recorder.mjs';
+import { randomUUID } from 'node:crypto';
 import { runControlledExecution } from './controlled-execution.mjs';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -202,8 +204,11 @@ async function runExecution(options, io, env) {
   }
   const workspaceTarget = workspaceAliasTarget(options.cwdAlias);
   const executionHome = options.home ? await realpath(resolve(io.cwd, options.home)) : null;
-  if ((options.resumeSession || options.controlStdin) && !options.sessionId) {
-    throw new ALAError('--resume-session and --control-stdin require --session-id.', EXIT_CODES.usage);
+  if ((options.resumeSession || options.controlStdin || options.turnId || options.userMessageFile) && !options.sessionId) {
+    throw new ALAError('--resume-session, --control-stdin, --turn-id and --user-message-file require --session-id.', EXIT_CODES.usage);
+  }
+  if (options.turnId && !/^[A-Za-z0-9_-]{1,128}$/u.test(options.turnId)) {
+    throw new ALAError('--turn-id must contain 1 to 128 letters, digits, dashes or underscores.', EXIT_CODES.usage);
   }
   if (options.sessionId && (!options.cwd || !options.home || !options.agent || options.interactive)) {
     throw new ALAError('--session-id requires --cwd, --home and --ca in one-shot mode.', EXIT_CODES.usage);
@@ -244,9 +249,12 @@ async function runExecution(options, io, env) {
       : available.find((agent) => agent.name === requested);
     if (!selected) throw new ALAError(`Coding agent is not available: ${requested}`, EXIT_CODES.execution);
   }
+  const userMessage = options.userMessageFile ? await readFile(resolve(io.cwd, options.userMessageFile), 'utf8') : null;
   const sessionState = options.sessionId ? await openSessionState({
-    id: options.sessionId, home: executionHome, workspace: executionCwd, resume: options.resumeSession
+    id: options.sessionId, sessionsRoot: resolveSessionsRoot({ env, cwd: executionCwd }), resume: options.resumeSession
   }) : null;
+  const recorder = sessionState ? createTranscriptRecorder(sessionState, options.turnId || randomUUID()) : null;
+  const sink = recorder ? (event) => { recorder.observe(event); eventSink(event); } : eventSink;
   let runtime;
   try { runtime = await createRuntime({
     achillesModule: achilles.module,
@@ -263,7 +271,7 @@ async function runExecution(options, io, env) {
     options,
     env: runtimeEnv,
     diagnostics: io.stderr,
-    eventSink,
+    eventSink: sink,
     sessionState
   }); } catch (error) { await sessionState?.close(); throw error; }
   if (sessionState) eventSink({ type: 'session-ready', sessionId: options.sessionId });
@@ -288,14 +296,24 @@ async function runExecution(options, io, env) {
       initialPrompt = composePrompt(request);
       initialInstruction = request.instruction;
     }
+    if (recorder) await recorder.user(userMessage ?? initialPrompt);
     if (inferredInteractive) {
       await interactiveLoop(runtime, initialPrompt, initialInstruction, options, io, env, controller.signal);
     } else {
-      const result = options.controlStdin
-        ? await runControlledExecution(runtime, initialPrompt, {
-          input: io.stdin, eventSink, signal: controller.signal, instruction: initialInstruction
-        })
-        : await runtime.execute(initialPrompt, { signal: controller.signal, instruction: initialInstruction });
+      let result;
+      try {
+        result = options.controlStdin
+          ? await runControlledExecution(runtime, initialPrompt, {
+            input: io.stdin, eventSink: sink, signal: controller.signal, instruction: initialInstruction,
+            onMessageAccepted: recorder ? (command) => recorder.user(command.displayText || command.message) : null
+          })
+          : await runtime.execute(initialPrompt, { signal: controller.signal, instruction: initialInstruction });
+      } catch (error) {
+        const failure = asALAError(error);
+        await recorder?.finish({ status: failure.exitCode === EXIT_CODES.interrupted ? 'interrupted' : 'failed', error: failure.message });
+        throw error;
+      }
+      await recorder?.finish({ result, status: 'completed' });
       const outputPath = options.output ? resolve(io.cwd, options.output) : null;
       await writeResult(result, { outputPath, force: options.force, stdout: io.stdout });
     }

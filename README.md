@@ -60,9 +60,9 @@ ala --model fast "Summarize this text" --file report.md
 export ALA_MODEL=fast
 ```
 
-User configuration lives in `$HOME/.ala/config.json`. Set `ALA_CONFIG_PATH` to another root directory when an embedding application needs isolated ALA state; ALA then uses `<ALA_CONFIG_PATH>/.ala/config.json`. The explicit `--config <file>` option remains available for a one-command file override. Legacy `taskRepositories` fields in existing files are ignored.
+User configuration lives in `$HOME/.ala/config.json`. Set `ALA_CONFIG_PATH` to another root directory when an embedding application needs an isolated configuration; ALA then uses `<ALA_CONFIG_PATH>/.ala/config.json`. The explicit `--config <file>` option remains available for a one-command file override. Legacy `taskRepositories` fields in existing files are ignored.
 
-ALA does not store prompt or result transcripts itself. Coding agents own their native conversation history. Embedding applications can resume a native conversation through explicit session options and consume the structured event stream for visible logs.
+ALA writes a transcript only for explicit sessions started with `--session-id`. Set `ALA_SESSIONS` to the directory that should hold them; a relative value resolves against `--cwd`. When it is unset, ALA uses `<cwd>/.ala`. Executions without `--session-id` leave no ALA history behind.
 
 ALA also detects authenticated Codex, OpenCode, and Pi installations. Inspect the detected backend names with:
 
@@ -117,7 +117,7 @@ The interactive command saves `codingAgents.websearch` in the selected ALA confi
 
 ## Continue a coding-agent task
 
-Use a new UUID to create a persistent session. Later invocations require the same home, cwd, session id, and coding backend. `--ca auto` selects a backend once and then keeps that choice.
+Use a new UUID to create a persistent session. Later invocations need the same session id and the same transcript location, so keep `--cwd` and `ALA_SESSIONS` stable and pass the same `--home` for the coding agent's native state. `--ca auto` selects a backend once and then keeps that choice.
 
 ```sh
 ala --home /robot/home --cwd /project --ca codex \
@@ -126,9 +126,23 @@ ala --home /robot/home --cwd /project --ca codex \
   --session-id 11111111-1111-4111-8111-111111111111 --resume-session --task "Add tests"
 ```
 
-ALA saves the backend and native session reference under `<home>/.ala/sessions`. Stop interrupts execution without deleting that reference. Missing native state fails explicitly rather than starting an unrelated conversation.
+ALA appends every turn to `$ALA_SESSIONS/sessions/<uuid>.jsonl`, which defaults to `<cwd>/.ala/sessions/<uuid>.jsonl`. Each line is one JSON record: the session header, the user's text, buffered coding-agent messages, AchillesAgentLib tool calls, the final result, the turn status, and the backend with its native continuation. ALA never rewrites a line. `--resume-session` reads the last continuation from that file. A session whose first turn failed before the coding agent started has no continuation yet, so the next call omits `--resume-session`; once a continuation exists, ALA refuses to continue without it. Stop interrupts execution and records the turn as `interrupted`. Missing native state fails explicitly rather than starting an unrelated conversation. A `.lock` file next to the transcript blocks a second process; a lock written on another host is never removed automatically.
 
-An embedding process can add `--control-stdin` and send JSONL messages such as `{"type":"message","id":"request-1","message":"Also check the tests"}`. Codex app-server and Pi RPC support live steering. The current OpenCode adapter queues follow-ups until the active invocation finishes. Structured stderr receipts distinguish `delivered` from `queued`; stdout remains the final response. Pending messages are execution-local and are cancelled on Stop. See the [session command reference](docs/commands.html) for the protocol.
+Pass `--turn-id <id>` to label the turn's records with your own identifier of 1 to 128 letters, digits, `-` or `_`. Without it, ALA generates a random UUID. Pass `--user-message-file <path>` when the task prompt wraps the user's words in extra instructions. ALA records the file's UTF-8 text as the user message and still sends the full prompt to the agent. Both options require `--session-id`.
+
+Read transcripts through the package export instead of parsing the files:
+
+```js
+import { listSessions, readSession } from 'advanced-language-agent/transcript';
+
+const sessions = await listSessions('/project/.ala');
+const session = await readSession('/project/.ala', sessions[0].id);
+console.log(session.turns.map((turn) => [turn.user, turn.status, turn.final]));
+```
+
+The module also exports `sessionTranscriptPath`, `readTranscriptRecords`, `foldTranscript`, `readTurn`, `readSessionSummary`, and a synchronous `...Sync` variant of every reader.
+
+An embedding process can add `--control-stdin` and send JSONL messages such as `{"type":"message","id":"request-1","message":"Also check the tests"}`. ALA records each accepted message as another `user` record of the turn, using the optional `displayText` field instead of `message` when the host supplies it. Codex app-server and Pi RPC support live steering. The current OpenCode adapter queues follow-ups until the active invocation finishes. Structured stderr receipts distinguish `delivered` from `queued`; stdout remains the final response. Pending messages are execution-local and are cancelled on Stop. See the [session command reference](docs/commands.html) for the protocol.
 
 Select native permission policy with `--permissions ask-for-approval|full-access`; the standalone default is full-access inside Bubblewrap. An embedding host must attach control stdin to display and answer native approval requests. Codex uses native app-server approval decisions; OpenCode uses its authenticated native server and once/always/reject replies, without changing project `opencode.json`. Pi supports full-access only and requires version 0.85.1 or a verified compatible RPC release. An older installation must be upgraded separately or selected through `PI_BIN`; ALA does not modify global installations. Missing reply capability declines an operation requiring approval rather than granting access. Native remembered grants are not an ALA authorization cache and need not survive a new native process.
 

@@ -6,14 +6,15 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { PassThrough } from 'node:stream';
 import { openSessionState } from '../src/session-state.mjs';
+import { readTranscriptRecords } from '../src/transcript.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
 import { runControlledExecution } from '../src/controlled-execution.mjs';
 import { createPermissionRequestManager } from '../src/permission-requests.mjs';
 
-test('reopens native continuation across runtimes and refuses backend or cwd replacement', async (t) => {
+test('reopens native continuation from the session transcript and refuses backend replacement', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ala-session-test-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const context = { id: randomUUID(), home: root, workspace: root };
+  const context = { id: randomUUID(), sessionsRoot: path.join(root, '.ala') };
   const state = await openSessionState(context);
   await assert.rejects(openSessionState(context), /already running/);
   const agents = [{ name: 'codex', available: true, binary: '/fake/codex' },
@@ -25,7 +26,6 @@ test('reopens native continuation across runtimes and refuses backend or cwd rep
     } } });
   await assert.rejects(first.execute('original'), /interrupted/);
   await first.close(); await state.close();
-  await assert.rejects(openSessionState({ ...context, workspace: '/other', resume: true }), /cannot be resumed/);
   const reopened = await openSessionState({ ...context, resume: true });
   const second = createCodingAgentService({ agents, workspace: root, home: root, sessionState: reopened,
     runners: { codex: async ({ prompt, continuation }) => {
@@ -37,23 +37,46 @@ test('reopens native continuation across runtimes and refuses backend or cwd rep
   assert.equal(await second.execute('Continue.'), 'done');
   await second.close(); await reopened.close();
   await assert.rejects(openSessionState({ ...context, id: randomUUID(), resume: true }), /ENOENT/);
-  const record = JSON.parse(await fs.readFile(path.join(root, '.ala/sessions', `${context.id}.json`), 'utf8'));
-  assert.equal('prompt' in record, false);
+  const records = await readTranscriptRecords(path.join(context.sessionsRoot, 'sessions', `${context.id}.jsonl`));
+  assert.equal(records[0].type, 'session');
+  assert.deepEqual(records.map((record) => record.seq), records.map((_record, index) => index + 1));
+  assert.deepEqual(records.filter((record) => record.type === 'continuation').at(-1).continuation, { threadId: 'thread-saved-before-stop' });
+});
+
+test('a session without native continuation cannot be resumed', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ala-session-empty-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const context = { id: randomUUID(), sessionsRoot: root };
+  await (await openSessionState(context)).close();
+  await assert.rejects(openSessionState({ ...context, resume: true }), /no native continuation/);
 });
 
 test('concurrent stale-lock recovery admits only one session writer', async (t) => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ala-lock-recovery-'));
   t.after(() => fs.rm(root, { recursive: true, force: true }));
-  const context = { id: randomUUID(), home: root, workspace: root };
+  const context = { id: randomUUID(), sessionsRoot: root };
   const initial = await openSessionState(context);
   await initial.save({ agent: 'codex', continuation: { threadId: 'saved' } });
   await initial.close();
-  const lock = path.join(root, '.ala/sessions', `${context.id}.json.lock`);
-  await fs.writeFile(lock, JSON.stringify({ pid: 2147483647, start: 'dead-process' }));
+  const lock = path.join(root, 'sessions', `${context.id}.jsonl.lock`);
+  await fs.writeFile(lock, JSON.stringify({ host: os.hostname(), pid: 2147483647, start: 'dead-process' }));
   const attempts = await Promise.allSettled(Array.from({ length: 8 }, () => openSessionState({ ...context, resume: true })));
   const accepted = attempts.filter((result) => result.status === 'fulfilled');
   assert.equal(accepted.length, 1);
   await accepted[0].value.close();
+});
+
+test('a lock held from another host is never treated as stale', async (t) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ala-lock-host-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const context = { id: randomUUID(), sessionsRoot: root };
+  const initial = await openSessionState(context);
+  await initial.save({ agent: 'codex', continuation: { threadId: 'saved' } });
+  await initial.close();
+  const lock = path.join(root, 'sessions', `${context.id}.jsonl.lock`);
+  await fs.writeFile(lock, JSON.stringify({ host: 'other-container', pid: 2147483647, start: 'x' }));
+  await assert.rejects(openSessionState({ ...context, resume: true }), /locked by host other-container/);
+  await fs.access(lock);
 });
 
 test('Stop discards pending follow-ups without executing a second turn', async () => {

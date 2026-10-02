@@ -2,7 +2,7 @@ import { StringDecoder } from 'node:string_decoder';
 
 import { ALAError, EXIT_CODES } from './errors.mjs';
 
-export async function runControlledExecution(runtime, prompt, { input, eventSink, signal, instruction }) {
+export async function runControlledExecution(runtime, prompt, { input, eventSink, signal, instruction, onMessageAccepted = null }) {
   const decoder = new StringDecoder('utf8');
   const controller = new AbortController();
   const executionSignal = controller.signal;
@@ -46,7 +46,10 @@ export async function runControlledExecution(runtime, prompt, { input, eventSink
         return;
       }
       if (command.type !== 'message' || typeof command.message !== 'string'
-          || !command.message.trim() || command.message.length > 32768) throw new Error('Invalid message command.');
+          || !command.message.trim() || command.message.length > 32768
+          || (command.displayText !== undefined && (typeof command.displayText !== 'string' || command.displayText.length > 32768))) {
+        throw new Error('Invalid message command.');
+      }
     } catch (error) {
       eventSink({ type: command?.type === 'interaction-response' ? 'interaction-response-rejected' : 'message-rejected',
         id: command?.id, error: error.message });
@@ -59,6 +62,7 @@ export async function runControlledExecution(runtime, prompt, { input, eventSink
         const result = await deliver(command.message);
         if (executionSignal.aborted) throw executionSignal.reason;
         if (result.delivery === 'queued') queue.push(command.message);
+        await onMessageAccepted?.(command);
         eventSink({ type: 'message-accepted', id: command.id, ...result });
       } catch (error) { eventSink({ type: 'message-rejected', id: command.id, error: error.message }); }
     });
