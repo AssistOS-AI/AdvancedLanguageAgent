@@ -3,9 +3,9 @@ import { constants } from 'node:fs';
 import { delimiter, isAbsolute, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 
-export const AGENT_NAMES = Object.freeze(['codex', 'opencode', 'pi']);
+export const AGENT_NAMES = Object.freeze(['codex', 'opencode', 'pi', 'claude']);
 
-const overrides = Object.freeze({ codex: 'CODEX_BIN', opencode: 'OPENCODE_BIN', pi: 'PI_BIN' });
+const overrides = Object.freeze({ codex: 'CODEX_BIN', opencode: 'OPENCODE_BIN', pi: 'PI_BIN', claude: 'CLAUDE_BIN' });
 
 function standardCandidates(name, env) {
   const home = env.HOME || homedir();
@@ -35,7 +35,7 @@ async function resolveCandidate(candidate, env) {
   return null;
 }
 
-// Agents are reported in the fixed order codex, opencode, pi; the first
+// Agents are reported in the fixed order codex, opencode, pi, claude; the first
 // available one is used when no agent is requested or configured.
 export async function discoverCodingAgents({ env = process.env } = {}) {
   const records = [];

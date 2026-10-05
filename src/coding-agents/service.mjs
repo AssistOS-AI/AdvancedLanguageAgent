@@ -11,9 +11,10 @@ import { resolveFolderMounts } from './folders.mjs';
 import { canMountPrivateProc, findBubblewrap } from './sandbox.mjs';
 import { parseMcpServers } from './mcp-servers.mjs';
 import { runCodexLive, runPiLive } from './live-agents.mjs';
+import { listClaudeModels, runClaude } from './claude.mjs';
 
-const adapters = Object.freeze({ codex: runCodex, opencode: runOpenCode, pi: runPi });
-const modelAdapters = Object.freeze({ codex: listCodexModels, opencode: listOpenCodeModels, pi: listPiModels });
+const adapters = Object.freeze({ codex: runCodex, opencode: runOpenCode, pi: runPi, claude: runClaude });
+const modelAdapters = Object.freeze({ codex: listCodexModels, opencode: listOpenCodeModels, pi: listPiModels, claude: listClaudeModels });
 
 export function createCodingAgentService({
   agents,
@@ -115,7 +116,7 @@ export function createCodingAgentService({
       const turnEffort = configuredEfforts[selected.name] || null;
       if (selected.name === 'pi' && turnPermissionMode === 'ask-for-approval') {
         throw new ALAError(
-          'Pi does not support ask-for-approval; select full-access or use Codex/OpenCode.',
+          'Pi does not support ask-for-approval; select full-access or use Codex, OpenCode or Claude Code.',
           EXIT_CODES.usage
         );
       }
@@ -165,7 +166,7 @@ export function createCodingAgentService({
           ...(configuredModels[selected.name] ? { model: configuredModels[selected.name] } : {})
         });
         const runner = (sessionState || turnPermissionMode === 'ask-for-approval') && runners === adapters
-          ? ({ codex: runCodexLive, pi: runPiLive, opencode: runOpenCode })[selected.name]
+          ? ({ codex: runCodexLive, pi: runPiLive, opencode: runOpenCode, claude: runClaude })[selected.name]
           : runners[selected.name];
         const result = await runner({
           binary: selected.binary,
@@ -225,7 +226,7 @@ export function createCodingAgentService({
       });
     },
     setModel(name, model, effort = null) {
-      if (!['codex', 'opencode', 'pi'].includes(name)) {
+      if (!['codex', 'opencode', 'pi', 'claude'].includes(name)) {
         throw new ALAError(`Unknown coding agent: ${name}`, EXIT_CODES.usage);
       }
       if (effort) configuredEfforts[name] = effort;
@@ -234,7 +235,7 @@ export function createCodingAgentService({
       else configuredModels[name] = String(model).trim();
     },
     setDefaultAgent(name) {
-      if (!['codex', 'opencode', 'pi'].includes(name)) throw new ALAError(`Unknown coding agent: ${name}`, EXIT_CODES.usage);
+      if (!['codex', 'opencode', 'pi', 'claude'].includes(name)) throw new ALAError(`Unknown coding agent: ${name}`, EXIT_CODES.usage);
       defaultAgent = name;
     },
     setPermissionMode(mode) {

@@ -35,6 +35,7 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
   /agent codex <prompt>          Delegate to Codex
   /agent opencode <prompt>       Delegate to OpenCode
   /agent pi <prompt>             Delegate to Pi
+  /agent claude <prompt>         Delegate to Claude Code
   /permissions [mode]            Show or set ask-for-approval or full-access for this session
   /quit | /exit | :quit | :exit  Close the interactive session`;
 
@@ -106,11 +107,11 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
             } else if (action === 'list') {
               const names = runtime.listCodingAgents();
               io.stdout.write(names.map((name) => `${name}\n`).join(''));
-            } else if (['codex', 'opencode', 'pi'].includes(action) && parts[2] === 'models') {
+            } else if (['codex', 'opencode', 'pi', 'claude'].includes(action) && parts[2] === 'models') {
               if (parts.length !== 3) throw new ALAError(`Usage: /agent ${action} models`, EXIT_CODES.usage);
               const models = await runtime.listCodingAgentModels(action, { signal });
               io.stdout.write(models.map((model) => `${model}\n`).join(''));
-            } else if (['codex', 'opencode', 'pi'].includes(action) && parts[2] === 'model') {
+            } else if (['codex', 'opencode', 'pi', 'claude'].includes(action) && parts[2] === 'model') {
               const model = parts.slice(3).join(' ').trim();
               if (!model) throw new ALAError(`Usage: /agent ${action} model <model-name|default>`, EXIT_CODES.usage);
               const useDefault = model === 'default';
@@ -130,15 +131,15 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
                 : `ala: ${action} model set to ${model}\n`);
             } else if (action === 'use') {
               const name = parts[2];
-              if (parts.length !== 3 || !['codex', 'opencode', 'pi'].includes(name)) {
-                throw new ALAError('Usage: /agent use <codex|opencode|pi>', EXIT_CODES.usage);
+              if (parts.length !== 3 || !['codex', 'opencode', 'pi', 'claude'].includes(name)) {
+                throw new ALAError('Usage: /agent use <codex|opencode|pi|claude>', EXIT_CODES.usage);
               }
               const nextConfig = { ...activeConfig, codingAgent: name };
               await saveConfig(configPath, nextConfig);
               activeConfig = nextConfig;
               runtime.setDefaultCodingAgent(name);
               io.stderr.write(`ala: default coding agent set to ${name}\n`);
-            } else if (['auto', 'codex', 'opencode', 'pi'].includes(action)) {
+            } else if (['auto', 'codex', 'opencode', 'pi', 'claude'].includes(action)) {
               const prompt = parts.slice(2).join(' ').trim();
               if (!prompt) throw new ALAError(`/agent ${action} requires a prompt.`, EXIT_CODES.usage);
               const result = await thinking.run(

@@ -122,8 +122,8 @@ export function parseArguments(argv) {
   if (options.task) options.instructionParts.unshift(options.task);
   validatePermissionMode(options.permissionMode);
 
-  if (options.agent && !['auto', 'codex', 'opencode', 'pi'].includes(options.agent)) {
-    throw new ALAError('--agent must be auto, codex, opencode, or pi.', EXIT_CODES.usage);
+  if (options.agent && !['auto', 'codex', 'opencode', 'pi', 'claude'].includes(options.agent)) {
+    throw new ALAError('--agent must be auto, codex, opencode, pi, or claude.', EXIT_CODES.usage);
   }
   if (options.agent && (options.tags.length > 0 || options.reasoningEffort || options.modelConfigPath)) {
     throw new ALAError('--ca cannot be combined with tag, reasoning-effort, or model-config overrides.', EXIT_CODES.usage);
@@ -138,8 +138,8 @@ Usage:
   ala agent list [--json]
 
 Execution options:
-  --ca <name>                Coding agent: auto, codex, opencode, or pi (default: config codingAgent,
-                             then the first available of codex, opencode, pi)
+  --ca <name>                Coding agent: auto, codex, opencode, pi, or claude (default: config
+                             codingAgent, then the first available of codex, opencode, pi, claude)
   --permissions <mode>       ask-for-approval or full-access (default: full-access)
   --home <path>              Explicit coding-agent home/configuration directory
   --cwd <path> [as <alias>]  Writable working directory; omit to use a retained temporary directory

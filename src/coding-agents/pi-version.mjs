@@ -5,7 +5,7 @@ const prerequisite = 'Pi RPC requires Pi >=0.85.1 with clear_queue and agent_set
 
 export async function requirePiVersion(input) {
   if (input.permissionMode && input.permissionMode !== 'full-access') {
-    throw new Error('Pi does not support ask-for-approval; select full-access or use Codex/OpenCode.');
+    throw new Error('Pi does not support ask-for-approval; select full-access or use Codex, OpenCode or Claude Code.');
   }
   const spawn = input.spawnImpl || spawnProcess;
   if (spawn === spawnProcess) requireSandbox(input.sandbox);

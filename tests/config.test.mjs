@@ -72,8 +72,8 @@ test('validates the default coding agent and per-agent models', async (context) 
   const root = await mkdtemp(join(tmpdir(), 'ala-model-config-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const configPath = join(root, 'config.json');
-  await writeFile(configPath, JSON.stringify({ codingAgent: 'claude' }));
-  await assert.rejects(() => loadConfig(configPath), /codingAgent must be codex, opencode, or pi/);
+  await writeFile(configPath, JSON.stringify({ codingAgent: 'gemini' }));
+  await assert.rejects(() => loadConfig(configPath), /codingAgent must be codex, opencode, pi, or claude/);
   await writeFile(configPath, JSON.stringify({ models: { unknown: 'model' } }));
   await assert.rejects(() => loadConfig(configPath), /models must map/);
 });

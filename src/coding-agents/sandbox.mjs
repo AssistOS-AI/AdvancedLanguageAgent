@@ -29,6 +29,11 @@ const PROVIDER_ENVIRONMENT = Object.freeze([
   'AWS_DEFAULT_REGION', 'OPENCODE_SERVER_USERNAME', 'OPENCODE_SERVER_PASSWORD'
 ]);
 
+// Claude Code uses only Anthropic credentials, from its login or these variables.
+const CLAUDE_ENVIRONMENT = Object.freeze([
+  'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_OAUTH_TOKEN'
+]);
+
 export function findBubblewrap() {
   for (const candidate of ['/usr/bin/bwrap', '/bin/bwrap']) {
     try {
@@ -156,6 +161,10 @@ export function collectAgentStateMounts(backend, env = process.env) {
       stateMount(path.join(stateHome, 'opencode'), `${SANDBOX_HOME}/.local/state/opencode`)
     ].filter(Boolean);
   }
+  if (backend === 'claude') {
+    const configured = path.resolve(env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'));
+    return [stateMount(configured, `${SANDBOX_HOME}/.claude`)].filter(Boolean);
+  }
   if (backend === 'pi') {
     const configured = env.PI_CODING_AGENT_DIR
       ? path.resolve(env.PI_CODING_AGENT_DIR)
@@ -197,7 +206,8 @@ export function sandboxEnvironment(backend, runtimeMounts = [], env = process.en
     ...(['opencode', 'pi'].includes(backend) ? PROVIDER_ENVIRONMENT : []),
     ...(backend === 'opencode' ? [
       'OPENCODE_ENABLE_EXA', 'OPENCODE_CONFIG_CONTENT', 'OPENCODE_SERVER_PASSWORD'
-    ] : [])
+    ] : []),
+    ...(backend === 'claude' ? CLAUDE_ENVIRONMENT : [])
   ]);
   for (const name of allowed) {
     if (typeof env[name] === 'string' && env[name]) values[name] = env[name];
@@ -216,6 +226,14 @@ export function sandboxEnvironment(backend, runtimeMounts = [], env = process.en
   });
   if (backend === 'codex') {
     values.CODEX_HOME = `${SANDBOX_HOME}/.codex`;
+  }
+  if (backend === 'claude') {
+    // All Claude Code state, including .claude.json and the login, lives here.
+    values.CLAUDE_CONFIG_DIR = `${SANDBOX_HOME}/.claude`;
+    // The sandbox may run as uid 0; Claude Code refuses bypassPermissions as
+    // root unless it is told it runs inside a sandbox.
+    values.IS_SANDBOX = '1';
+    values.DISABLE_AUTOUPDATER = '1';
   }
   if (backend === 'pi') {
     values.PI_CODING_AGENT_DIR = `${SANDBOX_HOME}/.pi/agent`;
