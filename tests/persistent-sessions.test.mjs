@@ -186,3 +186,56 @@ test('control EOF cancels native approvals and the owned execution, not a succes
   assert.equal(permissionRequests.replyCapable, false);
   assert.deepEqual(events.at(-1), { type: 'coding-agent-request-resolved', id: answer.id, reason: 'cancelled' });
 });
+
+test('without a prompt argument the first control record is the turn prompt', async () => {
+  const input = new PassThrough();
+  const events = [];
+  const prompts = [];
+  const received = [];
+  const runtime = {
+    execute: async (prompt, { instruction }) => { prompts.push([prompt, instruction]); return 'done'; },
+    sendMessage: async () => ({ delivery: 'queued' })
+  };
+  const execution = runControlledExecution(runtime, null, {
+    input, eventSink: (event) => events.push(event), onPrompt: (record) => received.push(record.displayText)
+  });
+  input.write('{"type":"message","id":"early","message":"too soon"}\n');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(prompts, []);
+  input.write(`${JSON.stringify({ type: 'prompt', prompt: 'System\n\nUser "quoted" ţext', displayText: 'User "quoted" ţext' })}\n`);
+  assert.equal(await execution, 'done');
+  assert.deepEqual(prompts, [['System\n\nUser "quoted" ţext', 'System\n\nUser "quoted" ţext']]);
+  assert.deepEqual(received, ['User "quoted" ţext']);
+  assert.ok(events.some((event) => event.type === 'message-rejected' && event.id === 'early'
+    && /first control record must be a valid turn prompt/.test(event.error)));
+});
+
+test('a closed control channel before the turn prompt never starts the coding agent', async () => {
+  const input = new PassThrough();
+  let started = false;
+  const execution = runControlledExecution({ execute: async () => { started = true; return 'x'; }, sendMessage: async () => ({}) },
+    null, { input, eventSink: () => {} });
+  input.end();
+  await assert.rejects(execution, /interrupted|not received/);
+  assert.equal(started, false);
+});
+
+test('a large turn prompt is accepted while follow-up messages keep their limit', async () => {
+  const input = new PassThrough();
+  const events = [];
+  let release;
+  const prompts = [];
+  const runtime = {
+    execute: async (prompt) => { prompts.push(prompt.length); await new Promise((resolve) => { release = resolve; }); return 'ok'; },
+    sendMessage: async () => ({ delivery: 'delivered' })
+  };
+  const execution = runControlledExecution(runtime, null, { input, eventSink: (event) => events.push(event) });
+  input.write(`${JSON.stringify({ type: 'prompt', prompt: 'p'.repeat(200000) })}\n`);
+  await new Promise((resolve) => setImmediate(resolve));
+  input.write(`${JSON.stringify({ type: 'message', id: 'big', message: 'm'.repeat(40000) })}\n`);
+  await new Promise((resolve) => setImmediate(resolve));
+  release();
+  assert.equal(await execution, 'ok');
+  assert.deepEqual(prompts, [200000]);
+  assert.ok(events.some((event) => event.type === 'message-rejected' && event.id === 'big'));
+});

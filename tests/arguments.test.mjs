@@ -27,6 +27,7 @@ test('parses coding-agent discovery and explicit delegation options', () => {
   }
   assert.equal(parseArguments(['--ca', 'pi', '--model', 'fast', '--task', 'task']).model, 'fast');
   assert.throws(() => parseArguments(['--websearch', 'research']), /Unknown option: --websearch/);
+  assert.throws(() => parseArguments(['--user-message-file', 'user.txt', 'task']), /Unknown option: --user-message-file/);
 });
 
 test('parses writable cwd, folders, aliases and explicit mounts', () => {

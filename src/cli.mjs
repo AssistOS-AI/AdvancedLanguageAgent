@@ -195,8 +195,8 @@ async function runExecution(options, io, env) {
   }
   const workspaceTarget = workspaceAliasTarget(options.cwdAlias);
   const executionHome = options.home ? await realpath(resolve(io.cwd, options.home)) : null;
-  if ((options.resumeSession || options.controlStdin || options.turnId || options.userMessageFile) && !options.sessionId) {
-    throw new ALAError('--resume-session, --control-stdin, --turn-id and --user-message-file require --session-id.', EXIT_CODES.usage);
+  if ((options.resumeSession || options.controlStdin || options.turnId) && !options.sessionId) {
+    throw new ALAError('--resume-session, --control-stdin and --turn-id require --session-id.', EXIT_CODES.usage);
   }
   if (options.turnId && !/^[A-Za-z0-9_-]{1,128}$/u.test(options.turnId)) {
     throw new ALAError('--turn-id must contain 1 to 128 letters, digits, dashes or underscores.', EXIT_CODES.usage);
@@ -204,10 +204,12 @@ async function runExecution(options, io, env) {
   if (options.sessionId && (!options.cwd || !options.home || options.interactive)) {
     throw new ALAError('--session-id requires --cwd and --home in one-shot mode.', EXIT_CODES.usage);
   }
-  if (options.controlStdin && (options.sources.some((source) => source.type === 'stdin')
-      || (!options.taskFile && options.instructionParts.length === 0))) {
-    throw new ALAError('--control-stdin requires a task argument/file and cannot read the prompt from stdin.', EXIT_CODES.usage);
+  if (options.controlStdin && options.sources.some((source) => source.type === 'stdin')) {
+    throw new ALAError('--control-stdin cannot read a --stdin payload; send the prompt as the first control record.', EXIT_CODES.usage);
   }
+  // Without --task/--taskFile, the turn prompt is the first control record on stdin.
+  const promptFromControl = Boolean(options.controlStdin && !options.taskFile && !options.task
+    && options.instructionParts.length === 0 && options.sources.length === 0);
   if (executionHome && !(await stat(executionHome)).isDirectory()) {
     throw new ALAError('--home must reference an existing directory.', EXIT_CODES.usage);
   }
@@ -220,7 +222,7 @@ async function runExecution(options, io, env) {
   }
   const configPath = resolveConfigPath({ cliPath: options.configPath, env: runtimeEnv, cwd: executionCwd || io.cwd });
   const config = await loadConfig(configPath);
-  const inferredInteractive = options.interactive || (options.instructionParts.length === 0 && io.stdin.isTTY);
+  const inferredInteractive = options.interactive || (!promptFromControl && options.instructionParts.length === 0 && io.stdin.isTTY);
   if (options.sessionId && inferredInteractive) {
     throw new ALAError('--session-id requires a one-shot task prompt.', EXIT_CODES.usage);
   }
@@ -244,7 +246,6 @@ async function runExecution(options, io, env) {
       : available.find((agent) => agent.name === requested);
     if (!selected) throw new ALAError(`Coding agent is not available: ${requested}`, EXIT_CODES.execution);
   }
-  const userMessage = options.userMessageFile ? await readFile(resolve(io.cwd, options.userMessageFile), 'utf8') : null;
   const sessionState = options.sessionId ? await openSessionState({
     id: options.sessionId, sessionsRoot: resolveSessionsRoot({ env, cwd: executionCwd }), resume: options.resumeSession
   }) : null;
@@ -280,7 +281,7 @@ async function runExecution(options, io, env) {
   try {
     let initialPrompt = null;
     let initialInstruction = null;
-    if (options.instructionParts.length > 0 || options.sources.length > 0 || !inferredInteractive) {
+    if (!promptFromControl && (options.instructionParts.length > 0 || options.sources.length > 0 || !inferredInteractive)) {
       const request = await loadRequest({
         instructionParts: options.instructionParts,
         sources: options.sources,
@@ -291,7 +292,7 @@ async function runExecution(options, io, env) {
       initialPrompt = composePrompt(request);
       initialInstruction = request.instruction;
     }
-    if (recorder) await recorder.user(userMessage ?? initialPrompt);
+    if (recorder && !promptFromControl) await recorder.user(initialPrompt);
     if (inferredInteractive) {
       await interactiveLoop(runtime, initialPrompt, initialInstruction, options, io, env, controller.signal);
     } else {
@@ -300,7 +301,8 @@ async function runExecution(options, io, env) {
         result = options.controlStdin
           ? await runControlledExecution(runtime, initialPrompt, {
             input: io.stdin, eventSink: sink, signal: controller.signal, instruction: initialInstruction,
-            onMessageAccepted: recorder ? (command) => recorder.user(command.displayText || command.message) : null
+            onMessageAccepted: recorder ? (command) => recorder.user(command.displayText || command.message) : null,
+            onPrompt: recorder ? (command) => recorder.user(command.displayText || command.prompt) : null
           })
           : await runtime.execute(initialPrompt, { signal: controller.signal, instruction: initialInstruction });
       } catch (error) {

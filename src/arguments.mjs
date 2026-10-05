@@ -19,7 +19,6 @@ const valueOptions = new Map([
   ['--ignore', 'ignoredPaths'],
   ['--session-id', 'sessionId'],
   ['--turn-id', 'turnId'],
-  ['--user-message-file', 'userMessageFile'],
   ['--taskFile', 'taskFile'],
   ['--task', 'task'],
   ['--MCPServers', 'mcpServers']
@@ -150,9 +149,10 @@ Execution options:
                              The transcript is appended to $ALA_SESSIONS/sessions/<uuid>.jsonl
                              (default: <cwd>/.ala)
   --turn-id <id>             Identifier recorded on this turn's transcript records
-  --user-message-file <path> UTF-8 file with the user's own message, recorded instead of the task prompt
   --resume-session           Resume the exact saved session, never create a replacement
-  --control-stdin            Accept JSONL messages and interaction responses while executing
+  --control-stdin            Accept JSONL messages and interaction responses while executing; without
+                             --task/--taskFile the first record is the turn prompt:
+                             {"type":"prompt","prompt":"...","displayText":"..."}
   --task <prompt>            Task prompt
   --taskFile <path>          UTF-8 file containing a detailed task prompt
   --MCPServers <addresses>   Comma-separated name=URL or host:port MCP servers
