@@ -49,7 +49,6 @@ function defaultExecutionOptions() {
     ignoredPaths: [],
     tags: [],
     interactive: false,
-    websearch: null,
     permissionMode: 'full-access',
     force: false,
     help: false,
@@ -64,17 +63,14 @@ function parseAlias(argv, index, option) {
 
 function parseAgentCommand(argv) {
   const options = {
-    command: 'agent', action: argv[1] || null, configPath: null, json: false, help: false
+    command: 'agent', action: argv[1] || null, json: false, help: false
   };
   if (options.action !== 'list') {
-    throw new ALAError('Usage: ala agent list [--config <path>] [--json].', EXIT_CODES.usage);
+    throw new ALAError('Usage: ala agent list [--json].', EXIT_CODES.usage);
   }
   for (let index = 2; index < argv.length; index += 1) {
     const token = argv[index];
-    if (token === '--config') {
-      options.configPath = optionValue(argv, index, token);
-      index += 1;
-    } else if (token === '--json') options.json = true;
+    if (token === '--json') options.json = true;
     else if (token === '--help') options.help = true;
     else throw new ALAError(`Unknown agent option: ${token}`, EXIT_CODES.usage);
   }
@@ -93,15 +89,6 @@ export function parseArguments(argv) {
     else if (token === '--force') options.force = true;
     else if (token === '--resume-session') options.resumeSession = true;
     else if (token === '--control-stdin') options.controlStdin = true;
-    else if (token === '--websearch') {
-      const state = argv[index + 1];
-      if (['on', 'off'].includes(state)) {
-        options.websearch = state === 'on';
-        index += 1;
-      } else {
-        options.websearch = true;
-      }
-    }
     else if (token === '--folder') {
       const source = optionValue(argv, index, token);
       index += 1;
@@ -149,16 +136,17 @@ export const HELP_TEXT = `Advanced Language Agent
 
 Usage:
   ala [options] [instruction...]
-  ala agent list [--config <path>] [--json]
+  ala agent list [--json]
 
 Execution options:
-  --ca <name>                Coding agent: auto, codex, opencode, or pi
+  --ca <name>                Coding agent: auto, codex, opencode, or pi (default: config codingAgent,
+                             then the first available of codex, opencode, pi)
   --permissions <mode>       ask-for-approval or full-access (default: full-access)
   --home <path>              Explicit coding-agent home/configuration directory
   --cwd <path> [as <alias>]  Writable working directory; omit to use a retained temporary directory
   --folder <path> [write] [as <alias>]  Mount a directory read-only, or writable with "write"
   --ignore <absolute-path>  Mask an existing directory with an empty read-only mount (repeatable)
-  --session-id <uuid>        Persistent conversation identity; requires --home, --cwd and --ca.
+  --session-id <uuid>        Persistent conversation identity; requires --home and --cwd.
                              The transcript is appended to $ALA_SESSIONS/sessions/<uuid>.jsonl
                              (default: <cwd>/.ala)
   --turn-id <id>             Identifier recorded on this turn's transcript records
@@ -175,7 +163,6 @@ Execution options:
   --output <path>            Write the result to a file
   --force                    Permit overwriting the output file
   --interactive, -i          Start or retain an interactive session
-  --websearch [on|off]       Enable, or override web search for this invocation
   --model <value>            Override the model or model tag
   --tag <tag>                Add a model-selection tag
   --reasoning-effort <value> Override reasoning effort
@@ -183,6 +170,5 @@ Execution options:
   --achilles-path <path>     Override AchillesAgentLib resolution
   --config <path>            Override the ALA configuration file
   Interactive: /help         Show every interactive command and its behavior
-  Interactive: /websearch on|off  Persist and toggle coding-agent web search
   --help, -h                 Show help
   --version, -v              Show version`;

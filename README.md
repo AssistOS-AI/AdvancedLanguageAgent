@@ -60,7 +60,19 @@ ala --model fast "Summarize this text" --file report.md
 export ALA_MODEL=fast
 ```
 
-User configuration lives in `$HOME/.ala/config.json`. Set `ALA_CONFIG_PATH` to another root directory when an embedding application needs an isolated configuration; ALA then uses `<ALA_CONFIG_PATH>/.ala/config.json`. The explicit `--config <file>` option remains available for a one-command file override. Legacy `taskRepositories` fields in existing files are ignored.
+User configuration lives in `$HOME/.ala/config.json`. Set `ALA_CONFIG_PATH` to another root directory when an embedding application needs an isolated configuration; ALA then uses `<ALA_CONFIG_PATH>/.ala/config.json`. The explicit `--config <file>` option remains available for a one-command file override.
+
+The file holds three optional fields and nothing else:
+
+```json
+{
+  "codingAgent": "codex",
+  "models": { "codex": "gpt-5.6-sol" },
+  "efforts": { "codex": "high" }
+}
+```
+
+`codingAgent` is the default backend (`codex`, `opencode`, or `pi`). `models` sets one native model per backend, and `efforts` sets one native effort per backend that has a model in `models`. ALA rejects any other field, including the old `version` and `codingAgents` layout, with "ALA configuration supports only codingAgent, models and efforts". Rewrite an older file by hand; ALA does not migrate it. A missing file means no default agent and no models.
 
 ALA writes a transcript only for explicit sessions started with `--session-id`. Set `ALA_SESSIONS` to the directory that should hold them; a relative value resolves against `--cwd`. When it is unset, ALA uses `<cwd>/.ala`. Executions without `--session-id` leave no ALA history behind.
 
@@ -86,14 +98,14 @@ Write the result to a file:
 ala "Summarize this report" --file report.md --output summary.md
 ```
 
-MainAgent may delegate suitable complex work to an installed [coding agent](docs/wiki.html#definition-coding-agent) automatically. Force one supported backend with `--ca`; `auto` uses the configured priority, which defaults to Codex, OpenCode, then Pi. `--agent` remains a compatibility alias:
+MainAgent may delegate suitable complex work to an installed [coding agent](docs/wiki.html#definition-coding-agent) automatically. Force one supported backend with `--ca`. `auto` uses `codingAgent` from the configuration when that backend is installed, otherwise the first available of Codex, OpenCode, Pi. That order is fixed. `--agent` remains a compatibility alias:
 
 ```sh
 ala --ca codex "Research this topic and produce a verified summary"
 ala --ca auto "Plan and validate this multi-step language task"
 ```
 
-The selected coding-agent CLI must already be authenticated through its own login mechanism. By default ALA passes no model option, so each selected CLI uses its own default model. In an interactive session, `/agent <codex|opencode|pi> models` asks that backend for its available model identifiers, `/agent <codex|opencode|pi> model <model-name>` persists a backend-specific selection, and `/agent <codex|opencode|pi> model default` removes that override so the agent CLI chooses its default again. ALA applies each change to every subsequent invocation. ALA's `--model`, `--tag`, `--reasoning-effort`, and `--model-config` settings continue to apply only to direct LLMAgent execution and do not override coding-agent model selection. ALA runs every agent and model-catalog process inside Bubblewrap, clears inherited environment variables before restoring a backend-specific allowlist, mounts the caller's `--cwd` and `--folder` directories at their canonical or aliased paths, exposes the existing backend runtime read-only, exposes only controlled authentication/state directories read-write, and retains the temporary directory it created when `--cwd` is omitted.
+The selected coding-agent CLI must already be authenticated through its own login mechanism. When `models` has no entry for the selected backend, ALA passes no model option and the CLI uses its own default. In an interactive session, `/agent use <codex|opencode|pi>` saves `codingAgent`, `/agent <codex|opencode|pi> models` asks that backend for its available model identifiers, `/agent <codex|opencode|pi> model <model-name>` saves the backend's entry in `models`, and `/agent <codex|opencode|pi> model default` removes it so the agent CLI chooses its default again. Both model commands clear that backend's saved effort. ALA applies each change to every subsequent invocation. With `--ca`, `--model` replaces the selected backend's saved model for one invocation and drops its saved effort when the model differs. `--tag`, `--reasoning-effort`, and `--model-config` apply only to direct LLMAgent execution. ALA runs every agent and model-catalog process inside Bubblewrap, clears inherited environment variables before restoring a backend-specific allowlist, mounts the caller's `--cwd` and `--folder` directories at their canonical or aliased paths, exposes the existing backend runtime read-only, exposes only controlled authentication/state directories read-write, and retains the temporary directory it created when `--cwd` is omitted.
 
 Embedding applications can select a persistent coding-agent home, an existing work tree, extra directories, a prompt file, and Streamable HTTP MCP servers explicitly:
 
@@ -104,20 +116,11 @@ ala --home /robot/home --cwd /project --folder /shared --folder /scratch write \
 
 `--home` is bound as the sandbox home and supplies saved agent authentication and configuration. `--cwd <path> [as <alias>]` is the writable working directory, mounted at its canonical path or under `/workspace/<alias>`. `--folder <path> [write] [as <alias>]` mounts extra directories read-only unless marked `write`. `--task` or `--taskFile` supplies the prompt, and `--MCPServers` injects temporary URL configuration into the selected coding agent (Codex or OpenCode) without rewriting its saved config. Interactive folder mounts are not supported.
 
-Coding-agent web search is off by default. Use bare `--websearch` to enable it for one invocation, `--websearch on|off` as an explicit invocation-only override, or persist the setting during an interactive session:
-
-```bash
-ala --websearch --agent codex "Find current sources and summarize them"
-ala --interactive
-/websearch on
-/websearch off
-```
-
-The interactive command saves `codingAgents.websearch` in the selected ALA configuration and applies it immediately without resetting the current coding-agent session. ALA maps the setting to Codex live search and OpenCode web search and fetch permissions. Pi has no ALA-managed web-search capability, so the setting does not change Pi arguments or tools. Authentication, provider quotas, site terms, and rate limits remain owned by the selected backend and its search provider.
+Web search is always on for coding agents. ALA starts Codex with `--search` and OpenCode with its Exa search and its `websearch` and `webfetch` tools allowed. Pi has no web search. There is no switch to turn it off, and `--websearch` is an unknown option. Search authentication, quotas, and rate limits belong to the selected backend and its search provider.
 
 ## Continue a coding-agent task
 
-Use a new UUID to create a persistent session. Later invocations need the same session id and the same transcript location, so keep `--cwd` and `ALA_SESSIONS` stable and pass the same `--home` for the coding agent's native state. `--ca auto` selects a backend once and then keeps that choice.
+Use a new UUID to create a persistent session. Later invocations need the same session id and the same transcript location, so keep `--cwd` and `ALA_SESSIONS` stable and pass the same `--home` for the coding agent's native state. `--ca` is optional here; without it ALA behaves as `--ca auto`, which picks a backend on the first turn and keeps the session's saved backend after that.
 
 ```sh
 ala --home /robot/home --cwd /project --ca codex \
@@ -161,6 +164,7 @@ Interactive sessions also accept local slash commands. `/agent ...` commands are
 ```text
 /help
 /agent list
+/agent use opencode
 /agent codex models
 /agent codex model gpt-5.6-sol
 /agent codex model default
@@ -169,12 +173,10 @@ Interactive sessions also accept local slash commands. `/agent ...` commands are
 /permissions
 /permissions ask-for-approval
 /permissions full-access
-/websearch on
-/websearch off
 /quit
 ```
 
-`/help` lists every interactive command. `/agent` commands discover a backend, inspect or select its native model, and delegate prompts; `/websearch on|off` controls supported search tools. While a terminal waits, ALA renders a transient thinking indicator and supported live backend events on standard error, leaving the normalized final result on standard output. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
+`/help` lists every interactive command. `/agent` commands discover a backend, set the default backend, inspect or select its native model, and delegate prompts. While a terminal waits, ALA renders a transient thinking indicator and supported live backend events on standard error, leaving the normalized final result on standard output. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
 
 `/permissions` reports the requested native policy. Supplying `ask-for-approval` or `full-access` changes subsequent executions in this interactive session without resetting the native conversation or saving configuration. The initial policy comes from `--permissions`, defaulting to `full-access`. Pi rejects ask-for-approval. The command does not add a reply channel: without a reply-capable embedding host, native operations requiring approval are declined.
 

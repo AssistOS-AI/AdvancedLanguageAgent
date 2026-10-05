@@ -25,7 +25,7 @@ export function createCodingAgentService({
   mcpServers = null,
   models = {},
   efforts = {},
-  websearch = false,
+  defaultAgent = null,
   cwd = process.cwd(),
   env = process.env,
   logger = null,
@@ -56,7 +56,6 @@ export function createCodingAgentService({
   let executing = false;
   const configuredModels = { ...models };
   const configuredEfforts = { ...efforts };
-  let websearchEnabled = Boolean(websearch);
   let outputSink = null;
 
   async function prepareWorkspace() {
@@ -80,8 +79,9 @@ export function createCodingAgentService({
       if (!pinned) throw new Error(`Saved coding agent is unavailable: ${activeName}`);
       return pinned;
     }
+    // auto: the configured default agent when it is installed, otherwise the first available.
     const selected = requested === 'auto'
-      ? available[0]
+      ? available.find((record) => record.name === defaultAgent) || available[0]
       : available.find((record) => record.name === requested);
     if (!selected) throw new ALAError(`Coding agent is not available: ${requested}`, EXIT_CODES.execution);
     return selected;
@@ -174,7 +174,7 @@ export function createCodingAgentService({
           continuation,
           model: turnModel,
           effort: turnEffort,
-          websearch: websearchEnabled,
+          websearch: true,
           permissionMode: turnPermissionMode,
           permissionRequests,
           mcpServers: configuredMcpServers,
@@ -233,8 +233,9 @@ export function createCodingAgentService({
       if (model === null || model === undefined || String(model).trim() === '') delete configuredModels[name];
       else configuredModels[name] = String(model).trim();
     },
-    setWebsearch(enabled) {
-      websearchEnabled = Boolean(enabled);
+    setDefaultAgent(name) {
+      if (!['codex', 'opencode', 'pi'].includes(name)) throw new ALAError(`Unknown coding agent: ${name}`, EXIT_CODES.usage);
+      defaultAgent = name;
     },
     setPermissionMode(mode) {
       requestedPermissionMode = validatePermissionMode(mode);

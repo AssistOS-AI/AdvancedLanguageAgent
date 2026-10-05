@@ -48,7 +48,7 @@ test('lists detected coding agents without loading AchillesAgentLib', async (con
   await chmod(binary, 0o700);
   const stdout = captureStream();
   const code = await runCli({
-    argv: ['agent', 'list', '--json', '--config', join(root, 'missing.json')],
+    argv: ['agent', 'list', '--json'],
     env: { HOME: join(root, 'home'), PATH: root },
     stdin: inputStream(),
     stdout,
@@ -60,7 +60,7 @@ test('lists detected coding agents without loading AchillesAgentLib', async (con
 
   const textStdout = captureStream();
   assert.equal(await runCli({
-    argv: ['agent', 'list', '--config', join(root, 'missing.json')],
+    argv: ['agent', 'list'],
     env: { HOME: join(root, 'home'), PATH: root },
     stdin: inputStream(),
     stdout: textStdout,
@@ -88,7 +88,7 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"a
   const stdout = captureStream();
   const stderr = captureStream();
   const code = await runCli({
-    argv: ['--agent', 'codex', '--websearch', '--config', join(root, 'missing.json'), 'complete', 'task'],
+    argv: ['--agent', 'codex', '--config', join(root, 'missing.json'), 'complete', 'task'],
     env: {
       HOME: join(root, 'home'), PATH: root, CODEX_HOME: authRoot
     },
@@ -142,7 +142,7 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"s
       '/permissions',
       '/permissions ask-for-approval',
       '/permissions full-access',
-      '/websearch on',
+      '/agent use codex',
       '/agent list',
       '/agent codex models',
       '/agent codex model gpt-test',
@@ -161,17 +161,17 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"s
   const diagnostics = stderr.read();
   assert.equal(diagnostics.match(/Interactive commands:/g)?.length, 1);
   assert.match(diagnostics, /\/agent list\s+List detected coding-agent backends/);
-  assert.match(diagnostics, /\/websearch on\s+Persist and enable coding-agent web search/);
+  assert.match(diagnostics, /\/agent use <name>\s+Persist the default coding agent/);
+  assert.doesNotMatch(diagnostics, /\/websearch/);
   assert.doesNotMatch(diagnostics, /\/repo /);
   assert.doesNotMatch(diagnostics, /\/symbolic /);
-  assert.match(diagnostics, /websearch on/);
+  assert.match(diagnostics, /default coding agent set to codex/);
   assert.match(diagnostics, /Native permissions: full-access/);
   assert.match(diagnostics, /Native permissions: ask-for-approval/);
   assert.match(diagnostics, /codex model set to gpt-test/);
   assert.match(diagnostics, /codex model reset to agent default/);
   const persistedConfig = JSON.parse(await readFile(join(root, 'missing.json'), 'utf8'));
-  assert.equal(persistedConfig.codingAgents.models.codex, undefined);
-  assert.equal(persistedConfig.codingAgents.websearch, true);
+  assert.deepEqual(persistedConfig, { codingAgent: 'codex', models: {}, efforts: {} });
 });
 
 test('uses explicit home and cwd while injecting model and MCP overrides into Codex', {

@@ -58,7 +58,7 @@ export async function createRuntime({
   workspaceTarget = null,
   home = null,
   mcpServers = null,
-  websearch = false,
+  defaultCodingAgent = null,
   permissionMode = 'full-access',
   cwd = process.cwd(),
   options,
@@ -77,11 +77,14 @@ export async function createRuntime({
   const logger = createDiagnosticLogger(diagnostics, env);
   const permissionRequests = createPermissionRequestManager({ eventSink, logger });
   const registry = await createInternalSkillRegistry();
+  // The configured default agent when it is installed, otherwise the first available.
+  const preferredAgent = () => codingAgents.find((record) => record.available && record.name === defaultCodingAgent)
+    || codingAgents.find((record) => record.available);
   const invocationModels = { ...codingAgentModels };
   const invocationEfforts = { ...codingAgentEfforts };
   if (options.agent && options.model) {
     const selectedAgent = options.agent === 'auto'
-      ? sessionState?.record.agent || codingAgents.find((record) => record.available)?.name
+      ? sessionState?.record.agent || preferredAgent()?.name
       : options.agent;
     if (selectedAgent) {
       if (options.model !== invocationModels[selectedAgent]) delete invocationEfforts[selectedAgent];
@@ -98,7 +101,7 @@ export async function createRuntime({
     mcpServers,
     models: invocationModels,
     efforts: invocationEfforts,
-    websearch,
+    defaultAgent: defaultCodingAgent,
     permissionMode,
     permissionRequests,
     cwd,
@@ -149,8 +152,9 @@ export async function createRuntime({
     setCodingAgentModel(name, model) {
       codingAgentService.setModel(name, model);
     },
-    setWebsearch(enabled) {
-      codingAgentService.setWebsearch(enabled);
+    setDefaultCodingAgent(name) {
+      codingAgentService.setDefaultAgent(name);
+      defaultCodingAgent = name;
     },
     setPermissionMode(mode) {
       codingAgentService.setPermissionMode(mode);
@@ -160,7 +164,7 @@ export async function createRuntime({
     },
     async executeAgent(prompt, { agent = 'auto', signal = null } = {}) {
       const selectedAgent = agent === 'auto'
-        ? codingAgents.find((record) => record.available)
+        ? preferredAgent()
         : codingAgents.find((record) => record.name === agent && record.available);
       if (!selectedAgent) throw new ALAError(`Coding agent is not available: ${agent}`, EXIT_CODES.execution);
       return mainAgent.executeSkill('coding-agent', prompt, {

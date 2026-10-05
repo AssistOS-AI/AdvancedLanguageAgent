@@ -1,4 +1,4 @@
-const COMMANDS = Object.freeze(['/help', '/agent', '/permissions', '/websearch', '/quit', '/exit']);
+const COMMANDS = Object.freeze(['/help', '/agent', '/permissions', '/quit', '/exit']);
 
 export function createInteractiveCompleter() {
   return (line) => {

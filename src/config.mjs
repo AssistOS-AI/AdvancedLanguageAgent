@@ -5,8 +5,8 @@ import { randomUUID } from 'node:crypto';
 
 import { ALAError, EXIT_CODES } from './errors.mjs';
 
-export const CONFIG_VERSION = 1;
-const DEFAULT_CODING_AGENT_PRIORITY = ['codex', 'opencode', 'pi'];
+const AGENT_NAMES = new Set(['codex', 'opencode', 'pi']);
+const CONFIG_FIELDS = new Set(['codingAgent', 'models', 'efforts']);
 
 export function resolveConfigPath({ cliPath, env = process.env, cwd = process.cwd(), homeDirectory = homedir() } = {}) {
   if (cliPath) return resolve(cwd, cliPath);
@@ -18,51 +18,41 @@ export function resolveConfigPath({ cliPath, env = process.env, cwd = process.cw
   return resolve(configurationRoot, '.ala', 'config.json');
 }
 
+// The configuration holds the default coding agent and one model and effort
+// per coding agent. Any other field is rejected rather than interpreted.
 function validateConfig(value, configPath) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new ALAError(`ALA configuration must be a JSON object: ${configPath}`, EXIT_CODES.usage);
   }
-  if (value.version !== CONFIG_VERSION) {
-    throw new ALAError(`Unsupported ALA configuration version in ${configPath}.`, EXIT_CODES.usage);
-  }
-  const configuredPriority = value.codingAgents?.priority ?? DEFAULT_CODING_AGENT_PRIORITY;
-  if (!Array.isArray(configuredPriority)) {
-    throw new ALAError(`codingAgents.priority must be an array in ${configPath}.`, EXIT_CODES.usage);
-  }
-  const priority = configuredPriority.map((entry) => String(entry).trim().toLowerCase());
-  const validNames = new Set(DEFAULT_CODING_AGENT_PRIORITY);
-  if (priority.length === 0 || priority.some((entry) => !validNames.has(entry)) || new Set(priority).size !== priority.length) {
+  const unknown = Object.keys(value).filter((key) => !CONFIG_FIELDS.has(key));
+  if (unknown.length) {
     throw new ALAError(
-      `codingAgents.priority must contain unique codex, opencode, or pi values in ${configPath}.`,
+      `ALA configuration supports only codingAgent, models and efforts; found ${unknown.join(', ')} in ${configPath}.`,
       EXIT_CODES.usage
     );
   }
-  for (const name of DEFAULT_CODING_AGENT_PRIORITY) if (!priority.includes(name)) priority.push(name);
-  const configuredModels = value.codingAgents?.models ?? {};
+  const codingAgent = value.codingAgent ?? null;
+  if (codingAgent !== null && !AGENT_NAMES.has(codingAgent)) {
+    throw new ALAError(`codingAgent must be codex, opencode, or pi in ${configPath}.`, EXIT_CODES.usage);
+  }
+  const configuredModels = value.models ?? {};
   if (!configuredModels || typeof configuredModels !== 'object' || Array.isArray(configuredModels)) {
-    throw new ALAError(`codingAgents.models must be an object in ${configPath}.`, EXIT_CODES.usage);
+    throw new ALAError(`models must be an object in ${configPath}.`, EXIT_CODES.usage);
   }
   const models = {};
   for (const [name, model] of Object.entries(configuredModels)) {
-    if (!validNames.has(name) || typeof model !== 'string' || !model.trim()) {
-      throw new ALAError(
-        `codingAgents.models must map codex, opencode, or pi to non-empty model names in ${configPath}.`,
-        EXIT_CODES.usage
-      );
+    if (!AGENT_NAMES.has(name) || typeof model !== 'string' || !model.trim()) {
+      throw new ALAError(`models must map codex, opencode, or pi to non-empty model names in ${configPath}.`, EXIT_CODES.usage);
     }
     models[name] = model.trim();
   }
-  const efforts = value.codingAgents?.efforts ?? {};
+  const efforts = value.efforts ?? {};
   if (!efforts || typeof efforts !== 'object' || Array.isArray(efforts)
-    || Object.entries(efforts).some(([name, effort]) => !validNames.has(name)
+    || Object.entries(efforts).some(([name, effort]) => !AGENT_NAMES.has(name)
       || !models[name] || typeof effort !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(effort))) {
-    throw new ALAError('codingAgents.efforts must map configured backends to native effort names.', EXIT_CODES.usage);
+    throw new ALAError(`efforts must map coding agents with a configured model to native effort names in ${configPath}.`, EXIT_CODES.usage);
   }
-  const websearch = value.codingAgents?.websearch ?? false;
-  if (typeof websearch !== 'boolean') {
-    throw new ALAError(`codingAgents.websearch must be a boolean in ${configPath}.`, EXIT_CODES.usage);
-  }
-  return { version: CONFIG_VERSION, codingAgents: { priority, models, efforts, websearch } };
+  return { ...(codingAgent ? { codingAgent } : {}), models, efforts: { ...efforts } };
 }
 
 export async function loadConfig(configPath) {
@@ -71,10 +61,7 @@ export async function loadConfig(configPath) {
     return validateConfig(JSON.parse(content), configPath);
   } catch (error) {
     if (error?.code === 'ENOENT') {
-      return {
-        version: CONFIG_VERSION,
-        codingAgents: { priority: [...DEFAULT_CODING_AGENT_PRIORITY], models: {}, efforts: {}, websearch: false }
-      };
+      return { models: {}, efforts: {} };
     }
     if (error instanceof SyntaxError) {
       throw new ALAError(`ALA configuration is not valid JSON: ${configPath}`, EXIT_CODES.usage, { cause: error });

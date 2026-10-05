@@ -35,15 +35,15 @@ test('configuration roundtrips effort next to models and rejects orphaned or inv
     t.after(() => rm(root, { recursive: true, force: true }));
     const file = join(root, '.ala/config.json');
     const initial = await loadConfig(file);
-    assert.deepEqual(initial.codingAgents.efforts, {});
-    initial.codingAgents.models = { codex: 'native' };
-    initial.codingAgents.efforts = { codex: 'high' };
+    assert.deepEqual(initial.efforts, {});
+    initial.models = { codex: 'native' };
+    initial.efforts = { codex: 'high' };
     await saveConfig(file, initial);
     assert.deepEqual(await loadConfig(file), initial);
-    initial.codingAgents.efforts.pi = 'high';
+    initial.efforts.pi = 'high';
     await assert.rejects(saveConfig(file, initial), /efforts/);
-    delete initial.codingAgents.efforts.pi;
-    initial.codingAgents.efforts.codex = 'high\ninvalid';
+    delete initial.efforts.pi;
+    initial.efforts.codex = 'high\ninvalid';
     await assert.rejects(saveConfig(file, initial), /efforts/);
 });
 

@@ -15,7 +15,7 @@
 
     <h2>System architecture</h2>
     <figure class="diagram"><img src="assets/architecture.svg" alt="Simplified ALA architecture showing the caller, mounted inputs, ALA runtime, direct model path, coding-agent sandbox and native coding agents"><figcaption><em>ALA receives a request and mounted inputs, then routes execution either to a direct model or to a sandboxed native coding agent.</em></figcaption></figure>
-    <p>The CLI and input loader compose one request from command arguments and supported payload sources. Configuration establishes the current models, backend priority, and web-search state. The runtime passes the request through MainAgent, then either uses direct LLMAgent execution or the internal coding-agent Code Skill. CodingAgentService owns backend discovery, Bubblewrap construction, native CLI invocation, event parsing, and mount handling.</p>
+    <p>The CLI and input loader compose one request from command arguments and supported payload sources. Configuration supplies the default coding agent and each backend's model and effort. The runtime passes the request through MainAgent, then either uses direct LLMAgent execution or the internal coding-agent Code Skill. CodingAgentService owns backend discovery, Bubblewrap construction, native CLI invocation, event parsing, and mount handling.</p>
 
     <h2>Responsibility boundary</h2>
     <p>The caller decides which directories are visible, which working directory is writable, and what task methodology to follow. ALA mounts those directories at their canonical paths, or under a caller-chosen alias, and delegates to an authenticated <a href="wiki.html#definition-coding-agent">coding agent</a> when one is selected.</p>

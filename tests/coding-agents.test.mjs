@@ -30,19 +30,38 @@ async function executable(root, name, source = '#!/bin/sh\nexit 0\n') {
   return filePath;
 }
 
-test('discovers configured and PATH coding-agent executables in configured priority', async (context) => {
+test('discovers configured and PATH coding-agent executables in the fixed codex, opencode, pi order', async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-agent-discovery-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const codex = await executable(root, 'codex');
   const opencode = await executable(root, 'custom-opencode');
   const agents = await discoverCodingAgents({
-    env: { HOME: join(root, 'home'), PATH: root, OPENCODE_BIN: opencode },
-    priority: ['opencode', 'pi', 'codex']
+    env: { HOME: join(root, 'home'), PATH: root, OPENCODE_BIN: opencode, ALA_CODING_AGENT_PRIORITY: 'pi,opencode' }
   });
-  assert.deepEqual(agents.map((agent) => agent.name), ['opencode', 'pi', 'codex']);
-  assert.equal(agents[0].binary, opencode);
-  assert.equal(agents[1].available, false);
-  assert.equal(agents[2].binary, codex);
+  assert.deepEqual(agents.map((agent) => agent.name), ['codex', 'opencode', 'pi']);
+  assert.equal(agents[0].binary, codex);
+  assert.equal(agents[1].binary, opencode);
+  assert.equal(agents[2].available, false);
+});
+
+test('auto selects the configured default agent when installed, otherwise the first available', async () => {
+  const used = [];
+  const runner = (name) => async () => { used.push(name); return { outputText: name, continuation: null }; };
+  const agents = [{ name: 'codex', available: true, binary: '/fake/codex' }, { name: 'opencode', available: true, binary: '/fake/opencode' },
+    { name: 'pi', available: false, binary: null }];
+  const runners = { codex: runner('codex'), opencode: runner('opencode'), pi: runner('pi') };
+  for (const [defaultAgent, expected] of [['opencode', 'opencode'], ['pi', 'codex'], [null, 'codex']]) {
+    const service = createCodingAgentService({ agents, defaultAgent, runners });
+    await service.execute('task');
+    await service.close();
+    assert.equal(used.at(-1), expected);
+  }
+  const service = createCodingAgentService({ agents, defaultAgent: 'codex', runners });
+  service.setDefaultAgent('opencode');
+  await service.execute('task');
+  assert.equal(used.at(-1), 'opencode');
+  assert.equal(await service.execute('explicit', { agent: 'codex' }).catch((error) => error.message), 'Coding-agent session is already pinned to opencode.');
+  await service.close();
 });
 
 test('injects streamable MCP servers into the OpenCode in-memory config only', () => {
@@ -151,12 +170,11 @@ test('streams supported Codex and Pi events across chunk boundaries', () => {
 });
 
 
-test('passes configured models and mutable websearch state to coding-agent invocations', async () => {
+test('passes configured models and always enables web search', async () => {
   const calls = [];
   const service = createCodingAgentService({
     agents: [{ name: 'codex', available: true, binary: '/fake/codex' }],
     models: { codex: 'gpt-configured' },
-    websearch: false,
     runners: {
       codex: async (input) => {
         calls.push(input);
@@ -166,15 +184,13 @@ test('passes configured models and mutable websearch state to coding-agent invoc
   });
   await service.execute('first');
   service.setModel('codex', 'gpt-updated');
-  service.setWebsearch(true);
   await service.execute('second');
   service.setModel('codex', null);
   await service.execute('third');
   assert.equal(calls[0].model, 'gpt-configured');
   assert.equal(calls[1].model, 'gpt-updated');
-  assert.equal(calls[0].websearch, false);
-  assert.equal(calls[1].websearch, true);
   assert.equal(calls[2].model, null);
+  assert.deepEqual(calls.map((call) => call.websearch), [true, true, true]);
   await service.close();
 });
 

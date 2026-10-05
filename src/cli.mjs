@@ -30,12 +30,11 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
   /agent <name> models           List models available to a coding-agent backend
   /agent <name> model <model>    Persist the model used by a coding-agent backend
   /agent <name> model default    Remove the override and use the agent default
+  /agent use <name>              Persist the default coding agent
   /agent auto <prompt>           Delegate to the first available backend
   /agent codex <prompt>          Delegate to Codex
   /agent opencode <prompt>       Delegate to OpenCode
   /agent pi <prompt>             Delegate to Pi
-  /websearch on                  Persist and enable coding-agent web search
-  /websearch off                 Persist and disable coding-agent web search
   /permissions [mode]            Show or set ask-for-approval or full-access for this session
   /quit | /exit | :quit | :exit  Close the interactive session`;
 
@@ -49,9 +48,7 @@ async function runAgentCommand(options, io, env) {
     io.stdout.write(`${HELP_TEXT}\n`);
     return EXIT_CODES.success;
   }
-  const configPath = resolveConfigPath({ cliPath: options.configPath, env, cwd: io.cwd });
-  const config = await loadConfig(configPath);
-  const agents = await discoverCodingAgents({ env, priority: config.codingAgents.priority });
+  const agents = await discoverCodingAgents({ env });
   const names = agents.filter((agent) => agent.available).map((agent) => agent.name);
   if (options.json) io.stdout.write(`${JSON.stringify(names, null, 2)}\n`);
   else io.stdout.write(names.map((name) => `${name}\n`).join(''));
@@ -117,16 +114,13 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
               const model = parts.slice(3).join(' ').trim();
               if (!model) throw new ALAError(`Usage: /agent ${action} model <model-name|default>`, EXIT_CODES.usage);
               const useDefault = model === 'default';
-              const nextModels = { ...activeConfig.codingAgents.models };
+              const nextModels = { ...activeConfig.models };
               if (useDefault) delete nextModels[action];
               else nextModels[action] = model;
               const nextConfig = {
                 ...activeConfig,
-                codingAgents: {
-                  ...activeConfig.codingAgents,
-                  efforts: Object.fromEntries(Object.entries(activeConfig.codingAgents.efforts || {}).filter(([name]) => name !== action)),
-                  models: nextModels
-                }
+                efforts: Object.fromEntries(Object.entries(activeConfig.efforts).filter(([name]) => name !== action)),
+                models: nextModels
               };
               await saveConfig(configPath, nextConfig);
               activeConfig = nextConfig;
@@ -134,6 +128,16 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
               io.stderr.write(useDefault
                 ? `ala: ${action} model reset to agent default\n`
                 : `ala: ${action} model set to ${model}\n`);
+            } else if (action === 'use') {
+              const name = parts[2];
+              if (parts.length !== 3 || !['codex', 'opencode', 'pi'].includes(name)) {
+                throw new ALAError('Usage: /agent use <codex|opencode|pi>', EXIT_CODES.usage);
+              }
+              const nextConfig = { ...activeConfig, codingAgent: name };
+              await saveConfig(configPath, nextConfig);
+              activeConfig = nextConfig;
+              runtime.setDefaultCodingAgent(name);
+              io.stderr.write(`ala: default coding agent set to ${name}\n`);
             } else if (['auto', 'codex', 'opencode', 'pi'].includes(action)) {
               const prompt = parts.slice(2).join(' ').trim();
               if (!prompt) throw new ALAError(`/agent ${action} requires a prompt.`, EXIT_CODES.usage);
@@ -146,19 +150,6 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
             }
           } else if (parts[0] === '/permissions') {
             io.stderr.write(`ala: ${permissionCommand(parts)}\n`);
-          } else if (parts[0] === '/websearch') {
-            if (parts.length !== 2 || !['on', 'off'].includes(parts[1])) {
-              throw new ALAError('Usage: /websearch on|off', EXIT_CODES.usage);
-            }
-            const enabled = parts[1] === 'on';
-            const nextConfig = {
-              ...activeConfig,
-              codingAgents: { ...activeConfig.codingAgents, websearch: enabled }
-            };
-            await saveConfig(configPath, nextConfig);
-            activeConfig = nextConfig;
-            runtime.setWebsearch(enabled);
-            io.stderr.write(`ala: websearch ${parts[1]}\n`);
           } else {
             throw new ALAError(`Unknown interactive command: ${line}`, EXIT_CODES.usage);
           }
@@ -210,8 +201,8 @@ async function runExecution(options, io, env) {
   if (options.turnId && !/^[A-Za-z0-9_-]{1,128}$/u.test(options.turnId)) {
     throw new ALAError('--turn-id must contain 1 to 128 letters, digits, dashes or underscores.', EXIT_CODES.usage);
   }
-  if (options.sessionId && (!options.cwd || !options.home || !options.agent || options.interactive)) {
-    throw new ALAError('--session-id requires --cwd, --home and --ca in one-shot mode.', EXIT_CODES.usage);
+  if (options.sessionId && (!options.cwd || !options.home || options.interactive)) {
+    throw new ALAError('--session-id requires --cwd and --home in one-shot mode.', EXIT_CODES.usage);
   }
   if (options.controlStdin && (options.sources.some((source) => source.type === 'stdin')
       || (!options.taskFile && options.instructionParts.length === 0))) {
@@ -240,12 +231,16 @@ async function runExecution(options, io, env) {
     env,
     cwd: io.cwd
   });
-  const codingAgents = await discoverCodingAgents({ env: runtimeEnv, priority: config.codingAgents.priority });
+  // A persistent session always runs on a coding agent: the requested one, or
+  // auto, which resumes the session's own agent or else picks the configured
+  // default, then the first available one.
+  if (options.sessionId && !options.agent) options.agent = 'auto';
+  const codingAgents = await discoverCodingAgents({ env: runtimeEnv });
   if (options.agent) {
     const available = codingAgents.filter((agent) => agent.available);
     const requested = options.agent || 'auto';
     const selected = requested === 'auto'
-      ? available[0]
+      ? available.find((agent) => agent.name === config.codingAgent) || available[0]
       : available.find((agent) => agent.name === requested);
     if (!selected) throw new ALAError(`Coding agent is not available: ${requested}`, EXIT_CODES.execution);
   }
@@ -259,13 +254,13 @@ async function runExecution(options, io, env) {
   try { runtime = await createRuntime({
     achillesModule: achilles.module,
     codingAgents,
-    codingAgentModels: config.codingAgents.models,
-    codingAgentEfforts: config.codingAgents.efforts,
+    codingAgentModels: config.models,
+    codingAgentEfforts: config.efforts,
+    defaultCodingAgent: config.codingAgent || null,
     workspace: executionCwd,
     workspaceTarget,
     home: executionHome,
     mcpServers: options.mcpServers,
-    websearch: options.websearch ?? config.codingAgents.websearch,
     permissionMode: options.permissionMode,
     cwd: executionCwd || io.cwd,
     options,

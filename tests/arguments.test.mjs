@@ -17,18 +17,16 @@ test('parses ordered payload sources and repeatable tag options', () => {
 
 test('parses coding-agent discovery and explicit delegation options', () => {
   assert.deepEqual(parseArguments(['agent', 'list', '--json']), {
-    command: 'agent', action: 'list', configPath: null, json: true, help: false
+    command: 'agent', action: 'list', json: true, help: false
   });
+  assert.throws(() => parseArguments(['agent', 'list', '--config', 'x.json']), /Unknown agent option: --config/);
   assert.equal(parseArguments(['--agent', 'codex', 'Plan', 'this']).agent, 'codex');
   assert.throws(() => parseArguments(['--agent', 'unknown', 'task']), /must be auto/);
   for (const flag of ['--agent', '--ca']) {
     assert.equal(parseArguments([flag, 'pi', 'run']).agent, 'pi');
   }
   assert.equal(parseArguments(['--ca', 'pi', '--model', 'fast', '--task', 'task']).model, 'fast');
-  assert.equal(parseArguments(['--websearch', 'on', 'research']).websearch, true);
-  assert.equal(parseArguments(['--websearch', 'off', 'offline']).websearch, false);
-  assert.equal(parseArguments(['--websearch', 'research']).websearch, true);
-  assert.deepEqual(parseArguments(['--websearch', 'research']).instructionParts, ['research']);
+  assert.throws(() => parseArguments(['--websearch', 'research']), /Unknown option: --websearch/);
 });
 
 test('parses writable cwd, folders, aliases and explicit mounts', () => {
