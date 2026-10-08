@@ -92,3 +92,13 @@ test('masked directories are empty and read-only through every mounted alias', {
   assert.equal(await readFile(path.join(secret, 'sessions', 'secret.txt'), 'utf8'), 'private history');
   assert.equal(await readFile(path.join(workspace, 'artifact.txt'), 'utf8'), 'work');
 });
+
+test('explicit exports exempt strict descendants but never the ignored directory itself', async t => {
+  const { workspace, secret } = await fixture(t);
+  const child = path.join(secret, 'sessions');
+  const mounts = [{ source: workspace, target: workspace },
+    { source: child, target: '/workspace/export', expose: true },
+    { source: secret, target: '/workspace/all-private', expose: true }];
+  assert.deepEqual(new Set(ignoredMountTargets([secret], mounts, workspace)), new Set([secret, '/workspace/all-private']));
+  assert.ok(ignoredMountTargets([secret, child], mounts, workspace).includes('/workspace/export'));
+});

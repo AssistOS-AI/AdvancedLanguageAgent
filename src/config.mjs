@@ -82,3 +82,25 @@ export async function saveConfig(configPath, config) {
     await unlink(temporaryPath).catch(() => {});
   }
 }
+
+// Invocation overrides never mutate the home configuration. Changing models
+// discards effort tied to the previous model unless the caller supplies one.
+export function applyCodingAgentOverrides({ models = {}, efforts = {} }, { agent, model, effort } = {}) {
+  const result = { models: { ...models }, efforts: { ...efforts } };
+  if (!agent) return result;
+  if (model) {
+    if (model !== result.models[agent]) delete result.efforts[agent];
+    result.models[agent] = model;
+  }
+  if (effort !== undefined) {
+    if (typeof effort !== 'string' || !/^[A-Za-z0-9_-]+$/u.test(effort)) {
+      throw new ALAError('--effort requires a native effort name or default.', EXIT_CODES.usage);
+    }
+    if (effort === 'default') delete result.efforts[agent];
+    else {
+      if (!result.models[agent]) throw new ALAError('--effort requires --model or a configured coding-agent model.', EXIT_CODES.usage);
+      result.efforts[agent] = effort;
+    }
+  }
+  return result;
+}

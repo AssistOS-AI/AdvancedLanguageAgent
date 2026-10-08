@@ -13,7 +13,7 @@ ALA must support interactive and single-shot requests. A caller must be able to 
 
 The distribution executable is `ala`. It must accept positional instructions, explicit payload-source options, explicit [coding-agent](wiki.html#definition-coding-agent) delegation through `--agent` or `--ca`, and automatic selection when those options are absent. It must mount exactly the directories supplied through `--cwd` and `--folder` and must protect an existing output file unless the caller explicitly supplies `--force`.
 
-ALA must execute general language requests and delegate bounded work to an available [coding agent](wiki.html#definition-coding-agent) without relying on any external task catalog. It must never discover, mount or overlay task skills; callers own their directory layout and task methodology.
+ALA must execute general language requests and delegate bounded work to an available [coding agent](wiki.html#definition-coding-agent) without relying on any external task catalog. It must never infer task-skill mounts or prepare task skills; callers own their directory layout and task methodology.
 
 ALA is not a general repository-owning coding agent. It may delegate bounded code generation to an authenticated coding agent, but language processing, planning, research, documentation, transformation, and verification define ALA's primary domain.
 

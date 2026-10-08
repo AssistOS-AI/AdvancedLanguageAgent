@@ -10,8 +10,7 @@ const overlaps = (a, b) => within(a, b) || within(b, a);
 // ALA mounts exactly what the caller supplies. Canonical hosts paths are
 // mounted at their original absolute path; an optional alias mounts the same
 // source at a fixed name under the sandbox workspace root to avoid collisions.
-const reserved = ['/usr', '/bin', '/sbin', '/lib', '/lib64', '/proc', '/dev', '/etc', '/home/ala',
-  `${SANDBOX_WORKSPACE}/.agents`];
+const reserved = ['/usr', '/bin', '/sbin', '/lib', '/lib64', '/proc', '/dev', '/etc', '/home/ala'];
 
 export function resolveFolderMounts(folders = [], cwd = process.cwd()) {
   if (!Array.isArray(folders)) throw invalid('must be a list of directories.');
@@ -25,11 +24,14 @@ export function resolveFolderMounts(folders = [], cwd = process.cwd()) {
       if (!fs.statSync(source).isDirectory()) throw new Error();
     } catch { throw invalid(`directory is unavailable: ${requested}`); }
     if (folder.alias !== undefined && (typeof folder.alias !== 'string' || !folder.alias.trim()
-        || ['.', '..'].includes(folder.alias) || /[/\\\0]/u.test(folder.alias))) {
+        || ['.', '..', '.agents'].includes(folder.alias) || /[/\\\0]/u.test(folder.alias))) {
       throw invalid('alias must be a single nonempty folder name.');
     }
     // Honor an already-resolved destination so repeated resolution is
     // idempotent; the service resolves once and the sandbox re-resolves.
+    if (folder.target !== undefined && (typeof folder.target !== 'string' || !path.isAbsolute(folder.target))) {
+      throw invalid('target must be an absolute path.');
+    }
     const target = folder.alias !== undefined ? path.join(SANDBOX_WORKSPACE, folder.alias)
       : folder.target !== undefined ? path.resolve(folder.target) : requested;
     if (!path.isAbsolute(target) || path.normalize(target) !== target || target.includes('\0')
@@ -37,8 +39,10 @@ export function resolveFolderMounts(folders = [], cwd = process.cwd()) {
         || target === '/home' || reserved.some(entry => overlaps(target, entry))) {
       throw invalid(`destination conflicts with sandbox paths: ${target}`);
     }
-    if (result.some(entry => overlaps(entry.target, target))) throw invalid(`destinations overlap: ${target}`);
-    result.push({ source, target, writable: Boolean(folder.writable) });
+    if (result.some(entry => entry.target === target
+        || (within(target, entry.target) && folder.writable)
+        || (within(entry.target, target) && entry.writable))) throw invalid(`destinations overlap: ${target}`);
+    result.push({ source, target, writable: Boolean(folder.writable), ...(folder.expose ? { expose: true } : {}) });
   }
   return result;
 }

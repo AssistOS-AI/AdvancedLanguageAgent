@@ -69,7 +69,7 @@ test('folder mounts are visible at their canonical path and alias with caller-se
       binary: process.execPath, args: ['-e', script], cwd: workspace,
       env: { HOME: join(root, 'missing-home') },
       sandbox: { hostWorkspace: workspace, workspaceTarget: workspace, backend: 'pi',
-        home: join(root, 'missing-home'), folders: [{ source: bridge, alias: 'runtime' }, { source: writable, writable: true }] }
+        folders: [{ source: bridge, alias: 'runtime' }, { source: writable, writable: true }] }
     });
     assert.equal(result.code, 0, result.stderr);
     assert.deepEqual(JSON.parse(result.stdout), {
@@ -84,4 +84,13 @@ test('buildSandboxArgs rejects a mounted folder duplicating the working director
     workspace, workspaceTarget: workspace, binary: process.execPath, backend: 'pi', bwrap: '/usr/bin/bwrap',
     privateProc: false, folders: [{ source: bridge, alias: 'runtime' }, { source: workspace }]
   }), /duplicates the working directory/);
+});
+
+test('read-only descendants overlay a parent mount and retain explicit export on repeated resolution', async context => {
+  const { root, workspace, bridge } = await fixture(context);
+  const mounts = resolveFolderMounts([{ source: root }, { source: bridge, target: join(workspace, '.agents/skills'), expose: true }]);
+  assert.deepEqual(resolveFolderMounts(mounts), mounts);
+  assert.throws(() => resolveFolderMounts([{ source: bridge, target: 'relative' }]), /absolute/);
+  assert.throws(() => resolveFolderMounts([{ source: root }, { source: bridge, target: join(root, 'child'), writable: true }]), /overlap/);
+  assert.throws(() => resolveFolderMounts([{ source: bridge, target: '/etc/private', expose: true }]), /sandbox paths/);
 });

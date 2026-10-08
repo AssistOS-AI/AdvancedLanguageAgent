@@ -23,6 +23,9 @@ export function ignoredMountTargets(ignoredPaths, mounts, workingDirectory) {
     let exposed = false;
     for (const mount of mounts) {
       const mountedSource = fs.realpathSync(mount.source);
+      // Explicit exports of strict descendants survive an ancestor ignore.
+      // Ignoring the exported directory itself remains authoritative.
+      if (mount.expose && source !== mountedSource && contains(source, mountedSource)) continue;
       let target;
       if (contains(mountedSource, source)) {
         target = path.join(mount.target, path.relative(mountedSource, source));

@@ -64,3 +64,21 @@ test('rejects invalid native permission policies instead of silently granting fu
   assert.throws(() => parseArguments(['--permissions', '', 'task']), { exitCode: 2 });
   assert.throws(() => parseArguments(['--permissions']), { exitCode: 2 });
 });
+
+test('explicit mount targets and expose are parsed without consuming the task', () => {
+  const options = parseArguments(['--folder', '/private/session/skills', 'at', '/project/.agents/skills', 'expose', 'Run']);
+  assert.deepEqual(options.folders, [{ source: '/private/session/skills', target: '/project/.agents/skills', expose: true }]);
+  assert.deepEqual(options.instructionParts, ['Run']);
+  assert.throws(() => parseArguments(['--folder', '/source', 'at']), /requires a value/);
+});
+
+test('effort selects coding-agent execution and validates native names and explicit reset', () => {
+  assert.equal(parseArguments(['--effort', 'high']).agent, 'auto');
+  assert.equal(parseArguments(['--ca', 'claude', '--model', 'opus', '--effort', 'max']).effort, 'max');
+  assert.equal(parseArguments(['--effort', 'default']).effort, 'default');
+  assert.throws(() => parseArguments(['--effort']), /requires a value/);
+  for (const value of ['', 'high\ninvalid', 'high effort']) {
+    assert.throws(() => parseArguments(['--effort', value]), /native effort name/);
+  }
+  assert.throws(() => parseArguments(['--effort', 'high', '--reasoning-effort', 'high']), /cannot be combined/);
+});

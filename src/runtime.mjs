@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createCodingAgentService } from './coding-agents/service.mjs';
+import { applyCodingAgentOverrides } from './config.mjs';
 import { ALAError, EXIT_CODES } from './errors.mjs';
 import { normalizeResult } from './output.mjs';
 import { createPermissionRequestManager, validatePermissionMode } from './permission-requests.mjs';
@@ -76,21 +77,17 @@ export async function createRuntime({
   }
   const logger = createDiagnosticLogger(diagnostics, env);
   const permissionRequests = createPermissionRequestManager({ eventSink, logger });
-  const registry = await createInternalSkillRegistry();
   // The configured default agent when it is installed, otherwise the first available.
   const preferredAgent = () => codingAgents.find((record) => record.available && record.name === defaultCodingAgent)
     || codingAgents.find((record) => record.available);
-  const invocationModels = { ...codingAgentModels };
-  const invocationEfforts = { ...codingAgentEfforts };
-  if (options.agent && options.model) {
-    const selectedAgent = options.agent === 'auto'
-      ? sessionState?.record.agent || preferredAgent()?.name
-      : options.agent;
-    if (selectedAgent) {
-      if (options.model !== invocationModels[selectedAgent]) delete invocationEfforts[selectedAgent];
-      invocationModels[selectedAgent] = options.model;
-    }
-  }
+  const overrideAgent = options.agent === 'auto'
+    ? sessionState?.record.agent || preferredAgent()?.name
+    : options.agent;
+  const { models: invocationModels, efforts: invocationEfforts } = applyCodingAgentOverrides(
+    { models: codingAgentModels, efforts: codingAgentEfforts },
+    { agent: overrideAgent, model: options.model, effort: options.effort }
+  );
+  const registry = await createInternalSkillRegistry();
   const codingAgentService = createCodingAgentService({
     agents: codingAgents,
     workspace,
