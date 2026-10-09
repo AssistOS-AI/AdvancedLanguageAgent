@@ -7,6 +7,26 @@ import { createLineDecoder } from './streaming.mjs';
 const PREREQUISITE = 'OpenCode requires version 1.15.10 or a compatible later unprefixed session/permission API; '
   + 'install a supported version or configure OPENCODE_BIN.';
 
+const REQUEST_TIMEOUT_MS = 15_000;
+// OpenCode creates the directory instance and installs plugin dependencies while serving the first request that needs it.
+export const OPENCODE_STARTUP_TIMEOUT_MS = 120_000;
+const STARTUP_TIMEOUT_MIN_MS = REQUEST_TIMEOUT_MS;
+const STARTUP_TIMEOUT_MAX_MS = 300_000;
+const STARTUP_TIMEOUT_VARIABLE = 'ALA_OPENCODE_STARTUP_TIMEOUT_MS';
+// Probes that may run before the instance exists; only a successful response to another path proves readiness.
+const STARTUP_PROBES = new Set(['/global/health', '/doc']);
+
+export function resolveOpenCodeStartupTimeout(env = process.env) {
+  const raw = env?.[STARTUP_TIMEOUT_VARIABLE];
+  if (raw === undefined) return OPENCODE_STARTUP_TIMEOUT_MS;
+  const value = /^[1-9]\d{0,6}$/u.test(raw) ? Number(raw) : Number.NaN;
+  if (!(value >= STARTUP_TIMEOUT_MIN_MS && value <= STARTUP_TIMEOUT_MAX_MS)) {
+    throw new Error(`${STARTUP_TIMEOUT_VARIABLE} must be an integer between ${STARTUP_TIMEOUT_MIN_MS} and `
+      + `${STARTUP_TIMEOUT_MAX_MS} milliseconds.`);
+  }
+  return value;
+}
+
 export function requireOpenCodeVersion(value) {
   const match = String(value).trim().match(/^(?:opencode\s+)?(\d+)\.(\d+)\.(\d+)(?:\s|$)/u);
   if (!match || Number(match[1]) !== 1 || Number(match[2]) < 15
@@ -86,6 +106,7 @@ export function openCodeEnvironment(env, websearch, mcpServers = []) {
 
 export async function startOpenCodeServer(input) {
   const { binary, workspace, sandbox, signal, websearch } = input;
+  const startupTimeout = resolveOpenCodeStartupTimeout();
   const env = openCodeEnvironment(input.env, websearch, input.mcpServers);
   const versionResult = await runProcess({
     binary, args: ['--version'], cwd: workspace, env, sandbox,
@@ -135,11 +156,13 @@ export async function startOpenCodeServer(input) {
     stream.on('end', decoder.finish);
   }
   const lifetime = AbortSignal.any([failed.signal, ...(signal ? [signal] : [])]);
+  let instanceReady = false;
   const request = async (path, { method = 'GET', body, signal: requestSignal = lifetime, stream = false } = {}) => {
     const url = new URL(path, base);
     url.searchParams.set('directory', workspace);
     const timeout = new AbortController();
-    const timer = setTimeout(() => timeout.abort(new Error('OpenCode HTTP request timed out.')), 15_000);
+    const timer = setTimeout(() => timeout.abort(new Error('OpenCode HTTP request timed out.')),
+      instanceReady ? REQUEST_TIMEOUT_MS : startupTimeout);
     try {
       const response = await fetch(url, {
         method, redirect: 'error', signal: AbortSignal.any([requestSignal, timeout.signal]),
@@ -151,6 +174,7 @@ export async function startOpenCodeServer(input) {
         await response.body?.cancel();
         throw new Error(`OpenCode ${method} ${path} failed (HTTP ${response.status}).`);
       }
+      if (!STARTUP_PROBES.has(path)) instanceReady = true;
       if (stream) return response;
       return response.status === 204 ? null : await response.json();
     } finally { clearTimeout(timer); }

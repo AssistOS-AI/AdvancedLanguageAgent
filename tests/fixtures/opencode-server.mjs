@@ -48,6 +48,7 @@ let events;
 let pending;
 let active;
 let messages = [];
+let held = false;
 const send = (type, properties) => events?.write(`data: ${JSON.stringify({ type, properties })}\n\n`);
 const save = () => writeFileSync('native-state.json', JSON.stringify(state));
 const finish = (text) => {
@@ -92,12 +93,18 @@ const server = createServer(async (req, res) => {
   if (req.headers.authorization !== `Basic ${Buffer.from(`opencode:${process.env.OPENCODE_SERVER_PASSWORD}`).toString('base64')}`) {
     json({ error: 'Unauthorized' }, 401); return;
   }
-  if (url.searchParams.get('directory') !== '/workspace' || req.headers['x-opencode-directory'] !== '/workspace') {
+  if (!config.anyDirectory && (url.searchParams.get('directory') !== '/workspace'
+    || req.headers['x-opencode-directory'] !== '/workspace')) {
     json({ error: 'Incorrect sandbox directory' }, 400); return;
   }
   let raw = '';
   for await (const chunk of req) raw += chunk;
   const input = raw ? JSON.parse(raw) : null;
+  if (config.hold === url.pathname && !held) {
+    held = true;
+    writeFileSync('held', url.pathname);
+    while (!existsSync('release')) await new Promise((resolve) => setTimeout(resolve, 20));
+  }
   if (url.pathname === '/global/health') { json({ healthy: true, version: '1.15.13' }); return; }
   if (url.pathname === '/doc') { json(api); return; }
   if (url.pathname === '/event') {
