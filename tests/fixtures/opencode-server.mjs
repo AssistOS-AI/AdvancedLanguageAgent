@@ -151,6 +151,7 @@ const server = createServer(async (req, res) => {
   json({}, 404);
 });
 server.listen(0, '127.0.0.1', () => {
+  writeFileSync('server-pid', String(process.pid));
   writeFileSync('server-address', `http://127.0.0.1:${server.address().port}`);
   log({ type: 'start', overlay: JSON.parse(process.env.OPENCODE_CONFIG_CONTENT) });
   process.stdout.write(`opencode server listening on http://127.0.0.1:${server.address().port}\n`);

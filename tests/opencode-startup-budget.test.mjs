@@ -1,6 +1,6 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -23,11 +23,13 @@ async function launch(context, hold) {
   context.after(async () => {
     mock.timers.reset();
     await state.server?.stop().catch(() => {});
+    try { process.kill(Number(readFileSync(join(workspace, 'server-pid'), 'utf8')), 'SIGKILL'); } catch { /* gone */ }
     await rm(root, { recursive: true, force: true });
   });
   mock.timers.enable({ apis: ['setTimeout'] });
   return {
     state,
+    // The explicit env keeps these tests independent of ALA_OPENCODE_STARTUP_TIMEOUT_MS in the caller's shell.
     start: (extra = {}) => serverModule.startOpenCodeServer({
       binary: fixture, workspace, env: { HOME: root }, websearch: false, ...extra
     }),
@@ -66,10 +68,14 @@ test('a request after readiness keeps the 15 s header timeout', async (context) 
   run.state.server = await run.start();
   const events = await run.state.server.request('/event', { stream: true });
   await events.body.cancel();
-  const outcome = assert.rejects(run.state.server.request('/permission'), TIMED_OUT);
+  const pending = run.state.server.request('/permission');
+  let settled = false;
+  const outcome = assert.rejects(pending, TIMED_OUT);
+  pending.catch(() => { settled = true; });
   await run.held();
   mock.timers.tick(14_999);
-  await sleep(20);
+  await sleep(50);
+  assert.equal(settled, false, 'request must not time out before 15 s');
   mock.timers.tick(1);
   await outcome;
 });
@@ -79,10 +85,13 @@ test('the startup budget is bounded by the named limit', async (context) => {
   assert.ok(limit > 15_000 && limit <= 120_000);
   const run = await launch(context, '/global/health');
   const starting = run.start();
+  let settled = false;
   const outcome = assert.rejects(starting, TIMED_OUT);
+  starting.catch(() => { settled = true; });
   await run.held();
   mock.timers.tick(limit - 1);
-  await sleep(20);
+  await sleep(50);
+  assert.equal(settled, false, 'startup must not time out before the budget');
   mock.timers.tick(1);
   await outcome;
 });
@@ -97,6 +106,12 @@ test('user abort during the long startup wait terminates promptly without any ti
   controller.abort(new Error('cancelled'));
   await outcome;
   assert.ok(Date.now() - began < 3000);
+});
+
+test('the override is read from the env passed to the server, not the process env', async (context) => {
+  const run = await launch(context, '/global/health');
+  await assert.rejects(run.start({ env: { ALA_OPENCODE_STARTUP_TIMEOUT_MS: '300001' } }),
+    /ALA_OPENCODE_STARTUP_TIMEOUT_MS must be an integer/u);
 });
 
 test('startup timeout override is strictly validated and hard-bounded', () => {

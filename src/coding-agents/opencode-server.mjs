@@ -8,7 +8,8 @@ const PREREQUISITE = 'OpenCode requires version 1.15.10 or a compatible later un
   + 'install a supported version or configure OPENCODE_BIN.';
 
 const REQUEST_TIMEOUT_MS = 15_000;
-// OpenCode creates the directory instance and installs plugin dependencies while serving the first request that needs it.
+// OpenCode creates the directory instance and installs plugin dependencies
+// while serving the first request that needs it.
 export const OPENCODE_STARTUP_TIMEOUT_MS = 120_000;
 const STARTUP_TIMEOUT_MIN_MS = REQUEST_TIMEOUT_MS;
 const STARTUP_TIMEOUT_MAX_MS = 300_000;
@@ -16,7 +17,7 @@ const STARTUP_TIMEOUT_VARIABLE = 'ALA_OPENCODE_STARTUP_TIMEOUT_MS';
 // Probes that may run before the instance exists; only a successful response to another path proves readiness.
 const STARTUP_PROBES = new Set(['/global/health', '/doc']);
 
-export function resolveOpenCodeStartupTimeout(env = process.env) {
+export function resolveOpenCodeStartupTimeout(env) {
   const raw = env?.[STARTUP_TIMEOUT_VARIABLE];
   if (raw === undefined) return OPENCODE_STARTUP_TIMEOUT_MS;
   const value = /^[1-9]\d{0,6}$/u.test(raw) ? Number(raw) : Number.NaN;
@@ -106,7 +107,7 @@ export function openCodeEnvironment(env, websearch, mcpServers = []) {
 
 export async function startOpenCodeServer(input) {
   const { binary, workspace, sandbox, signal, websearch } = input;
-  const startupTimeout = resolveOpenCodeStartupTimeout();
+  const startupTimeout = resolveOpenCodeStartupTimeout(input.env);
   const env = openCodeEnvironment(input.env, websearch, input.mcpServers);
   const versionResult = await runProcess({
     binary, args: ['--version'], cwd: workspace, env, sandbox,
