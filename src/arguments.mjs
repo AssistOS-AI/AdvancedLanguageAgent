@@ -7,7 +7,6 @@ const valueOptions = new Map([
   ['--url', 'url'],
   ['--output', 'output'],
   ['--model', 'model'],
-  ['--effort', 'effort'],
   ['--permissions', 'permissionMode'],
   ['--tag', 'tags'],
   ['--reasoning-effort', 'reasoningEffort'],
@@ -97,12 +96,20 @@ export function parseArguments(argv) {
       const { alias, index: nextIndex } = parseAlias(argv, index, '--folder');
       index = nextIndex;
       let target;
-      if (alias === undefined && argv[index + 1] === 'at') {
+      if (argv[index + 1] === 'at') {
+        if (alias !== undefined) throw new ALAError('--folder cannot combine as and at.', EXIT_CODES.usage);
         target = optionValue(argv, index + 1, '--folder at');
         index += 2;
       }
-      const expose = argv[index + 1] === 'expose';
-      if (expose) index += 1;
+      let expose = false;
+      if (argv[index + 1] === 'expose') { expose = true; index += 1; }
+      if (['as', 'at', 'write', 'expose'].includes(argv[index + 1])) {
+        throw new ALAError('--folder modifiers must follow: [write] [as <alias> | at <absolute-path>] [expose].',
+          EXIT_CODES.usage);
+      }
+      if (expose && (writable || (target === undefined && alias === undefined))) {
+        throw new ALAError('--folder expose requires a read-only mount with an explicit destination.', EXIT_CODES.usage);
+      }
       options.folders.push({ source, ...(writable ? { writable: true } : {}),
         ...(alias !== undefined ? { alias } : {}), ...(target !== undefined ? { target } : {}),
         ...(expose ? { expose: true } : {}) });
@@ -131,13 +138,6 @@ export function parseArguments(argv) {
   }
   if (options.task) options.instructionParts.unshift(options.task);
   validatePermissionMode(options.permissionMode);
-  if (options.effort !== undefined) {
-    if (!/^[A-Za-z0-9_-]+$/u.test(options.effort)) {
-      throw new ALAError('--effort requires a native effort name or default.', EXIT_CODES.usage);
-    }
-    // Effort is a coding-agent override, including when the backend comes from home.
-    options.agent ||= 'auto';
-  }
 
   if (options.agent && !['auto', 'codex', 'opencode', 'pi', 'claude'].includes(options.agent)) {
     throw new ALAError('--agent must be auto, codex, opencode, pi, or claude.', EXIT_CODES.usage);
@@ -160,7 +160,8 @@ Execution options:
   --permissions <mode>       ask-for-approval or full-access (default: full-access)
   --home <path>              Explicit coding-agent home/configuration directory
   --cwd <path> [as <alias>]  Writable working directory; omit to use a retained temporary directory
-  --folder <path> [write] [as <alias>|at <absolute-path>] [expose]  Mount a directory; expose opts out of ancestor ignores
+  --folder <path> [write] [as <alias> | at <absolute-path>] [expose]
+                           Mount a directory; expose explicitly exports a read-only subtree
   --ignore <absolute-path>  Mask an existing directory with an empty read-only mount (repeatable)
   --session-id <uuid>        Persistent conversation identity; requires --home and --cwd.
                              The transcript is appended to $ALA_SESSIONS/sessions/<uuid>.jsonl
@@ -181,7 +182,6 @@ Execution options:
   --force                    Permit overwriting the output file
   --interactive, -i          Start or retain an interactive session
   --model <value>            Override the model or model tag
-  --effort <value|default>   Override coding-agent effort; default clears the configured effort
   --tag <tag>                Add a model-selection tag
   --reasoning-effort <value> Override reasoning effort
   --model-config <path>      Override AchillesAgentLib model configuration

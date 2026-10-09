@@ -23,9 +23,15 @@ export function ignoredMountTargets(ignoredPaths, mounts, workingDirectory) {
     let exposed = false;
     for (const mount of mounts) {
       const mountedSource = fs.realpathSync(mount.source);
-      // Explicit exports of strict descendants survive an ancestor ignore.
-      // Ignoring the exported directory itself remains authoritative.
-      if (mount.expose && source !== mountedSource && contains(source, mountedSource)) continue;
+      if (mount.expose && contains(source, mountedSource)) {
+        if (source === mountedSource || mount.writable) {
+          throw new ALAError('--folder expose may export only a read-only strict subdirectory of --ignore.',
+            EXIT_CODES.execution);
+        }
+        // The caller explicitly exports this subtree elsewhere, not the private root.
+        exposed = true;
+        continue;
+      }
       let target;
       if (contains(mountedSource, source)) {
         target = path.join(mount.target, path.relative(mountedSource, source));
@@ -39,6 +45,11 @@ export function ignoredMountTargets(ignoredPaths, mounts, workingDirectory) {
     }
     if (!exposed) {
       throw new ALAError('--ignore directory is not exposed by a sandbox mount.', EXIT_CODES.execution);
+    }
+  }
+  for (const mount of mounts.filter(entry => entry.expose)) {
+    if ([...targets].some(target => contains(target, mount.target))) {
+      throw new ALAError('--folder expose destination is inside an ignored directory.', EXIT_CODES.execution);
     }
   }
   // An ancestor mask already hides nested mounts; avoid mounting inside a read-only mask.

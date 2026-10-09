@@ -44,6 +44,30 @@ test('ignore masks canonical, aliased and directly mounted descendants', async t
 });
 
 const bwrap = findBubblewrap();
+test('explicit read-only exports retain only a strict subtree outside ignored destinations', async t => {
+  const { root, workspace, secret } = await fixture(t);
+  const source = path.join(secret, 'sessions');
+  const exported = { source, target: '/workspace/exported', expose: true };
+  const mounts = [{ source: workspace, target: workspace }, exported];
+  assert.deepEqual(ignoredMountTargets([secret], mounts, workspace), [secret]);
+  // Ordinary aliases remain masked, even when an explicit export uses the same source.
+  assert.deepEqual(new Set(ignoredMountTargets([secret], [...mounts,
+    { source, target: '/workspace/history' }], workspace)), new Set([secret, '/workspace/history']));
+  for (const mount of [{ ...exported, source: secret }, { ...exported, writable: true },
+    { ...exported, target: path.join(secret, 'export') }]) {
+    assert.throws(() => ignoredMountTargets([secret], [mounts[0], mount], workspace), { exitCode: 5 });
+  }
+  // A second, narrower ignore must still mask content inside the exported source.
+  const nested = path.join(source, 'nested');
+  await mkdir(nested);
+  assert.deepEqual(new Set(ignoredMountTargets([secret, nested], mounts, workspace)),
+    new Set([secret, '/workspace/exported/nested']));
+  const link = path.join(root, 'private-link');
+  await symlink(secret, link);
+  assert.throws(() => ignoredMountTargets([secret], [mounts[0], { ...exported, source: link }], workspace),
+    /strict subdirectory/);
+});
+
 test('continuations and model queries receive the same ignored paths', async t => {
   const { workspace, secret } = await fixture(t);
   const contexts = [];

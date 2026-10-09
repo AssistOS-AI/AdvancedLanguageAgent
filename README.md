@@ -1,6 +1,6 @@
 # Advanced Language Agent
 
-[Advanced Language Agent](docs/index.html) (ALA) is a command-line application for language and documentation tasks. It executes general requests through AchillesAgentLib and delegates bounded work to an installed coding agent. ALA mounts exactly the directories the caller supplies through `--cwd` and `--folder`; it does not discover or prepare task skills or infer their mounts. ALA writes the result to standard output or a file.
+[Advanced Language Agent](docs/index.html) (ALA) is a command-line application for language and documentation tasks. It executes general requests through AchillesAgentLib and delegates bounded work to an installed coding agent. ALA mounts exactly the directories the caller supplies through `--cwd` and `--folder`; it does not discover, create, mount or overlay task skills. ALA writes the result to standard output or a file.
 
 ## Install
 
@@ -29,6 +29,8 @@ ala --help
 ## Private directories
 
 Pass repeatable `--ignore /absolute/directory` options to mask existing directories inside the coding-agent sandbox. Each masked directory appears empty and read-only; its name remains visible and its host contents remain unchanged. Masks cover canonical paths, folder aliases, and mounts sourced from ignored subdirectories. Invalid, missing, unmounted paths and masks covering the working directory are rejected. Supply the options again when resuming a session. This option selects sandboxed coding-agent execution.
+
+An embedding caller may explicitly export one read-only subtree with `--folder /project/.private/public at /project/public expose`. The export must have an explicit destination outside the masked paths and a source strictly below the ignored directory; exporting the ignored root or a writable subtree is rejected. Only that subtree is visible at the chosen destination. Ordinary aliases of ignored data stay masked, and additional ignores inside the exported subtree still apply. ALA does not select or inspect exported contents.
 
 ```sh
 ala --ca auto --cwd /work/project --ignore /work/project/.private --task "Review the project"
@@ -116,7 +118,7 @@ ala --home /robot/home --cwd /project --folder /shared --folder /scratch write \
   --taskFile task.prompt --MCPServers desktop=http://127.0.0.1:48100/mcp --ca codex
 ```
 
-`--home` is bound as the sandbox home and supplies saved agent authentication and configuration. `--cwd <path> [as <alias>]` is the writable working directory, mounted at its canonical path or under `/workspace/<alias>`. `--folder <path> [write] [as <alias>|at <absolute-path>] [expose]` mounts extra directories read-only unless marked `write`. `--task` or `--taskFile` supplies the prompt, and `--MCPServers` injects temporary URL configuration into the selected coding agent (Codex, OpenCode, or Claude Code) without rewriting its saved config. Interactive folder mounts are not supported.
+`--home` is bound as the sandbox home and supplies saved agent authentication and configuration. `--cwd <path> [as <alias>]` is the writable working directory, mounted at its canonical path or under `/workspace/<alias>`. `--folder <path> [write] [as <alias> | at <absolute-path>] [expose]` mounts extra directories read-only unless marked `write`. `at` selects a normalized absolute destination and cannot be combined with `as`. `expose` requires a read-only mount with an explicit destination; only such an exported child may overlap a read-only folder ancestor. Duplicate destinations, writable folder overlaps and reserved sandbox paths remain prohibited. `--task` or `--taskFile` supplies the prompt, and `--MCPServers` injects temporary URL configuration into the selected coding agent (Codex, OpenCode, or Claude Code) without rewriting its saved config. Interactive folder mounts are not supported.
 
 Web search is always on for coding agents. ALA starts Codex with `--search` and OpenCode with its Exa search and its `websearch` and `webfetch` tools allowed. Claude Code keeps its built-in `WebSearch` and `WebFetch` tools, which are on by default. Pi has no web search. There is no switch to turn it off, and `--websearch` is an unknown option. Search authentication, quotas, and rate limits belong to the selected backend and its search provider.
 
@@ -184,7 +186,7 @@ Interactive sessions also accept local slash commands. `/agent ...` commands are
 
 `/permissions` reports the requested native policy. Supplying `ask-for-approval` or `full-access` changes subsequent executions in this interactive session without resetting the native conversation or saving configuration. The initial policy comes from `--permissions`, defaulting to `full-access`. Pi rejects ask-for-approval. The command does not add a reply channel: without a reply-capable embedding host, native operations requiring approval are declined.
 
-Expose a caller-owned directory with `--folder /absolute/path as runtime`. It appears read-only at `/workspace/runtime`; without `as`, it appears at the original absolute path. Use `at /absolute/destination` instead of `as` for an explicit destination. Read-only child mounts may overlay parent mounts. Add `expose` to export a strict subdirectory of an ignored source while its parent stays masked. An ignore of the exported source itself still applies. Repeat `--folder` for separate destinations, and add `write` to make one writable. ALA only validates and mounts directories; the caller prepares dependencies and owns any socket protocol and cleanup.
+Expose a caller-owned directory with `--folder /absolute/path as runtime`. It appears read-only at `/workspace/runtime`; without `as`, it appears at the original absolute path. Repeat `--folder` for separate destinations, and add `write` to make one writable. ALA only validates and mounts directories; the caller prepares dependencies and owns any socket protocol and cleanup.
 
 ## More information
 
@@ -201,5 +203,3 @@ npm run docs:verify
 ## License
 
 See [LICENSE](LICENSE).
-
-For coding-agent execution, `--model <name> --effort <level>` overrides the configured model and effort for one invocation. `--effort` selects coding-agent execution with `auto` when no backend is specified. Without overrides, ALA uses the configuration loaded from the selected home or explicit configuration path. `--effort default` clears configured effort; a model change without an explicit effort also clears the prior model's effort. Explicit effort requires a model and is validated against its native catalog. These overrides never rewrite the configuration file.

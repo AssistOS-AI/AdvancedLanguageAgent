@@ -58,6 +58,20 @@ test('rejects unknown options and missing values', () => {
   assert.throws(() => parseArguments(['--runtime-bridge', '']), { exitCode: 2 });
 });
 
+test('explicit folder destinations and exports do not become prompt text', () => {
+  const options = parseArguments(['--folder', '/private/skills', 'at', '/project/.agents/skills', 'expose',
+    '--folder', '/other', 'as', 'source', 'expose', '--task', 'Inspect']);
+  assert.deepEqual(options.folders, [
+    { source: '/private/skills', target: '/project/.agents/skills', expose: true },
+    { source: '/other', alias: 'source', expose: true }
+  ]);
+  assert.deepEqual(options.instructionParts, ['Inspect']);
+  for (const modifiers of [['at'], ['as', 'alias', 'at', '/target'], ['at', '/target', 'as', 'alias'],
+    ['write', 'at', '/target', 'expose'], ['expose'], ['at', '/target', 'expose', 'expose']]) {
+    assert.throws(() => parseArguments(['--folder', '/source', ...modifiers]), { exitCode: 2 });
+  }
+});
+
 test('rejects invalid native permission policies instead of silently granting full access', () => {
   assert.equal(parseArguments(['--permissions', 'ask-for-approval', 'task']).permissionMode, 'ask-for-approval');
   assert.throws(() => parseArguments(['--permissions', 'allow', 'task']), { exitCode: 2 });
