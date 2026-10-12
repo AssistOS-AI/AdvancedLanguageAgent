@@ -30,7 +30,6 @@ test('a recorded turn folds into the user message, intermediate output, final an
   turn.observe({ type: 'coding-agent-message', message: 'Looking ', outputKind: 'assistant', outputId: 'a1' });
   turn.observe({ type: 'coding-agent-message', message: 'at it.', outputKind: 'assistant', outputId: 'a1', outputComplete: true });
   turn.observe({ type: 'coding-agent-message', message: '$ npm test\n', outputKind: 'output' });
-  turn.observe({ type: 'agentlib-tool', tool: 'coding-agent', reason: 'edit' });
   await turn.user('Also add a test');
   await turn.finish({ result: 'Done.', status: 'completed' });
   await state.save({ agent: 'codex', continuation: { threadId: 't1' } });
@@ -46,7 +45,6 @@ test('a recorded turn folds into the user message, intermediate output, final an
   assert.deepEqual(folded.followUps.map((entry) => entry.text), ['Also add a test']);
   assert.deepEqual(folded.messages.map((entry) => [entry.outputKind, entry.text]),
     [['assistant', 'Looking at it.'], ['output', '$ npm test\n']]);
-  assert.deepEqual(folded.tools.map((entry) => entry.tool), ['coding-agent']);
   assert.equal(folded.final, 'Done.');
   assert.equal(folded.status, 'completed');
   assert.ok(Number.isInteger(folded.durationMs));

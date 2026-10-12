@@ -117,12 +117,20 @@ test('masked directories are empty and read-only through every mounted alias', {
   assert.equal(await readFile(path.join(workspace, 'artifact.txt'), 'utf8'), 'work');
 });
 
-test('explicit exports exempt strict descendants but never the ignored directory itself', async t => {
+test('explicit exports exempt strict descendants, keep deeper ignores and reject exporting an ignored root', async t => {
   const { workspace, secret } = await fixture(t);
   const child = path.join(secret, 'sessions');
-  const mounts = [{ source: workspace, target: workspace },
-    { source: child, target: '/workspace/export', expose: true },
-    { source: secret, target: '/workspace/all-private', expose: true }];
-  assert.deepEqual(new Set(ignoredMountTargets([secret], mounts, workspace)), new Set([secret, '/workspace/all-private']));
-  assert.ok(ignoredMountTargets([secret, child], mounts, workspace).includes('/workspace/export'));
+  const deeper = path.join(child, 'drafts');
+  await mkdir(deeper);
+  const exported = [{ source: workspace, target: workspace }, { source: child, target: '/workspace/export', expose: true }];
+  assert.deepEqual(ignoredMountTargets([secret], exported, workspace), [secret]);
+  assert.deepEqual(new Set(ignoredMountTargets([secret, deeper], exported, workspace)),
+    new Set([secret, '/workspace/export/drafts'])); // The ancestor mask already hides drafts at its own path.
+  for (const mounts of [
+    [{ source: workspace, target: workspace }, { source: secret, target: '/workspace/all-private', expose: true }],
+    [{ source: workspace, target: workspace }, { source: child, target: '/workspace/export', expose: true, writable: true }],
+  ]) {
+    assert.throws(() => ignoredMountTargets([secret], mounts, workspace), /may export only a read-only strict subdirectory/);
+  }
+  assert.throws(() => ignoredMountTargets([secret, child], exported, workspace), /may export only a read-only strict subdirectory/);
 });

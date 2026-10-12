@@ -33,7 +33,7 @@ export async function readTranscriptRecords(file) {
 }
 
 function emptyTurn(turnId, at) {
-  return { turnId, startedAt: at, user: null, followUps: [], messages: [], tools: [], final: null,
+  return { turnId, startedAt: at, user: null, followUps: [], messages: [], final: null,
     status: 'running', durationMs: null, error: null, endedAt: null, firstSeq: null, lastSeq: null };
 }
 
@@ -55,8 +55,6 @@ export function foldTranscript(records) {
     } else if (record.type === 'agent-message') {
       turn.messages.push({ seq: record.seq, at: record.at, outputKind: record.outputKind, text: record.text,
         ...(record.outputId ? { outputId: record.outputId } : {}), ...(record.complete ? { complete: true } : {}) });
-    } else if (record.type === 'tool') {
-      turn.tools.push({ seq: record.seq, at: record.at, tool: record.tool, reason: record.reason });
     } else if (record.type === 'final') {
       turn.final = record.text;
     } else if (record.type === 'turn-end') {

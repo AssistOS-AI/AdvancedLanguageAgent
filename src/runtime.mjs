@@ -1,15 +1,8 @@
-import { mkdir, mkdtemp, rm, symlink } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-
 import { createCodingAgentService } from './coding-agents/service.mjs';
 import { applyCodingAgentOverrides } from './config.mjs';
 import { ALAError, EXIT_CODES } from './errors.mjs';
 import { normalizeResult } from './output.mjs';
 import { createPermissionRequestManager, validatePermissionMode } from './permission-requests.mjs';
-
-const internalSkillsDirectory = fileURLToPath(new URL('./internal-skills', import.meta.url));
 
 export function createDiagnosticLogger(stream = process.stderr, env = process.env) {
   const debugEnabled = env.ALA_DEBUG === '1' || env.ALA_DEBUG === 'true';
@@ -22,36 +15,8 @@ export function createDiagnosticLogger(stream = process.stderr, env = process.en
   };
 }
 
-function runtimeOptions(options, env) {
-  const envTags = env.ALA_TAGS ? env.ALA_TAGS.split(',').map((tag) => tag.trim()).filter(Boolean) : [];
-  return {
-    model: options.model || env.ALA_MODEL || null,
-    tags: options.tags.length > 0 ? options.tags : envTags,
-    reasoningEffort: options.reasoningEffort || env.ALA_REASONING_EFFORT || null
-  };
-}
-
-// ALA ships one internal code skill that delegates an execution to the selected
-// coding-agent backend. MainAgent discovers it through a temporary registry, so
-// no caller-owned skill layout is ever inspected or mounted as a task catalog.
-async function createInternalSkillRegistry() {
-  const registryPath = await mkdtemp(resolve(tmpdir(), 'ala-skills-'));
-  try {
-    const wrapperPath = resolve(registryPath, 'source-0');
-    await mkdir(wrapperPath);
-    await symlink(internalSkillsDirectory, resolve(wrapperPath, 'skills'), process.platform === 'win32' ? 'junction' : 'dir');
-  } catch (error) {
-    await rm(registryPath, { recursive: true, force: true });
-    throw error;
-  }
-  return {
-    path: registryPath,
-    async cleanup() { await rm(registryPath, { recursive: true, force: true }); }
-  };
-}
-
+// Every execution runs on a coding-agent backend; ALA has no direct model route.
 export async function createRuntime({
-  achillesModule,
   codingAgents = [],
   codingAgentModels = {},
   codingAgentEfforts = {},
@@ -69,12 +34,6 @@ export async function createRuntime({
   sessionState = null
 }) {
   validatePermissionMode(permissionMode);
-  if (typeof achillesModule.MainAgent !== 'function' || typeof achillesModule.discoverSkills !== 'function') {
-    throw new ALAError(
-      'Resolved AchillesAgentLib does not expose MainAgent and discoverSkills.',
-      EXIT_CODES.repository
-    );
-  }
   const logger = createDiagnosticLogger(diagnostics, env);
   const permissionRequests = createPermissionRequestManager({ eventSink, logger });
   // The configured default agent when it is installed, otherwise the first available.
@@ -87,7 +46,6 @@ export async function createRuntime({
     { models: codingAgentModels, efforts: codingAgentEfforts },
     { agent: overrideAgent, model: options.model, effort: options.effort }
   );
-  const registry = await createInternalSkillRegistry();
   const codingAgentService = createCodingAgentService({
     agents: codingAgents,
     workspace,
@@ -107,35 +65,6 @@ export async function createRuntime({
     eventSink,
     sessionState
   });
-  const selected = runtimeOptions(options, env);
-  let mainAgent;
-  try {
-    mainAgent = new achillesModule.MainAgent({
-      startDir: registry.path,
-      logger,
-      reasoningEffort: selected.reasoningEffort,
-      disableInternalSkills: true,
-      supervisor: {
-        async approve() { return 'approve'; },
-        getOutputWriter() {
-          return {
-            async write(message) {
-              if (message?.type !== 'tool_reason') return;
-              const tool = String(message.tool || '').trim();
-              const reason = String(message.reason || '').trim();
-              if (tool && reason) eventSink?.({ type: 'agentlib-tool', tool, reason });
-            }
-          };
-        }
-      }
-    });
-    await mainAgent.buildSkills();
-  } catch (error) {
-    await registry.cleanup();
-    await codingAgentService.close();
-    throw error;
-  }
-
   return {
     codingAgents,
     permissionRequests,
@@ -148,6 +77,9 @@ export async function createRuntime({
     },
     setCodingAgentModel(name, model) {
       codingAgentService.setModel(name, model);
+    },
+    setCodingAgentEffort(name, effort) {
+      codingAgentService.setEffort(name, effort);
     },
     setDefaultCodingAgent(name) {
       codingAgentService.setDefaultAgent(name);
@@ -164,36 +96,17 @@ export async function createRuntime({
         ? preferredAgent()
         : codingAgents.find((record) => record.name === agent && record.available);
       if (!selectedAgent) throw new ALAError(`Coding agent is not available: ${agent}`, EXIT_CODES.execution);
-      return mainAgent.executeSkill('coding-agent', prompt, {
-        signal,
-        context: { codingAgentService, codingAgentPreference: agent }
-      });
+      return codingAgentService.execute(prompt, { agent, signal });
     },
     async execute(prompt, executionOptions = {}) {
-      const common = {
-        model: selected.model,
-        tags: selected.tags.length > 0 ? selected.tags : null,
-        reasoningEffort: selected.reasoningEffort,
-        signal: executionOptions.signal || null,
-        context: {
-          codingAgentService,
-          codingAgentPreference: options.agent || 'auto'
-        }
-      };
-      if (options.agent || options.folders?.length || options.ignoredPaths?.length) {
-        return mainAgent.executeSkill('coding-agent', prompt, common);
-      }
-      return mainAgent.executePrompt(prompt, common);
+      return codingAgentService.execute(prompt, { agent: options.agent || 'auto', signal: executionOptions.signal || null });
     },
     cancel(reason = 'cancelled') {
       codingAgentService.cancel(reason);
-      mainAgent.cancelCurrentSession(reason);
     },
     async close() {
       permissionRequests.setReplyCapability(false);
-      mainAgent.shutdown();
       await codingAgentService.close();
-      await registry.cleanup();
     }
   };
 }

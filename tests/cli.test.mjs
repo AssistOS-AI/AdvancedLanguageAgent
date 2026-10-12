@@ -40,7 +40,7 @@ test('returns the usage exit code for invalid arguments', async () => {
   assert.match(removedOptionStderr.read(), /Unknown option: --task-repo/);
 });
 
-test('lists detected coding agents without loading AchillesAgentLib', async (context) => {
+test('lists detected coding agents', async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-cli-agents-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const binary = join(root, 'codex');
@@ -68,6 +68,20 @@ test('lists detected coding agents without loading AchillesAgentLib', async (con
     cwd: root
   }), 0);
   assert.equal(textStdout.read(), 'codex\n');
+});
+
+test('fails without running anything when no coding agent is installed', async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-cli-no-agent-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  for (const argv of [['Summarize this'], ['--ca', 'codex', 'Summarize this']]) {
+    const stdout = captureStream();
+    const stderr = captureStream();
+    const code = await runCli({ argv, env: { HOME: join(root, 'home'), PATH: root }, stdin: inputStream(), stdout, stderr,
+      cwd: root });
+    assert.equal(code, 5);
+    assert.equal(stdout.read(), '');
+    assert.match(stderr.read(), /No coding agent is available/);
+  }
 });
 
 test('delegates explicitly to a detected coding agent with clean stdout', {
@@ -117,7 +131,7 @@ if [ "$1" = 'app-server' ]; then
   while IFS= read -r request; do
     case "$request" in
       *'"method":"initialize"'*) printf '%s\n' '{"id":1,"result":{"userAgent":"test"}}' ;;
-      *'"method":"model/list"'*) printf '%s\n' '{"id":2,"result":{"data":[{"id":"gpt-test"}],"nextCursor":null}}' ;;
+      *'"method":"model/list"'*) printf '%s\n' '{"id":2,"result":{"data":[{"id":"gpt-test","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]}],"nextCursor":null}}' ;;
     esac
   done
   exit 0
@@ -145,8 +159,12 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"s
       '/agent use codex',
       '/agent list',
       '/agent codex models',
+      '/agent codex effort high',
       '/agent codex model gpt-test',
+      '/agent codex effort turbo',
+      '/agent codex effort high',
       '/agent codex do this',
+      '/agent codex effort default',
       '/agent codex model default',
       '/quit',
       ''
@@ -170,6 +188,11 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"s
   assert.match(diagnostics, /Native permissions: ask-for-approval/);
   assert.match(diagnostics, /codex model set to gpt-test/);
   assert.match(diagnostics, /codex model reset to agent default/);
+  assert.match(diagnostics, /Set a model first: \/agent codex model <model-name>/);
+  assert.match(diagnostics, /gpt-test does not advertise effort turbo; supported: low, high/);
+  assert.match(diagnostics, /codex effort set to high/);
+  assert.match(diagnostics, /codex effort reset to model default/);
+  assert.match(diagnostics, /\/agent <name> effort <effort>\s+Persist the effort/);
   const persistedConfig = JSON.parse(await readFile(join(root, 'missing.json'), 'utf8'));
   assert.deepEqual(persistedConfig, { codingAgent: 'codex', models: {}, efforts: {} });
 });

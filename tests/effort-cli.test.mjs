@@ -68,6 +68,6 @@ if (process.argv.includes('app-server')) {
   }
   const stderr = captureStream();
   assert.equal(await runCli({ argv: ['--home', home, '--cwd', cwd, '--effort', 'unsupported', 'Inspect'], env,
-    stdin: inputStream(), stdout: captureStream(), stderr, cwd: root }), 5);
+    stdin: inputStream(), stdout: captureStream(), stderr, cwd: root }), 2);
   assert.match(stderr.read(), /does not advertise this effort/);
 });

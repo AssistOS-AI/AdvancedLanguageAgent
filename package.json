@@ -19,8 +19,5 @@
   "engines": {
     "node": ">=20"
   },
-  "dependencies": {
-    "ploinky-agent-lib": "git+https://github.com/AssistOS-AI/AchillesAgentLib.git#master"
-  },
   "license": "MIT"
 }

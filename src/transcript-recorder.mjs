@@ -25,9 +25,6 @@ export function createTranscriptRecorder(sessionState, turnId) {
         pending.text += String(event.message || '');
         if (event.outputComplete) { pending.complete = true; flush(); }
         else if (pending.text.length >= FLUSH_BYTES) flush();
-      } else if (event.type === 'agentlib-tool') {
-        flush();
-        sessionState.append('tool', { turnId, tool: event.tool, reason: event.reason });
       }
     },
     async finish({ result = null, status, error = null }) {

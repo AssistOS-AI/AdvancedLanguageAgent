@@ -7,11 +7,8 @@ const valueOptions = new Map([
   ['--url', 'url'],
   ['--output', 'output'],
   ['--model', 'model'],
+  ['--effort', 'effort'],
   ['--permissions', 'permissionMode'],
-  ['--tag', 'tags'],
-  ['--reasoning-effort', 'reasoningEffort'],
-  ['--model-config', 'modelConfigPath'],
-  ['--achilles-path', 'achillesPath'],
   ['--config', 'configPath'],
   ['--agent', 'agent'],
   ['--ca', 'agent'],
@@ -24,7 +21,7 @@ const valueOptions = new Map([
   ['--MCPServers', 'mcpServers']
 ]);
 
-const repeatableOptions = new Set(['tags', 'ignoredPaths']);
+const repeatableOptions = new Set(['ignoredPaths']);
 const sourceOptions = new Map([
   ['--text', 'text'],
   ['--file', 'file'],
@@ -46,7 +43,6 @@ function defaultExecutionOptions() {
     sources: [],
     folders: [],
     ignoredPaths: [],
-    tags: [],
     interactive: false,
     permissionMode: 'full-access',
     force: false,
@@ -138,12 +134,12 @@ export function parseArguments(argv) {
   }
   if (options.task) options.instructionParts.unshift(options.task);
   validatePermissionMode(options.permissionMode);
+  if (options.effort !== undefined && !/^[A-Za-z0-9_-]+$/u.test(options.effort)) {
+    throw new ALAError('--effort requires a native effort name or default.', EXIT_CODES.usage);
+  }
 
   if (options.agent && !['auto', 'codex', 'opencode', 'pi', 'claude'].includes(options.agent)) {
     throw new ALAError('--agent must be auto, codex, opencode, pi, or claude.', EXIT_CODES.usage);
-  }
-  if (options.agent && (options.tags.length > 0 || options.reasoningEffort || options.modelConfigPath)) {
-    throw new ALAError('--ca cannot be combined with tag, reasoning-effort, or model-config overrides.', EXIT_CODES.usage);
   }
   return options;
 }
@@ -181,11 +177,9 @@ Execution options:
   --output <path>            Write the result to a file
   --force                    Permit overwriting the output file
   --interactive, -i          Start or retain an interactive session
-  --model <value>            Override the model or model tag
-  --tag <tag>                Add a model-selection tag
-  --reasoning-effort <value> Override reasoning effort
-  --model-config <path>      Override AchillesAgentLib model configuration
-  --achilles-path <path>     Override AchillesAgentLib resolution
+  --model <value>            Override the selected coding agent's model for this execution
+  --effort <value|default>   Override the selected coding agent's effort for this execution;
+                             default clears the configured effort
   --config <path>            Override the ALA configuration file
   Interactive: /help         Show every interactive command and its behavior
   --help, -h                 Show help

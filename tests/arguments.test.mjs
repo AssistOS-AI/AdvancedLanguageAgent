@@ -3,16 +3,18 @@ import assert from 'node:assert/strict';
 
 import { parseArguments } from '../src/arguments.mjs';
 
-test('parses ordered payload sources and repeatable tag options', () => {
+test('parses ordered payload sources and rejects the removed model-library options', () => {
   const options = parseArguments([
     '--text', 'alpha', '--file', 'input.md', '--url', 'https://example.test/input',
-    '--stdin', '--tag', 'documentation',
+    '--stdin',
     'Rewrite', 'this'
   ]);
   assert.equal(options.command, 'execute');
   assert.deepEqual(options.instructionParts, ['Rewrite', 'this']);
   assert.deepEqual(options.sources.map((source) => source.type), ['text', 'file', 'url', 'stdin']);
-  assert.deepEqual(options.tags, ['documentation']);
+  for (const option of ['--tag', '--reasoning-effort', '--model-config', '--achilles-path']) {
+    assert.throws(() => parseArguments([option, 'value', 'task']), new RegExp(`Unknown option: ${option}`));
+  }
 });
 
 test('parses coding-agent discovery and explicit delegation options', () => {
@@ -86,13 +88,12 @@ test('explicit mount targets and expose are parsed without consuming the task', 
   assert.throws(() => parseArguments(['--folder', '/source', 'at']), /requires a value/);
 });
 
-test('effort selects coding-agent execution and validates native names and explicit reset', () => {
-  assert.equal(parseArguments(['--effort', 'high']).agent, 'auto');
+test('effort validates native names and explicit reset', () => {
+  assert.equal(parseArguments(['--effort', 'high']).effort, 'high');
   assert.equal(parseArguments(['--ca', 'claude', '--model', 'opus', '--effort', 'max']).effort, 'max');
   assert.equal(parseArguments(['--effort', 'default']).effort, 'default');
   assert.throws(() => parseArguments(['--effort']), /requires a value/);
   for (const value of ['', 'high\ninvalid', 'high effort']) {
     assert.throws(() => parseArguments(['--effort', value]), /native effort name/);
   }
-  assert.throws(() => parseArguments(['--effort', 'high', '--reasoning-effort', 'high']), /cannot be combined/);
 });

@@ -4,7 +4,6 @@ import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 
 import { HELP_TEXT, parseArguments } from './arguments.mjs';
-import { loadAchillesAgentLib } from './achilles-loader.mjs';
 import { loadConfig, resolveConfigPath, saveConfig } from './config.mjs';
 import { ALAError, asALAError, EXIT_CODES } from './errors.mjs';
 import { composePrompt, loadRequest } from './input.mjs';
@@ -30,6 +29,8 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
   /agent <name> models           List models available to a coding-agent backend
   /agent <name> model <model>    Persist the model used by a coding-agent backend
   /agent <name> model default    Remove the override and use the agent default
+  /agent <name> effort <effort>  Persist the effort of the backend's configured model
+  /agent <name> effort default   Remove the effort and use the model default
   /agent use <name>              Persist the default coding agent
   /agent auto <prompt>           Delegate to the first available backend
   /agent codex <prompt>          Delegate to Codex
@@ -129,6 +130,34 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
               io.stderr.write(useDefault
                 ? `ala: ${action} model reset to agent default\n`
                 : `ala: ${action} model set to ${model}\n`);
+            } else if (['codex', 'opencode', 'pi', 'claude'].includes(action) && parts[2] === 'effort') {
+              const effort = parts[3];
+              if (parts.length !== 4 || !/^[A-Za-z0-9_-]+$/u.test(effort)) {
+                throw new ALAError(`Usage: /agent ${action} effort <effort|default>`, EXIT_CODES.usage);
+              }
+              const useDefault = effort === 'default';
+              const model = activeConfig.models[action];
+              if (!useDefault) {
+                if (!model) throw new ALAError(`Set a model first: /agent ${action} model <model-name>`, EXIT_CODES.usage);
+                // The model's native catalog decides which effort names exist.
+                const catalog = await runtime.listCodingAgentModels(action, { signal, details: true });
+                const supported = catalog.find((entry) => entry.id === model)?.efforts || [];
+                if (!supported.includes(effort)) {
+                  throw new ALAError(`${model} does not advertise effort ${effort}`
+                    + (supported.length ? `; supported: ${supported.join(', ')}` : '; it advertises no effort levels'),
+                  EXIT_CODES.usage);
+                }
+              }
+              const nextEfforts = { ...activeConfig.efforts };
+              if (useDefault) delete nextEfforts[action];
+              else nextEfforts[action] = effort;
+              const nextConfig = { ...activeConfig, efforts: nextEfforts };
+              await saveConfig(configPath, nextConfig);
+              activeConfig = nextConfig;
+              runtime.setCodingAgentEffort(action, useDefault ? null : effort);
+              io.stderr.write(useDefault
+                ? `ala: ${action} effort reset to model default\n`
+                : `ala: ${action} effort set to ${effort}\n`);
             } else if (action === 'use') {
               const name = parts[2];
               if (parts.length !== 3 || !['codex', 'opencode', 'pi', 'claude'].includes(name)) {
@@ -188,8 +217,6 @@ async function runExecution(options, io, env) {
     io.stdout.write(`${await packageVersion()}\n`);
     return EXIT_CODES.success;
   }
-  if (options.modelConfigPath) env.LLM_MODELS_CONFIG_PATH = resolve(io.cwd, options.modelConfigPath);
-
   const executionCwd = options.cwd ? await realpath(resolve(io.cwd, options.cwd)) : null;
   if (executionCwd && !(await stat(executionCwd)).isDirectory()) {
     throw new ALAError('--cwd must reference an existing directory.', EXIT_CODES.usage);
@@ -229,23 +256,18 @@ async function runExecution(options, io, env) {
   }
   const eventSink = createRuntimeEventSink({ stream: io.stderr,
     env: options.sessionId ? { ...env, ALA_EVENT_STREAM: '1' } : env });
-  const achilles = await loadAchillesAgentLib({
-    overridePath: options.achillesPath,
-    env,
-    cwd: io.cwd
-  });
-  // A persistent session always runs on a coding agent: the requested one, or
-  // auto, which resumes the session's own agent or else picks the configured
-  // default, then the first available one.
-  if (options.sessionId && !options.agent) options.agent = 'auto';
+  // Every execution runs on a coding agent: the requested one, or auto, which
+  // resumes a session's own agent or else picks the configured default, then
+  // the first available one. Without any installed agent ALA cannot run.
+  options.agent ||= 'auto';
   const codingAgents = await discoverCodingAgents({ env: runtimeEnv });
-  if (options.agent) {
-    const available = codingAgents.filter((agent) => agent.available);
-    const requested = options.agent || 'auto';
-    const selected = requested === 'auto'
-      ? available.find((agent) => agent.name === config.codingAgent) || available[0]
-      : available.find((agent) => agent.name === requested);
-    if (!selected) throw new ALAError(`Coding agent is not available: ${requested}`, EXIT_CODES.execution);
+  const available = codingAgents.filter((agent) => agent.available);
+  if (available.length === 0) {
+    throw new ALAError('No coding agent is available. Install and authenticate Codex, OpenCode, Pi, or Claude Code.',
+      EXIT_CODES.execution);
+  }
+  if (options.agent !== 'auto' && !available.some((agent) => agent.name === options.agent)) {
+    throw new ALAError(`Coding agent is not available: ${options.agent}`, EXIT_CODES.execution);
   }
   const sessionState = options.sessionId ? await openSessionState({
     id: options.sessionId, sessionsRoot: resolveSessionsRoot({ env, cwd: executionCwd }), resume: options.resumeSession
@@ -254,7 +276,6 @@ async function runExecution(options, io, env) {
   const sink = recorder ? (event) => { recorder.observe(event); eventSink(event); } : eventSink;
   let runtime;
   try { runtime = await createRuntime({
-    achillesModule: achilles.module,
     codingAgents,
     codingAgentModels: config.models,
     codingAgentEfforts: config.efforts,

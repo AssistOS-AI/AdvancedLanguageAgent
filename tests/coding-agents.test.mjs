@@ -4,7 +4,6 @@ import { access, chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promise
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import * as achillesModule from 'ploinky-agent-lib';
 import {
   buildCodexArguments,
   createCodexEventParser,
@@ -329,7 +328,7 @@ test('service cancellation releases pending approval and interrupts the active n
   assert.deepEqual(events.at(-1), { type: 'coding-agent-request-resolved', id: answer.id, reason: 'cancelled' });
 });
 
-test('registers and explicitly executes the built-in coding-agent Code Skill', {
+test('executes a task on the selected coding agent', {
   skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
 }, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-codex-fake-'));
@@ -339,12 +338,10 @@ printf '%s\n' '{"type":"thread.started","thread_id":"thread-test"}'
 printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"delegated"}}'
 `);
   const runtime = await createRuntime({
-    achillesModule,
-    repositories: [],
     codingAgents: [{ name: 'codex', available: true, binary }],
-    options: { agent: 'codex', tags: [] },
+    options: { agent: 'codex' },
     diagnostics: captureStream()
   });
   context.after(() => runtime.close());
-  assert.equal((await runtime.execute('perform task')).result, 'delegated');
+  assert.equal(await runtime.execute('perform task'), 'delegated');
 });

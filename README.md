@@ -1,16 +1,10 @@
 # Advanced Language Agent
 
-[Advanced Language Agent](docs/index.html) (ALA) is a command-line application for language and documentation tasks. It executes general requests through AchillesAgentLib and delegates bounded work to an installed coding agent. ALA mounts exactly the directories the caller supplies through `--cwd` and `--folder`; it does not discover, create, mount or overlay task skills. ALA writes the result to standard output or a file.
+[Advanced Language Agent](docs/index.html) (ALA) is a command-line application for language and documentation tasks. It runs every request on an installed coding agent (Codex, OpenCode, Pi, or Claude Code) inside a Bubblewrap sandbox. ALA mounts exactly the directories the caller supplies through `--cwd` and `--folder`; it does not discover, create, mount or overlay task skills. ALA writes the result to standard output or a file.
 
 ## Install
 
-ALA requires Node.js 20 or newer, npm, and Git. Coding-agent execution additionally requires Linux with Bubblewrap (`bwrap`); ALA fails closed instead of starting Codex, OpenCode, Pi, or Claude Code without it. Coding-agent CLIs remain installed once in their normal system or user locations: ALA never reinstalls or copies them. It resolves each launcher to its existing runtime prefix, mounts that prefix read-only, and prefers its matching executable path inside the sandbox. Prefixes below the mounted working directory use a private runtime path so the workspace mount cannot hide the installed executable; other prefixes retain their existing paths. An external target of `/etc/resolv.conf` is mounted read-only when systemd-resolved stores it under `/run`. Codex and OpenCode also require Bubblewrap to mount a private procfs; ALA never substitutes the caller's `/proc`. It first uses a private user namespace. In a capability-bounded nested container where that extra user namespace cannot mount procfs, ALA may use the outer sandbox capability to construct the PID namespace and private procfs, then drops all capabilities before starting the coding agent. Codex is told not to construct a second native sandbox: its `danger-full-access` setting is scoped inside ALA's Bubblewrap boundary, where only the mounted directories and controlled home remain writable. Direct MainAgent execution remains available without a coding agent. From the repository root, run:
-
-```sh
-npm install
-```
-
-This installs AchillesAgentLib from the Git dependency in `package.json`.
+ALA requires Node.js 20 or newer, Linux with Bubblewrap (`bwrap`), and at least one installed and authenticated coding agent. Every execution fails with exit code 5 and `No coding agent is available. Install and authenticate Codex, OpenCode, Pi, or Claude Code.` when none is detected. ALA fails closed instead of starting Codex, OpenCode, Pi, or Claude Code without Bubblewrap. Coding-agent CLIs remain installed once in their normal system or user locations: ALA never reinstalls or copies them. It resolves each launcher to its existing runtime prefix, mounts that prefix read-only, and prefers its matching executable path inside the sandbox. Prefixes below the mounted working directory use a private runtime path so the workspace mount cannot hide the installed executable; other prefixes retain their existing paths. An external target of `/etc/resolv.conf` is mounted read-only when systemd-resolved stores it under `/run`. Codex and OpenCode also require Bubblewrap to mount a private procfs; ALA never substitutes the caller's `/proc`. It first uses a private user namespace. In a capability-bounded nested container where that extra user namespace cannot mount procfs, ALA may use the outer sandbox capability to construct the PID namespace and private procfs, then drops all capabilities before starting the coding agent. Codex is told not to construct a second native sandbox: its `danger-full-access` setting is scoped inside ALA's Bubblewrap boundary, where only the mounted directories and controlled home remain writable. ALA has no runtime npm dependencies, so no package installation step is needed.
 
 Add the project's `bin` directory to `PATH`. Put this line in `~/.bashrc` when the repository is located at `$HOME/Desktop/work/AdvancedLanguageAgent`:
 
@@ -28,8 +22,7 @@ ala --help
 
 ## Private directories
 
-Pass repeatable `--ignore /absolute/directory` options to mask existing directories inside the coding-agent sandbox. Each masked directory appears empty and read-only; its name remains visible and its host contents remain unchanged. Masks cover canonical paths, folder aliases, and mounts sourced from ignored subdirectories. Invalid, missing, unmounted paths and masks covering the working directory are rejected. Supply the options again when resuming a session. This option selects sandboxed coding-agent execution.
-
+Pass repeatable `--ignore /absolute/directory` options to mask existing directories inside the coding-agent sandbox. Each masked directory appears empty and read-only; its name remains visible and its host contents remain unchanged. Masks cover canonical paths, folder aliases, and mounts sourced from ignored subdirectories. Invalid, missing, unmounted paths and masks covering the working directory are rejected. Supply the options again when resuming a session. 
 An embedding caller may explicitly export one read-only subtree with `--folder /project/.private/public at /project/public expose`. The export must have an explicit destination outside the masked paths and a source strictly below the ignored directory; exporting the ignored root or a writable subtree is rejected. Only that subtree is visible at the chosen destination. Ordinary aliases of ignored data stay masked, and additional ignores inside the exported subtree still apply. ALA does not select or inspect exported contents.
 
 ```sh
@@ -37,30 +30,6 @@ ala --ca auto --cwd /work/project --ignore /work/project/.private --task "Review
 ```
 
 ## Configure
-
-ALA can use [Soul Gateway](docs/wiki.html#definition-soul-gateway) or your own AchillesAgentLib-compatible model configuration.
-
-To use Soul Gateway, create a `.env` file in the directory where you run ALA or in one of its parent directories:
-
-```dotenv
-SOUL_GATEWAY_BASE_URL=https://your-soul-gateway.example
-SOUL_GATEWAY_API_KEY=your-api-key
-```
-
-AchillesAgentLib loads the first `.env` file it finds while walking upward from the current working directory. With the bundled model configuration, ALA uses the Soul Gateway `plan` model by default.
-
-To configure your own models, point ALA to another AchillesAgentLib model configuration:
-
-```sh
-export LLM_MODELS_CONFIG_PATH=/absolute/path/to/LLMConfig.json
-```
-
-Select a configured model for one invocation with `--model`, or set `ALA_MODEL` as the default:
-
-```sh
-ala --model fast "Summarize this text" --file report.md
-export ALA_MODEL=fast
-```
 
 User configuration lives in `$HOME/.ala/config.json`. Set `ALA_CONFIG_PATH` to another root directory when an embedding application needs an isolated configuration; ALA then uses `<ALA_CONFIG_PATH>/.ala/config.json`. The explicit `--config <file>` option remains available for a one-command file override.
 
@@ -88,7 +57,7 @@ ala agent list
 
 A single-task command runs in one-shot mode. Without `--cwd`, ALA creates a temporary working directory and retains it after the command finishes. With `--cwd`, it uses the existing directory directly and never deletes it. Reusing cwd alone does not resume a conversation.
 
-Run a general request:
+Run a request:
 
 ```sh
 ala "Summarize the supplied report" --file report.md
@@ -100,14 +69,20 @@ Write the result to a file:
 ala "Summarize this report" --file report.md --output summary.md
 ```
 
-MainAgent may delegate suitable complex work to an installed [coding agent](docs/wiki.html#definition-coding-agent) automatically. Force one supported backend with `--ca`. `auto` uses `codingAgent` from the configuration when that backend is installed, otherwise the first available of Codex, OpenCode, Pi, Claude Code. That order is fixed. `--agent` remains a compatibility alias:
+Every execution runs on an installed [coding agent](docs/wiki.html#definition-coding-agent). Select one supported backend with `--ca`; it defaults to `auto`, which uses `codingAgent` from the configuration when that backend is installed, otherwise the first available of Codex, OpenCode, Pi, Claude Code. That order is fixed. `--agent` remains a compatibility alias:
 
 ```sh
 ala --ca codex "Research this topic and produce a verified summary"
 ala --ca auto "Plan and validate this multi-step language task"
 ```
 
-The selected coding-agent CLI must already be authenticated through its own login mechanism. When `models` has no entry for the selected backend, ALA passes no model option and the CLI uses its own default. In an interactive session, `/agent use <codex|opencode|pi|claude>` saves `codingAgent`, `/agent <codex|opencode|pi|claude> models` asks that backend for its available model identifiers, `/agent <codex|opencode|pi|claude> model <model-name>` saves the backend's entry in `models`, and `/agent <codex|opencode|pi|claude> model default` removes it so the agent CLI chooses its default again. Both model commands clear that backend's saved effort. ALA applies each change to every subsequent invocation. With `--ca`, `--model` replaces the selected backend's saved model for one invocation and drops its saved effort when the model differs. `--tag`, `--reasoning-effort`, and `--model-config` apply only to direct LLMAgent execution. ALA runs every agent and model-catalog process inside Bubblewrap, clears inherited environment variables before restoring a backend-specific allowlist, mounts the caller's `--cwd` and `--folder` directories at their canonical or aliased paths, exposes the existing backend runtime read-only, exposes only controlled authentication/state directories read-write, and retains the temporary directory it created when `--cwd` is omitted.
+The selected coding-agent CLI must already be authenticated through its own login mechanism. When `models` has no entry for the selected backend, ALA passes no model option and the CLI uses its own default. In an interactive session, `/agent use <codex|opencode|pi|claude>` saves `codingAgent`, `/agent <codex|opencode|pi|claude> models` asks that backend for its available model identifiers, `/agent <codex|opencode|pi|claude> model <model-name>` saves the backend's entry in `models`, and `/agent <codex|opencode|pi|claude> model default` removes it so the agent CLI chooses its default again. Both model commands clear that backend's saved effort. ALA applies each change to every subsequent invocation. `--model` replaces the selected backend's saved model for one invocation and drops its saved effort when the model differs:
+
+```sh
+ala --ca codex --model gpt-5.6-sol "Summarize this text" --file report.md
+```
+
+ALA runs every agent and model-catalog process inside Bubblewrap, clears inherited environment variables before restoring a backend-specific allowlist, mounts the caller's `--cwd` and `--folder` directories at their canonical or aliased paths, exposes the existing backend runtime read-only, exposes only controlled authentication/state directories read-write, and retains the temporary directory it created when `--cwd` is omitted.
 
 Claude Code (`--ca claude`) needs version 2.1.0 or newer and uses only Anthropic credentials: its own `claude` login, or `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, or `CLAUDE_CODE_OAUTH_TOKEN` from the environment. ALA points `CLAUDE_CONFIG_DIR` at `.claude` in the sandbox home, so the login, `.claude.json`, settings and native sessions all live there. Without `--home`, ALA mounts the host's `CLAUDE_CONFIG_DIR`, or `~/.claude` when that variable is unset. `/agent claude models` reads the model list from the CLI's `initialize` response and makes no model call.
 
@@ -133,7 +108,7 @@ ala --home /robot/home --cwd /project --ca codex \
   --session-id 11111111-1111-4111-8111-111111111111 --resume-session --task "Add tests"
 ```
 
-ALA appends every turn to `$ALA_SESSIONS/sessions/<uuid>.jsonl`, which defaults to `<cwd>/.ala/sessions/<uuid>.jsonl`. Each line is one JSON record: the session header, the user's text, buffered coding-agent messages, AchillesAgentLib tool calls, the final result, the turn status, and the backend with its native continuation. ALA never rewrites a line. `--resume-session` reads the last continuation from that file. A session whose first turn failed before the coding agent started has no continuation yet, so the next call omits `--resume-session`; once a continuation exists, ALA refuses to continue without it. Stop interrupts execution and records the turn as `interrupted`. Missing native state fails explicitly rather than starting an unrelated conversation. A `.lock` file next to the transcript blocks a second process; a lock written on another host is never removed automatically.
+ALA appends every turn to `$ALA_SESSIONS/sessions/<uuid>.jsonl`, which defaults to `<cwd>/.ala/sessions/<uuid>.jsonl`. Each line is one JSON record: the session header, the user's text, buffered coding-agent messages, the final result, the turn status, and the backend with its native continuation. ALA never rewrites a line. `--resume-session` reads the last continuation from that file. A session whose first turn failed before the coding agent started has no continuation yet, so the next call omits `--resume-session`; once a continuation exists, ALA refuses to continue without it. Stop interrupts execution and records the turn as `interrupted`. Missing native state fails explicitly rather than starting an unrelated conversation. A `.lock` file next to the transcript blocks a second process; a lock written on another host is never removed automatically.
 
 Pass `--turn-id <id>` to label the turn's records with your own identifier of 1 to 128 letters, digits, `-` or `_`. Without it, ALA generates a random UUID. The option requires `--session-id`.
 
@@ -163,9 +138,9 @@ Start an interactive session:
 ala
 ```
 
-Unlike one-shot execution, this process retains one ALA runtime across prompts. MainAgent conversation state remains available, the working directory is reused after its first creation, and the first coding backend used by the session is pinned with its native continuation until the session exits.
+Unlike one-shot execution, this process retains one ALA runtime across prompts. The working directory is reused after its first creation, and the first coding backend used by the session is pinned with its native continuation until the session exits.
 
-Interactive sessions also accept local slash commands. `/agent ...` commands are handled by ALA and are never sent to the LLM:
+Interactive sessions also accept local slash commands. `/agent ...` commands are handled by ALA and are never sent to the coding agent:
 
 ```text
 /help
@@ -173,6 +148,8 @@ Interactive sessions also accept local slash commands. `/agent ...` commands are
 /agent use opencode
 /agent codex models
 /agent codex model gpt-5.6-sol
+/agent codex effort high
+/agent codex effort default
 /agent codex model default
 /agent codex Review this task
 /agent auto Produce a verified multi-step summary
@@ -182,7 +159,7 @@ Interactive sessions also accept local slash commands. `/agent ...` commands are
 /quit
 ```
 
-`/help` lists every interactive command. `/agent` commands discover a backend, set the default backend, inspect or select its native model, and delegate prompts. While a terminal waits, ALA renders a transient thinking indicator and supported live backend events on standard error, leaving the normalized final result on standard output. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
+`/help` lists every interactive command. `/agent` commands discover a backend, set the default backend, inspect or select its native model and that model's effort, and delegate prompts. `/agent <name> effort <effort>` requires a configured model and accepts only an effort the model's native catalog advertises; `default` removes it, and changing the model also removes it. While a terminal waits, ALA renders a transient thinking indicator and supported live backend events on standard error, leaving the normalized final result on standard output. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
 
 `/permissions` reports the requested native policy. Supplying `ask-for-approval` or `full-access` changes subsequent executions in this interactive session without resetting the native conversation or saving configuration. The initial policy comes from `--permissions`, defaulting to `full-access`. Pi rejects ask-for-approval. The command does not add a reply channel: without a reply-capable embedding host, native operations requiring approval are declined.
 

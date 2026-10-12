@@ -234,6 +234,15 @@ export function createCodingAgentService({
       if (model === null || model === undefined || String(model).trim() === '') delete configuredModels[name];
       else configuredModels[name] = String(model).trim();
     },
+    // Sets or clears the effort of the backend's configured model; support is checked at execution time.
+    setEffort(name, effort = null) {
+      if (!['codex', 'opencode', 'pi', 'claude'].includes(name)) {
+        throw new ALAError(`Unknown coding agent: ${name}`, EXIT_CODES.usage);
+      }
+      if (!effort) { delete configuredEfforts[name]; return; }
+      if (!configuredModels[name]) throw new ALAError(`${name} effort requires a configured model.`, EXIT_CODES.usage);
+      configuredEfforts[name] = effort;
+    },
     setDefaultAgent(name) {
       if (!['codex', 'opencode', 'pi', 'claude'].includes(name)) throw new ALAError(`Unknown coding agent: ${name}`, EXIT_CODES.usage);
       defaultAgent = name;
