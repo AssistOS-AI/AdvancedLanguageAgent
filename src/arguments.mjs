@@ -56,17 +56,25 @@ function parseAlias(argv, index, option) {
   return { alias: optionValue(argv, index + 1, `${option} as`), index: index + 2 };
 }
 
+const AGENT_USAGE = 'Usage: ala agent list [--json] | ala agent models <codex|opencode|pi|claude> [--json] [--home <path>].';
+
 function parseAgentCommand(argv) {
   const options = {
     command: 'agent', action: argv[1] || null, json: false, help: false
   };
-  if (options.action !== 'list') {
-    throw new ALAError('Usage: ala agent list [--json].', EXIT_CODES.usage);
+  let index = 2;
+  if (options.action === 'models') {
+    options.agent = argv[2];
+    if (!['codex', 'opencode', 'pi', 'claude'].includes(options.agent)) throw new ALAError(AGENT_USAGE, EXIT_CODES.usage);
+    index = 3;
+  } else if (options.action !== 'list') {
+    throw new ALAError(AGENT_USAGE, EXIT_CODES.usage);
   }
-  for (let index = 2; index < argv.length; index += 1) {
+  for (; index < argv.length; index += 1) {
     const token = argv[index];
     if (token === '--json') options.json = true;
     else if (token === '--help') options.help = true;
+    else if (token === '--home' && options.action === 'models') { options.home = optionValue(argv, index, token); index += 1; }
     else throw new ALAError(`Unknown agent option: ${token}`, EXIT_CODES.usage);
   }
   return options;
@@ -149,6 +157,11 @@ export const HELP_TEXT = `Advanced Language Agent
 Usage:
   ala [options] [instruction...]
   ala agent list [--json]
+  ala agent models <codex|opencode|pi|claude> [--json] [--home <path>]
+
+Agent commands:
+  agent list                 List detected coding agents in the order codex, opencode, pi, claude
+  agent models <name>        List the agent's native models; --json adds each model's supported efforts
 
 Execution options:
   --ca <name>                Coding agent: auto, codex, opencode, pi, or claude (default: config

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile, chmod } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, writeFile, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -68,6 +68,40 @@ test('lists detected coding agents', async (context) => {
     cwd: root
   }), 0);
   assert.equal(textStdout.read(), 'codex\n');
+});
+
+test('lists one agent\'s native models with their efforts and removes its temporary workspace', {
+  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+}, async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-cli-models-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const binary = join(root, 'codex');
+  await writeFile(binary, `#!/bin/sh
+while IFS= read -r request; do
+  case "$request" in
+    *'"method":"initialize"'*) printf '%s\\n' '{"id":1,"result":{"userAgent":"test"}}' ;;
+    *'"method":"model/list"'*) printf '%s\\n' '{"id":2,"result":{"data":[{"id":"gpt-test","defaultReasoningEffort":"low","supportedReasoningEfforts":[{"reasoningEffort":"low"},{"reasoningEffort":"high"}]},{"id":"gpt-plain"}],"nextCursor":null}}' ;;
+  esac
+done
+`);
+  await chmod(binary, 0o700);
+  const env = { ...process.env, PATH: `${root}:/usr/bin`, HOME: join(root, 'home'), CODEX_BIN: binary,
+    CODEX_HOME: join(root, 'codex-state'), TMPDIR: root };
+  await mkdir(env.CODEX_HOME);
+  const run = async (argv) => {
+    const stdout = captureStream(), stderr = captureStream();
+    const code = await runCli({ argv, env, stdin: inputStream(), stdout, stderr, cwd: root });
+    return { code, stdout: stdout.read(), stderr: stderr.read() };
+  };
+  const json = await run(['agent', 'models', 'codex', '--json']);
+  assert.equal(json.code, 0, json.stderr);
+  assert.deepEqual(JSON.parse(json.stdout), [{ id: 'gpt-test', efforts: ['low', 'high'], defaultEffort: 'low' },
+    { id: 'gpt-plain', efforts: [] }]);
+  assert.deepEqual(await run(['agent', 'models', 'codex']), { code: 0, stdout: 'gpt-test\ngpt-plain\n', stderr: '' });
+  const missing = await run(['agent', 'models', 'pi']);
+  assert.equal(missing.code, 5);
+  assert.match(missing.stderr, /Coding agent is not available: pi/);
+  assert.deepEqual((await readdir(root)).filter((name) => name.startsWith('ala-models-')), []);
 });
 
 test('fails without running anything when no coding agent is installed', async (context) => {

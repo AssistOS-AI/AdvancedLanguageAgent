@@ -53,6 +53,14 @@ ALA also detects authenticated Codex, OpenCode, Pi, and Claude Code installation
 ala agent list
 ```
 
+List one agent's models, and with `--json` the efforts each model supports, without starting a conversation:
+
+```sh
+ala agent models codex --json
+```
+
+`--home <path>` lists the models visible to the agent's login in that home. An agent that is not detected fails with exit code 5.
+
 ## Run a single task
 
 A single-task command runs in one-shot mode. Without `--cwd`, ALA creates a temporary working directory and retains it after the command finishes. With `--cwd`, it uses the existing directory directly and never deletes it. Reusing cwd alone does not resume a conversation.

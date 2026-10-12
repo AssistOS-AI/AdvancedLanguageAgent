@@ -1,5 +1,6 @@
-import { readFile, realpath, stat } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 
@@ -12,7 +13,8 @@ import { createPermissionCommand } from './interactive-permissions.mjs';
 import { createThinkingIndicator } from './interactive-status.mjs';
 import { writeResult } from './output.mjs';
 import { SANDBOX_WORKSPACE } from './coding-agents/paths.mjs';
-import { createRuntime } from './runtime.mjs';
+import { createDiagnosticLogger, createRuntime } from './runtime.mjs';
+import { createCodingAgentService } from './coding-agents/service.mjs';
 import { createRuntimeEventSink } from './runtime-events.mjs';
 import { discoverCodingAgents } from './coding-agents/discovery.mjs';
 import { openSessionState, resolveSessionsRoot } from './session-state.mjs';
@@ -50,11 +52,45 @@ async function runAgentCommand(options, io, env) {
     io.stdout.write(`${HELP_TEXT}\n`);
     return EXIT_CODES.success;
   }
+  if (options.action === 'models') return listAgentModels(options, io, env);
   const agents = await discoverCodingAgents({ env });
   const names = agents.filter((agent) => agent.available).map((agent) => agent.name);
   if (options.json) io.stdout.write(`${JSON.stringify(names, null, 2)}\n`);
   else io.stdout.write(names.map((name) => `${name}\n`).join(''));
   return EXIT_CODES.success;
+}
+
+// Lists one agent's native model catalog, the same query as the interactive /agent <name> models, without opening
+// a conversation. The query runs in the Bubblewrap sandbox with a private temporary working directory that is removed
+// afterwards. --json returns each model with the efforts it advertises, so hosts can offer valid choices.
+async function listAgentModels(options, io, env) {
+  const home = options.home ? await realpath(resolve(io.cwd, options.home)) : null;
+  if (home && !(await stat(home)).isDirectory()) throw new ALAError('--home must reference an existing directory.', EXIT_CODES.usage);
+  const agentEnv = home ? { ...env, HOME: home, CODEX_HOME: resolve(home, '.codex') } : env;
+  const agents = await discoverCodingAgents({ env: agentEnv });
+  if (!agents.some((agent) => agent.name === options.agent && agent.available)) {
+    throw new ALAError(`Coding agent is not available: ${options.agent}`, EXIT_CODES.execution);
+  }
+  const workspace = await mkdtemp(join(tmpdir(), 'ala-models-'));
+  const controller = new AbortController();
+  const interrupt = () => controller.abort(new ALAError('Interrupted', EXIT_CODES.interrupted));
+  process.once('SIGINT', interrupt);
+  process.once('SIGTERM', interrupt);
+  const service = createCodingAgentService({ agents, workspace, home, cwd: workspace, env: agentEnv,
+    logger: createDiagnosticLogger(io.stderr, env) });
+  try {
+    const models = (await service.listModels(options.agent, { signal: controller.signal, details: true }))
+      .map((entry) => typeof entry === 'string' ? { id: entry, efforts: [] }
+        : { id: entry.id, efforts: entry.efforts || [], ...(entry.defaultEffort ? { defaultEffort: entry.defaultEffort } : {}) });
+    if (options.json) io.stdout.write(`${JSON.stringify(models, null, 2)}\n`);
+    else io.stdout.write(models.map((model) => `${model.id}\n`).join(''));
+    return EXIT_CODES.success;
+  } finally {
+    process.removeListener('SIGINT', interrupt);
+    process.removeListener('SIGTERM', interrupt);
+    await service.close();
+    await rm(workspace, { recursive: true, force: true });
+  }
 }
 
 function workspaceAliasTarget(alias) {
