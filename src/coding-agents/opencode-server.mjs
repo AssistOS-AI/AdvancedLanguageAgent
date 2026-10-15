@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 
+import { createOpenCodeHttpClient } from './opencode-http.mjs';
 import { executionError, runProcess, spawnProcess } from './process.mjs';
 import { createLineDecoder } from './streaming.mjs';
 
@@ -158,6 +159,8 @@ export async function startOpenCodeServer(input) {
   }
   const lifetime = AbortSignal.any([failed.signal, ...(signal ? [signal] : [])]);
   let instanceReady = false;
+  // Connections are scoped to this server instance and destroyed by stop().
+  const httpClient = createOpenCodeHttpClient();
   const request = async (path, { method = 'GET', body, signal: requestSignal = lifetime, stream = false } = {}) => {
     const url = new URL(path, base);
     url.searchParams.set('directory', workspace);
@@ -165,8 +168,8 @@ export async function startOpenCodeServer(input) {
     const timer = setTimeout(() => timeout.abort(new Error('OpenCode HTTP request timed out.')),
       instanceReady ? REQUEST_TIMEOUT_MS : startupTimeout);
     try {
-      const response = await fetch(url, {
-        method, redirect: 'error', signal: AbortSignal.any([requestSignal, timeout.signal]),
+      const response = await httpClient.request(url, {
+        method, signal: AbortSignal.any([requestSignal, timeout.signal]),
         headers: { authorization, 'x-opencode-directory': workspace,
           ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) })
@@ -182,6 +185,7 @@ export async function startOpenCodeServer(input) {
   };
   const stop = async () => {
     stopping = true;
+    httpClient.close();
     child.kill('SIGTERM');
     const timer = setTimeout(() => child.kill('SIGKILL'), 2000);
     try { await exited; } finally { clearTimeout(timer); }

@@ -150,7 +150,8 @@ const server = createServer(async (req, res) => {
   }
   json({}, 404);
 });
-server.listen(0, '127.0.0.1', () => {
+// OpenCode binds one well-known port for consecutive servers; tests can pin one origin.
+server.listen(Number(process.env.OPENCODE_FIXTURE_PORT || 0), '127.0.0.1', () => {
   writeFileSync('server-pid', String(process.pid));
   writeFileSync('server-address', `http://127.0.0.1:${server.address().port}`);
   log({ type: 'start', overlay: JSON.parse(process.env.OPENCODE_CONFIG_CONTENT) });
