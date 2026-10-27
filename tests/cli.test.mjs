@@ -191,6 +191,7 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"s
       '/permissions ask-for-approval',
       '/permissions full-access',
       '/agent use codex',
+      '/status',
       '/agent list',
       '/agent codex models',
       '/agent codex effort high',
@@ -209,7 +210,11 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"s
   });
   assert.equal(code, 0, stderr.read());
   const outputLines = stdout.read().trim().split('\n');
-  assert.deepEqual(outputLines, ['codex', 'gpt-test', 'slash result']);
+  // /status prints one padded line per agent; the session's configured codex is its default.
+  const statusLines = outputLines.filter((line) => /^(codex|opencode|pi|claude) {2,}/u.test(line));
+  assert.deepEqual(statusLines.map((line) => line.split(/\s+/u)[0]), ['codex', 'opencode', 'pi', 'claude']);
+  assert.match(statusLines[0], /^codex {5}available {6}.*default$/u);
+  assert.deepEqual(outputLines.filter((line) => !statusLines.includes(line)), ['codex', 'gpt-test', 'slash result']);
   const diagnostics = stderr.read();
   assert.equal(diagnostics.match(/Interactive commands:/g)?.length, 1);
   assert.match(diagnostics, /\/agent list\s+List detected coding-agent backends/);

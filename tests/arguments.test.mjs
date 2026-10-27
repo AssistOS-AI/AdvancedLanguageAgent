@@ -28,6 +28,12 @@ test('parses coding-agent discovery and explicit delegation options', () => {
   assert.throws(() => parseArguments(['agent', 'models']), /ala agent models <codex\|opencode\|pi\|claude>/);
   assert.throws(() => parseArguments(['agent', 'models', 'unknown']), /Usage: ala agent/);
   assert.throws(() => parseArguments(['agent', 'list', '--home', '/robot']), /Unknown agent option: --home/);
+  assert.deepEqual(parseArguments(['status', '--json', '--home', '/robot', '--config', 'ala.json']), {
+    command: 'status', json: true, help: false, home: '/robot', configPath: 'ala.json'
+  });
+  assert.deepEqual(parseArguments(['status']), { command: 'status', json: false, help: false });
+  assert.throws(() => parseArguments(['status', '--agent', 'codex']), /Unknown status option: --agent/);
+  assert.throws(() => parseArguments(['status', '--home']), /--home/);
   assert.equal(parseArguments(['--agent', 'codex', 'Plan', 'this']).agent, 'codex');
   assert.throws(() => parseArguments(['--agent', 'unknown', 'task']), /must be auto/);
   for (const flag of ['--agent', '--ca']) {

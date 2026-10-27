@@ -61,6 +61,15 @@ ala agent models codex --json
 
 `--home <path>` lists the models visible to the agent's login in that home. An agent that is not detected fails with exit code 5.
 
+See which agents are installed, which hold a login, and which one `--ca auto` would use:
+
+```sh
+ala status
+ala status --json --home /robots/analyst/home
+```
+
+`ala status` only checks that each agent's credential file, OpenCode database row, or allowed credential variable exists; it runs no agent and prints no credential. A reported login may still be expired or revoked.
+
 ## Run a single task
 
 A single-task command runs in one-shot mode. Without `--cwd`, ALA creates a temporary working directory and retains it after the command finishes. With `--cwd`, it uses the existing directory directly and never deletes it. Reusing cwd alone does not resume a conversation.
@@ -153,6 +162,7 @@ Interactive sessions also accept local slash commands. `/agent ...` commands are
 ```text
 /help
 /agent list
+/status
 /agent use opencode
 /agent codex models
 /agent codex model gpt-5.6-sol
@@ -167,7 +177,7 @@ Interactive sessions also accept local slash commands. `/agent ...` commands are
 /quit
 ```
 
-`/help` lists every interactive command. `/agent` commands discover a backend, set the default backend, inspect or select its native model and that model's effort, and delegate prompts. `/agent <name> effort <effort>` requires a configured model and accepts only an effort the model's native catalog advertises; `default` removes it, and changing the model also removes it. While a terminal waits, ALA renders a transient thinking indicator and supported live backend events on standard error, leaving the normalized final result on standard output. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
+`/help` lists every interactive command. `/status` prints the same report as `ala status` for the session. `/agent` commands discover a backend, set the default backend, inspect or select its native model and that model's effort, and delegate prompts. `/agent <name> effort <effort>` requires a configured model and accepts only an effort the model's native catalog advertises; `default` removes it, and changing the model also removes it. While a terminal waits, ALA renders a transient thinking indicator and supported live backend events on standard error, leaving the normalized final result on standard output. Enter `/quit`, `/exit`, `:quit`, or `:exit` to close the session.
 
 `/permissions` reports the requested native policy. Supplying `ask-for-approval` or `full-access` changes subsequent executions in this interactive session without resetting the native conversation or saving configuration. The initial policy comes from `--permissions`, defaulting to `full-access`. Pi rejects ask-for-approval. The command does not add a reply channel: without a reply-capable embedding host, native operations requiring approval are declined.
 

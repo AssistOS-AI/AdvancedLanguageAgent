@@ -18,6 +18,8 @@ import { createCodingAgentService } from './coding-agents/service.mjs';
 import { createRuntimeEventSink } from './runtime-events.mjs';
 import { discoverCodingAgents } from './coding-agents/discovery.mjs';
 import { openSessionState, resolveSessionsRoot } from './session-state.mjs';
+import { collectStatus, formatStatus, runStatusCommand } from './status-command.mjs';
+import { homeEnvironment } from './coding-agents/logins.mjs';
 import { createTranscriptRecorder } from './transcript-recorder.mjs';
 import { randomUUID } from 'node:crypto';
 import { runControlledExecution } from './controlled-execution.mjs';
@@ -39,6 +41,7 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
   /agent opencode <prompt>       Delegate to OpenCode
   /agent pi <prompt>             Delegate to Pi
   /agent claude <prompt>         Delegate to Claude Code
+  /status                        Show each coding agent's installation and login and the default agent
   /permissions [mode]            Show or set ask-for-approval or full-access for this session
   /quit | /exit | :quit | :exit  Close the interactive session`;
 
@@ -137,6 +140,12 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
           const parts = line.split(/\s+/u);
           if (line === '/help') {
             io.stderr.write(`${INTERACTIVE_HELP_TEXT}\n`);
+          } else if (parts[0] === '/status') {
+            if (parts.length !== 1) throw new ALAError('Usage: /status', EXIT_CODES.usage);
+            // The session's own agents, configuration, and agent home, as its executions see them.
+            const statusEnv = options.home ? homeEnvironment(env, await realpath(resolve(io.cwd, options.home))) : env;
+            io.stdout.write(formatStatus(await collectStatus({ env: statusEnv, config: activeConfig,
+              agents: runtime.codingAgents })));
           } else if (parts[0] === '/agent') {
             const action = parts[1] || 'help';
             if (action === 'help') {
@@ -393,6 +402,7 @@ export async function runCli({
   try {
     const options = parseArguments(argv);
     if (options.command === 'agent') return await runAgentCommand(options, io, env);
+    if (options.command === 'status') return await runStatusCommand(options, io, env, HELP_TEXT);
     return await runExecution(options, io, env);
   } catch (error) {
     const alaError = asALAError(error);

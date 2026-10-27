@@ -34,6 +34,17 @@ const CLAUDE_ENVIRONMENT = Object.freeze([
   'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_OAUTH_TOKEN'
 ]);
 
+// The allowed variables through which each backend can authenticate without a stored login. Status
+// reporting names the ones that are set and never their values.
+const PROVIDER_CREDENTIALS = Object.freeze(PROVIDER_ENVIRONMENT
+  .filter(name => name.endsWith('_API_KEY') || name === 'AWS_ACCESS_KEY_ID'));
+export const CREDENTIAL_ENVIRONMENT = Object.freeze({
+  codex: Object.freeze(['OPENAI_API_KEY']),
+  opencode: PROVIDER_CREDENTIALS,
+  pi: PROVIDER_CREDENTIALS,
+  claude: Object.freeze(CLAUDE_ENVIRONMENT.filter(name => name !== 'ANTHROPIC_BASE_URL'))
+});
+
 export function findBubblewrap() {
   for (const candidate of ['/usr/bin/bwrap', '/bin/bwrap']) {
     try {

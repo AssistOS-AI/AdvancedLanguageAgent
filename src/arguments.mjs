@@ -80,8 +80,24 @@ function parseAgentCommand(argv) {
   return options;
 }
 
+const STATUS_USAGE = 'Usage: ala status [--json] [--home <path>] [--config <path>].';
+
+function parseStatusCommand(argv) {
+  const options = { command: 'status', json: false, help: false };
+  for (let index = 1; index < argv.length; index += 1) {
+    const token = argv[index];
+    if (token === '--json') options.json = true;
+    else if (token === '--help') options.help = true;
+    else if (token === '--home') { options.home = optionValue(argv, index, token); index += 1; }
+    else if (token === '--config') { options.configPath = optionValue(argv, index, token); index += 1; }
+    else throw new ALAError(`Unknown status option: ${token}. ${STATUS_USAGE}`, EXIT_CODES.usage);
+  }
+  return options;
+}
+
 export function parseArguments(argv) {
   if (argv[0] === 'agent') return parseAgentCommand(argv);
+  if (argv[0] === 'status') return parseStatusCommand(argv);
 
   const options = defaultExecutionOptions();
   for (let index = 0; index < argv.length; index += 1) {
@@ -158,10 +174,13 @@ Usage:
   ala [options] [instruction...]
   ala agent list [--json]
   ala agent models <codex|opencode|pi|claude> [--json] [--home <path>]
+  ala status [--json] [--home <path>] [--config <path>]
 
 Agent commands:
   agent list                 List detected coding agents in the order codex, opencode, pi, claude
   agent models <name>        List the agent's native models; --json adds each model's supported efforts
+  status                     Show each coding agent's installation and login and the default agent;
+                             logins are found from credential files and variables, never verified
 
 Execution options:
   --ca <name>                Coding agent: auto, codex, opencode, pi, or claude (default: config
