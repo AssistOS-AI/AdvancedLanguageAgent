@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { buildSandboxArgs, canStartBubblewrap, findBubblewrap,
   sandboxRuntimeMounts } from '../src/coding-agents/sandbox.mjs';
 import { runProcess } from '../src/coding-agents/process.mjs';
+import { createBubblewrapProvider } from '../src/coding-agents/provider-bubblewrap.mjs';
 
 async function fixture(context) {
   const root = await mkdtemp(join(tmpdir(), 'ala-runtime-mounts-'));
@@ -74,7 +75,8 @@ test('runtime stays read-only across processes with the same home, cwd and nativ
 }, async (context) => {
   const f = await fixture(context);
   const input = { binary: f.binary, args: ['unchanged argument'], cwd: f.workspace,
-    sandbox: { backend: 'pi', hostWorkspace: f.workspace, workspaceTarget: f.workspace, home: f.home } };
+    sandbox: { provider: createBubblewrapProvider(),
+      backend: 'pi', hostWorkspace: f.workspace, workspaceTarget: f.workspace, home: f.home } };
   const results = [];
   for (let index = 0; index < 2; index += 1) {
     const result = await runProcess(input);
@@ -107,7 +109,8 @@ test('preserves absolute in-prefix interpreters and helper symlinks outside the 
   await symlink(join(f.prefix, 'bin/value'), helper);
   await writeFile(binary, `#!${interpreter}\ncat '${helper}'\n`, { mode: 0o755 });
   const result = await runProcess({ binary, args: [], cwd: f.workspace,
-    sandbox: { backend: 'pi', hostWorkspace: f.workspace, workspaceTarget: f.workspace, home: f.home } });
+    sandbox: { provider: createBubblewrapProvider(),
+      backend: 'pi', hostWorkspace: f.workspace, workspaceTarget: f.workspace, home: f.home } });
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.stdout, 'absolute-helper-preserved');
 });

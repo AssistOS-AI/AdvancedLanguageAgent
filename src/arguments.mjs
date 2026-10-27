@@ -1,4 +1,5 @@
 import { ALAError, EXIT_CODES } from './errors.mjs';
+import { parseProviderName, PROVIDER_OPTION } from './coding-agents/provider-select.mjs';
 import { validatePermissionMode } from './permission-requests.mjs';
 
 const valueOptions = new Map([
@@ -10,6 +11,7 @@ const valueOptions = new Map([
   ['--effort', 'effort'],
   ['--permissions', 'permissionMode'],
   ['--config', 'configPath'],
+  [PROVIDER_OPTION, 'executionProvider'],
   ['--agent', 'agent'],
   ['--ca', 'agent'],
   ['--home', 'home'],
@@ -56,7 +58,8 @@ function parseAlias(argv, index, option) {
   return { alias: optionValue(argv, index + 1, `${option} as`), index: index + 2 };
 }
 
-const AGENT_USAGE = 'Usage: ala agent list [--json] | ala agent models <codex|opencode|pi|claude> [--json] [--home <path>].';
+const AGENT_USAGE = 'Usage: ala agent list [--json] [--execution-provider <name>] | '
+  + 'ala agent models <codex|opencode|pi|claude> [--json] [--home <path>] [--execution-provider <name>].';
 
 function parseAgentCommand(argv) {
   const options = {
@@ -75,12 +78,16 @@ function parseAgentCommand(argv) {
     if (token === '--json') options.json = true;
     else if (token === '--help') options.help = true;
     else if (token === '--home' && options.action === 'models') { options.home = optionValue(argv, index, token); index += 1; }
+    else if (token === PROVIDER_OPTION) {
+      options.executionProvider = parseProviderName(optionValue(argv, index, token), PROVIDER_OPTION);
+      index += 1;
+    }
     else throw new ALAError(`Unknown agent option: ${token}`, EXIT_CODES.usage);
   }
   return options;
 }
 
-const STATUS_USAGE = 'Usage: ala status [--json] [--home <path>] [--config <path>].';
+const STATUS_USAGE = 'Usage: ala status [--json] [--home <path>] [--config <path>] [--execution-provider <name>].';
 
 function parseStatusCommand(argv) {
   const options = { command: 'status', json: false, help: false };
@@ -90,6 +97,10 @@ function parseStatusCommand(argv) {
     else if (token === '--help') options.help = true;
     else if (token === '--home') { options.home = optionValue(argv, index, token); index += 1; }
     else if (token === '--config') { options.configPath = optionValue(argv, index, token); index += 1; }
+    else if (token === PROVIDER_OPTION) {
+      options.executionProvider = parseProviderName(optionValue(argv, index, token), PROVIDER_OPTION);
+      index += 1;
+    }
     else throw new ALAError(`Unknown status option: ${token}. ${STATUS_USAGE}`, EXIT_CODES.usage);
   }
   return options;
@@ -158,6 +169,7 @@ export function parseArguments(argv) {
   }
   if (options.task) options.instructionParts.unshift(options.task);
   validatePermissionMode(options.permissionMode);
+  parseProviderName(options.executionProvider, PROVIDER_OPTION);
   if (options.effort !== undefined && !/^[A-Za-z0-9_-]+$/u.test(options.effort)) {
     throw new ALAError('--effort requires a native effort name or default.', EXIT_CODES.usage);
   }
@@ -172,9 +184,9 @@ export const HELP_TEXT = `Advanced Language Agent
 
 Usage:
   ala [options] [instruction...]
-  ala agent list [--json]
-  ala agent models <codex|opencode|pi|claude> [--json] [--home <path>]
-  ala status [--json] [--home <path>] [--config <path>]
+  ala agent list [--json] [--execution-provider <name>]
+  ala agent models <codex|opencode|pi|claude> [--json] [--home <path>] [--execution-provider <name>]
+  ala status [--json] [--home <path>] [--config <path>] [--execution-provider <name>]
 
 Agent commands:
   agent list                 List detected coding agents in the order codex, opencode, pi, claude
@@ -213,6 +225,10 @@ Execution options:
   --effort <value|default>   Override the selected coding agent's effort for this execution;
                              default clears the configured effort
   --config <path>            Override the ALA configuration file
+  --execution-provider <name>
+                             bubblewrap (default) or protocol; also ALA_EXECUTION_PROVIDER. protocol makes
+                             an embedding service's provider start every process and requires --config, an
+                             absolute ALA_SESSIONS, and virtual --home, --cwd and --folder paths
   Interactive: /help         Show every interactive command and its behavior
   --help, -h                 Show help
   --version, -v              Show version`;

@@ -1,6 +1,5 @@
-import { mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { readFile, realpath, stat } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createInterface } from 'node:readline/promises';
 
@@ -13,10 +12,12 @@ import { createPermissionCommand } from './interactive-permissions.mjs';
 import { createThinkingIndicator } from './interactive-status.mjs';
 import { writeResult } from './output.mjs';
 import { SANDBOX_WORKSPACE } from './coding-agents/paths.mjs';
-import { createDiagnosticLogger, createRuntime } from './runtime.mjs';
-import { createCodingAgentService } from './coding-agents/service.mjs';
+import { createRuntime } from './runtime.mjs';
 import { createRuntimeEventSink } from './runtime-events.mjs';
-import { discoverCodingAgents } from './coding-agents/discovery.mjs';
+import { discoverCodingAgents, discoverProviderAgents } from './coding-agents/discovery.mjs';
+import { resolveProviderName, selectExecutionProvider } from './coding-agents/provider-select.mjs';
+import { listAgentModels } from './agent-models-command.mjs';
+import { embeddedCommandError, embeddedPaths, refuseEmbeddedOptions, requireEmbeddedLocations } from './embedded-mode.mjs';
 import { openSessionState, resolveSessionsRoot } from './session-state.mjs';
 import { collectStatus, formatStatus, runStatusCommand } from './status-command.mjs';
 import { homeEnvironment } from './coding-agents/logins.mjs';
@@ -50,50 +51,39 @@ async function packageVersion() {
   return manifest.version;
 }
 
+// The selected provider, constructed on first use. The name is validated up front; the Bubblewrap provider, whose
+// construction runs the capability probes, is built where the coding-agent service used to run them (after input
+// validation and discovery), and the protocol provider is built only when embedded mode needs its channel.
+function providerHandle(options, io, env) {
+  const name = resolveProviderName({ name: options.executionProvider, env });
+  let provider = null;
+  return {
+    embedded: name === 'protocol',
+    get() { provider ??= selectExecutionProvider({ name, env, channel: io.providerChannel }); return provider; },
+    async close() { await provider?.close(); }
+  };
+}
+
 async function runAgentCommand(options, io, env) {
   if (options.help) {
     io.stdout.write(`${HELP_TEXT}\n`);
     return EXIT_CODES.success;
   }
-  if (options.action === 'models') return listAgentModels(options, io, env);
-  const agents = await discoverCodingAgents({ env });
+  const handle = providerHandle(options, io, env);
+  try {
+    if (options.action === 'models') return await listAgentModels(options, io, env, handle);
+    return await listAgentNames(options, io, env, handle);
+  } finally { await handle.close(); }
+}
+
+async function listAgentNames(options, io, env, handle) {
+  const agents = handle.embedded
+    ? await discoverProviderAgents(handle.get())
+    : await discoverCodingAgents({ env });
   const names = agents.filter((agent) => agent.available).map((agent) => agent.name);
   if (options.json) io.stdout.write(`${JSON.stringify(names, null, 2)}\n`);
   else io.stdout.write(names.map((name) => `${name}\n`).join(''));
   return EXIT_CODES.success;
-}
-
-// Lists one agent's native model catalog, the same query as the interactive /agent <name> models, without opening
-// a conversation. The query runs in the Bubblewrap sandbox with a private temporary working directory that is removed
-// afterwards. --json returns each model with the efforts it advertises, so hosts can offer valid choices.
-async function listAgentModels(options, io, env) {
-  const home = options.home ? await realpath(resolve(io.cwd, options.home)) : null;
-  if (home && !(await stat(home)).isDirectory()) throw new ALAError('--home must reference an existing directory.', EXIT_CODES.usage);
-  const agentEnv = home ? { ...env, HOME: home, CODEX_HOME: resolve(home, '.codex') } : env;
-  const agents = await discoverCodingAgents({ env: agentEnv });
-  if (!agents.some((agent) => agent.name === options.agent && agent.available)) {
-    throw new ALAError(`Coding agent is not available: ${options.agent}`, EXIT_CODES.execution);
-  }
-  const workspace = await mkdtemp(join(tmpdir(), 'ala-models-'));
-  const controller = new AbortController();
-  const interrupt = () => controller.abort(new ALAError('Interrupted', EXIT_CODES.interrupted));
-  process.once('SIGINT', interrupt);
-  process.once('SIGTERM', interrupt);
-  const service = createCodingAgentService({ agents, workspace, home, cwd: workspace, env: agentEnv,
-    logger: createDiagnosticLogger(io.stderr, env) });
-  try {
-    const models = (await service.listModels(options.agent, { signal: controller.signal, details: true }))
-      .map((entry) => typeof entry === 'string' ? { id: entry, efforts: [] }
-        : { id: entry.id, efforts: entry.efforts || [], ...(entry.defaultEffort ? { defaultEffort: entry.defaultEffort } : {}) });
-    if (options.json) io.stdout.write(`${JSON.stringify(models, null, 2)}\n`);
-    else io.stdout.write(models.map((model) => `${model.id}\n`).join(''));
-    return EXIT_CODES.success;
-  } finally {
-    process.removeListener('SIGINT', interrupt);
-    process.removeListener('SIGTERM', interrupt);
-    await service.close();
-    await rm(workspace, { recursive: true, force: true });
-  }
 }
 
 function workspaceAliasTarget(alias) {
@@ -141,6 +131,7 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
           if (line === '/help') {
             io.stderr.write(`${INTERACTIVE_HELP_TEXT}\n`);
           } else if (parts[0] === '/status') {
+            if (runtime.embedded) throw embeddedCommandError('/status');
             if (parts.length !== 1) throw new ALAError('Usage: /status', EXIT_CODES.usage);
             // The session's own agents, configuration, and agent home, as its executions see them.
             const statusEnv = options.home ? homeEnvironment(env, await realpath(resolve(io.cwd, options.home))) : env;
@@ -157,6 +148,9 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
               if (parts.length !== 3) throw new ALAError(`Usage: /agent ${action} models`, EXIT_CODES.usage);
               const models = await runtime.listCodingAgentModels(action, { signal });
               io.stdout.write(models.map((model) => `${model}\n`).join(''));
+            } else if (['codex', 'opencode', 'pi', 'claude'].includes(action) && ['model', 'effort'].includes(parts[2])
+                && runtime.embedded) {
+              throw embeddedCommandError(`/agent ${action} ${parts[2]}`);
             } else if (['codex', 'opencode', 'pi', 'claude'].includes(action) && parts[2] === 'model') {
               const model = parts.slice(3).join(' ').trim();
               if (!model) throw new ALAError(`Usage: /agent ${action} model <model-name|default>`, EXIT_CODES.usage);
@@ -204,6 +198,7 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
                 ? `ala: ${action} effort reset to model default\n`
                 : `ala: ${action} effort set to ${effort}\n`);
             } else if (action === 'use') {
+              if (runtime.embedded) throw embeddedCommandError('/agent use');
               const name = parts[2];
               if (parts.length !== 3 || !['codex', 'opencode', 'pi', 'claude'].includes(name)) {
                 throw new ALAError('Usage: /agent use <codex|opencode|pi|claude>', EXIT_CODES.usage);
@@ -262,12 +257,26 @@ async function runExecution(options, io, env) {
     io.stdout.write(`${await packageVersion()}\n`);
     return EXIT_CODES.success;
   }
-  const executionCwd = options.cwd ? await realpath(resolve(io.cwd, options.cwd)) : null;
-  if (executionCwd && !(await stat(executionCwd)).isDirectory()) {
+  const handle = providerHandle(options, io, env);
+  try { return await executeWithProvider(options, io, env, handle); } finally { await handle.close(); }
+}
+
+async function executeWithProvider(options, io, env, handle) {
+  // With a protocol provider (embedded mode) HOME, cwd and folders are virtual paths that ALA never touches.
+  const embedded = handle.embedded;
+  if (embedded) {
+    refuseEmbeddedOptions(options);
+    await requireEmbeddedLocations(options, env);
+  }
+  const virtual = embedded ? embeddedPaths(options) : null;
+  const executionCwd = embedded ? virtual.executionCwd
+    : options.cwd ? await realpath(resolve(io.cwd, options.cwd)) : null;
+  if (!embedded && executionCwd && !(await stat(executionCwd)).isDirectory()) {
     throw new ALAError('--cwd must reference an existing directory.', EXIT_CODES.usage);
   }
   const workspaceTarget = workspaceAliasTarget(options.cwdAlias);
-  const executionHome = options.home ? await realpath(resolve(io.cwd, options.home)) : null;
+  const executionHome = embedded ? virtual.executionHome
+    : options.home ? await realpath(resolve(io.cwd, options.home)) : null;
   if ((options.resumeSession || options.controlStdin || options.turnId) && !options.sessionId) {
     throw new ALAError('--resume-session, --control-stdin and --turn-id require --session-id.', EXIT_CODES.usage);
   }
@@ -283,17 +292,18 @@ async function runExecution(options, io, env) {
   // Without --task/--taskFile, the turn prompt is the first control record on stdin.
   const promptFromControl = Boolean(options.controlStdin && !options.taskFile && !options.task
     && options.instructionParts.length === 0 && options.sources.length === 0);
-  if (executionHome && !(await stat(executionHome)).isDirectory()) {
+  if (!embedded && executionHome && !(await stat(executionHome)).isDirectory()) {
     throw new ALAError('--home must reference an existing directory.', EXIT_CODES.usage);
   }
-  const runtimeEnv = executionHome
+  const runtimeEnv = executionHome && !embedded
     ? { ...env, HOME: executionHome, CODEX_HOME: resolve(executionHome, '.codex') }
     : env;
   if (options.taskFile) {
     const taskFile = resolve(io.cwd, options.taskFile);
     options.instructionParts.unshift(await readFile(taskFile, 'utf8'));
   }
-  const configPath = resolveConfigPath({ cliPath: options.configPath, env: runtimeEnv, cwd: executionCwd || io.cwd });
+  const configPath = resolveConfigPath({ cliPath: options.configPath, env: runtimeEnv,
+    cwd: embedded ? io.cwd : executionCwd || io.cwd });
   const config = await loadConfig(configPath);
   const inferredInteractive = options.interactive || (!promptFromControl && options.instructionParts.length === 0 && io.stdin.isTTY);
   if (options.sessionId && inferredInteractive) {
@@ -305,7 +315,8 @@ async function runExecution(options, io, env) {
   // resumes a session's own agent or else picks the configured default, then
   // the first available one. Without any installed agent ALA cannot run.
   options.agent ||= 'auto';
-  const codingAgents = await discoverCodingAgents({ env: runtimeEnv });
+  const codingAgents = embedded ? await discoverProviderAgents(handle.get())
+    : await discoverCodingAgents({ env: runtimeEnv });
   const available = codingAgents.filter((agent) => agent.available);
   if (available.length === 0) {
     throw new ALAError('No coding agent is available. Install and authenticate Codex, OpenCode, Pi, or Claude Code.',
@@ -328,6 +339,7 @@ async function runExecution(options, io, env) {
     workspace: executionCwd,
     workspaceTarget,
     home: executionHome,
+    provider: handle.get(),
     mcpServers: options.mcpServers,
     permissionMode: options.permissionMode,
     cwd: executionCwd || io.cwd,
@@ -396,13 +408,20 @@ export async function runCli({
   stdout = process.stdout,
   stderr = process.stderr,
   cwd = process.cwd(),
-  fetchImpl = fetch
+  fetchImpl = fetch,
+  providerChannel = process
 } = {}) {
-  const io = { stdin, stdout, stderr, cwd, fetch: fetchImpl };
+  const io = { stdin, stdout, stderr, cwd, fetch: fetchImpl, providerChannel };
   try {
     const options = parseArguments(argv);
     if (options.command === 'agent') return await runAgentCommand(options, io, env);
-    if (options.command === 'status') return await runStatusCommand(options, io, env, HELP_TEXT);
+    if (options.command === 'status') {
+      // Login detection reads credential files, which an embedded ALA cannot see: the worker reports them.
+      if (!options.help && resolveProviderName({ name: options.executionProvider, env }) === 'protocol') {
+        throw embeddedCommandError('ala status');
+      }
+      return await runStatusCommand(options, io, env, HELP_TEXT);
+    }
     return await runExecution(options, io, env);
   } catch (error) {
     const alaError = asALAError(error);

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { runControlledExecution } from '../src/controlled-execution.mjs';
 import { startOpenCodeServer } from '../src/coding-agents/opencode-server.mjs';
 import { executeOpenCodeTurn } from '../src/coding-agents/opencode-turn.mjs';
+import { directSandbox } from './direct-provider.mjs';
 
 const fixture = fileURLToPath(new URL('./fixtures/opencode-server.mjs', import.meta.url));
 
@@ -41,6 +42,7 @@ test('a message received during a turn runs as a second turn on a new server', b
     async execute(prompt, { signal }) {
       prompts.push(prompt);
       const input = { binary: fixture, workspace, env, websearch: false, signal, prompt, continuation,
+        sandbox: directSandbox(),
         permissionMode: 'full-access',
         onSession: async () => writeFile(join(workspace, 'persisted-before-work'), '1') };
       const server = await startOpenCodeServer(input);

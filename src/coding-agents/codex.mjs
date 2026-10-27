@@ -131,7 +131,8 @@ export function listCodexModels({ binary, cwd, env = process.env, signal, sandbo
     try {
       requireSandbox(sandbox);
       child = spawnProcess({
-        binary, args: ['app-server', '--stdio'], cwd, env, sandbox, stdio: ['pipe', 'pipe', 'pipe']
+        binary, args: ['app-server', '--stdio'], cwd, env, sandbox, stdio: ['pipe', 'pipe', 'pipe'],
+        processClass: 'session'
       });
     } catch (error) {
       reject(error);

@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import { buildClaudeArguments, listClaudeModels, requireClaudeVersion, runClaude } from '../src/coding-agents/claude.mjs';
 import { collectAgentStateMounts, sandboxEnvironment } from '../src/coding-agents/sandbox.mjs';
+import { directSandbox } from './direct-provider.mjs';
 
 const fake = fileURLToPath(new URL('./fixtures/fake-claude.mjs', import.meta.url));
 
@@ -16,10 +17,11 @@ async function harness(t, env = {}) {
   t.after(() => fs.rm(root, { recursive: true, force: true }));
   const log = path.join(root, 'args.log');
   const fullEnv = { ...process.env, FAKE_CLAUDE_LOG: log, ...env };
-  // Tests run the fake CLI directly; production always runs inside Bubblewrap.
+  // Tests run the fake CLI directly through an injected provider; production always uses the selected provider.
   const spawnImpl = ({ binary, args, cwd, stdio }) => spawn(binary, args, { cwd, stdio, env: fullEnv });
   const calls = async () => (await fs.readFile(log, 'utf8')).trim().split('\n').map((line) => JSON.parse(line));
-  return { root, calls, input: { binary: fake, workspace: root, hostWorkspace: root, env: fullEnv, spawnImpl } };
+  return { root, calls, input: { binary: fake, workspace: root, hostWorkspace: root, env: fullEnv, spawnImpl,
+    sandbox: directSandbox() } };
 }
 
 test('arguments select a new or resumed session, permissions, model, effort and MCP servers', () => {

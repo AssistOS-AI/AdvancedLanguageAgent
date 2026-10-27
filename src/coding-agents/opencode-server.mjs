@@ -109,9 +109,14 @@ export function openCodeEnvironment(env, websearch, mcpServers = []) {
 export async function startOpenCodeServer(input) {
   const { binary, workspace, sandbox, signal, websearch } = input;
   const startupTimeout = resolveOpenCodeStartupTimeout(input.env);
-  const env = openCodeEnvironment(input.env, websearch, input.mcpServers);
+  // With a protocol provider nothing derives from ALA's own environment: an inherited OPENCODE_CONFIG_CONTENT is
+  // ignored and the overlay is built fresh. The names ALA generates are forwarded even if they equal inherited values.
+  const embedded = sandbox?.provider?.kind === 'protocol';
+  const { OPENCODE_CONFIG_CONTENT: _inherited, ...withoutOverlay } = input.env || {};
+  const env = openCodeEnvironment(embedded ? withoutOverlay : input.env, websearch, input.mcpServers);
+  const generatedEnv = ['OPENCODE_ENABLE_EXA', 'OPENCODE_CONFIG_CONTENT'];
   const versionResult = await runProcess({
-    binary, args: ['--version'], cwd: workspace, env, sandbox,
+    binary, args: ['--version'], cwd: workspace, env, sandbox, generatedEnv,
     signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(30_000)])
   });
   if (versionResult.code !== 0) throw executionError('OpenCode version check', versionResult);
@@ -120,7 +125,8 @@ export async function startOpenCodeServer(input) {
   const authorization = `Basic ${Buffer.from(`opencode:${password}`).toString('base64')}`;
   const child = spawnProcess({
     binary, args: ['serve', '--hostname', '127.0.0.1', '--port', '0'], cwd: workspace, sandbox,
-    env: { ...env, OPENCODE_SERVER_PASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe']
+    env: { ...env, OPENCODE_SERVER_PASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe'], processClass: 'service',
+    generatedEnv: [...generatedEnv, 'OPENCODE_SERVER_PASSWORD']
   });
   let stopping = false;
   let base;
@@ -160,7 +166,10 @@ export async function startOpenCodeServer(input) {
   const lifetime = AbortSignal.any([failed.signal, ...(signal ? [signal] : [])]);
   let instanceReady = false;
   // Connections are scoped to this server instance and destroyed by stop().
-  const httpClient = createOpenCodeHttpClient();
+  // When the provider relays the server, every connection is a stream the provider passes for this process.
+  const provider = sandbox?.provider;
+  const httpClient = createOpenCodeHttpClient(typeof provider?.connect === 'function'
+    ? { connect: (host, port) => provider.connect({ process: child, host, port }) } : {});
   const request = async (path, { method = 'GET', body, signal: requestSignal = lifetime, stream = false } = {}) => {
     const url = new URL(path, base);
     url.searchParams.set('directory', workspace);

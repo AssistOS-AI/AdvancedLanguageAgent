@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
+import { directSandbox } from '../direct-provider.mjs';
+
 export const announceBinary = fileURLToPath(new URL('./opencode-announce.mjs', import.meta.url));
 const serverFixture = fileURLToPath(new URL('./opencode-server.mjs', import.meta.url));
 
@@ -90,9 +92,11 @@ export async function createOrigin(context, { api, handlers = {} } = {}) {
   await mkdir(workspace);
   return {
     port: server.address().port, root, workspace, sockets, requests,
+    // Serves a connection that an execution provider passed in, as if the socket had been accepted here.
+    accept: (stream) => server.emit('connection', stream),
     nextEpoch() { epoch += 1; return epoch; },
     // The input for startOpenCodeServer: the announce binary points at this origin.
-    serverInput: () => ({ binary: announceBinary, workspace, websearch: false,
+    serverInput: () => ({ binary: announceBinary, workspace, websearch: false, sandbox: directSandbox(),
       env: { HOME: root, OPENCODE_FIXTURE_PORT: String(server.address().port) } })
   };
 }

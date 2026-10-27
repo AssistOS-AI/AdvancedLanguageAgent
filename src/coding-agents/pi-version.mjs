@@ -1,4 +1,4 @@
-import { requireSandbox, spawnProcess } from './process.mjs';
+import { requireSandbox, selectSpawn, spawnProcess } from './process.mjs';
 
 const prerequisite = 'Pi RPC requires Pi >=0.85.1 with clear_queue and agent_settled support. '
   + 'Upgrade the managed installation or configure PI_BIN to a compatible executable.';
@@ -7,11 +7,12 @@ export async function requirePiVersion(input) {
   if (input.permissionMode && input.permissionMode !== 'full-access') {
     throw new Error('Pi does not support ask-for-approval; select full-access or use Codex, OpenCode or Claude Code.');
   }
-  const spawn = input.spawnImpl || spawnProcess;
+  const spawn = selectSpawn(input);
   if (spawn === spawnProcess) requireSandbox(input.sandbox);
   if (input.signal?.aborted) throw Object.assign(new Error('Pi version probe interrupted.'), { name: 'AbortError' });
   const version = await new Promise((resolve, reject) => {
-    const child = spawn({ ...input, args: ['--version'], cwd: input.workspace, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn({ ...input, args: ['--version'], cwd: input.workspace, stdio: ['ignore', 'pipe', 'pipe'],
+      processClass: 'run' });
     let stdout = '';
     let finished = false;
     let killTimer;

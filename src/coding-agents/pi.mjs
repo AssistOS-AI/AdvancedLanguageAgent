@@ -7,6 +7,15 @@ import { executionError, requireSandbox, runProcess } from './process.mjs';
 import { appendBoundedTail, contentText, createLineDecoder, unseenText } from './streaming.mjs';
 import { requirePiVersion } from './pi-version.mjs';
 
+// Pi keeps its native session files in `.ala-pi-sessions` under the working directory. When an execution provider
+// owns the filesystem (`hostWorkspace` is null) ALA creates nothing on the host: the directory lives under the
+// provider's HOME, which is workload state that the workload side creates.
+export function piSessionDirectory({ workspace, hostWorkspace, sandbox }) {
+  const hosted = hostWorkspace !== null && hostWorkspace !== undefined;
+  const root = hosted ? workspace : sandbox.home;
+  return { sessionDir: `${root === '/' ? '' : root}/.ala-pi-sessions`, hosted };
+}
+
 export function parsePiOutput(stdout) {
   const parser = createPiEventParser();
   parser.push(Buffer.from(stdout));
@@ -98,9 +107,8 @@ export async function runPi({
   requireSandbox(sandbox);
   await requirePiVersion({ binary, workspace, env, signal, sandbox, permissionMode });
   const sessionId = continuation?.sessionId || randomUUID();
-  const hostSessionDir = join(hostWorkspace, '.ala-pi-sessions');
-  const sessionDir = join(workspace, '.ala-pi-sessions');
-  await mkdir(hostSessionDir, { recursive: true, mode: 0o700 });
+  const { sessionDir, hosted } = piSessionDirectory({ workspace, hostWorkspace, sandbox });
+  if (hosted) await mkdir(join(hostWorkspace, '.ala-pi-sessions'), { recursive: true, mode: 0o700 });
   const args = buildPiArguments({ prompt, sessionId, sessionDir, model, effort });
   const parser = createPiEventParser({ onText: onVisibleText });
   const result = await runProcess({

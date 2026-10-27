@@ -15,6 +15,7 @@ import {
   findBubblewrap,
   sandboxEnvironment
 } from '../src/coding-agents/sandbox.mjs';
+import { createBubblewrapProvider } from '../src/coding-agents/provider-bubblewrap.mjs';
 
 const bwrap = findBubblewrap();
 const sandboxSupported = canStartBubblewrap(bwrap);
@@ -207,6 +208,7 @@ process.stdout.write(JSON.stringify(result));
     cwd: workspace,
     env: { HOME: join(root, 'missing-home') },
     sandbox: {
+      provider: createBubblewrapProvider(),
       hostWorkspace: workspace,
       workspaceTarget: workspace,
       backend: 'codex',
@@ -238,7 +240,8 @@ test('cancels the Bubblewrap process tree through the active child handle', {
     cwd: workspace,
     env: { HOME: join(root, 'missing-home') },
     signal: controller.signal,
-    sandbox: { hostWorkspace: workspace, workspaceTarget: workspace, backend: 'codex' }
+    sandbox: { provider: createBubblewrapProvider(),
+      hostWorkspace: workspace, workspaceTarget: workspace, backend: 'codex' }
   });
   setTimeout(() => controller.abort(), 25);
   await assert.rejects(execution, { name: 'AbortError' });
@@ -269,7 +272,8 @@ test('runs a prefix-installed ESM backend with sibling dependencies and the Node
   const result = await runProcess({
     binary, args: [], cwd: workspace,
     env: { HOME: join(root, 'missing-home') },
-    sandbox: { hostWorkspace: workspace, workspaceTarget: workspace, backend: 'pi' }
+    sandbox: { provider: createBubblewrapProvider(),
+      hostWorkspace: workspace, workspaceTarget: workspace, backend: 'pi' }
   });
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(JSON.parse(result.stdout), {

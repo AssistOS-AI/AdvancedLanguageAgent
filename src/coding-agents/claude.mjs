@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { StringDecoder } from 'node:string_decoder';
 
-import { requireSandbox, runProcess, spawnProcess } from './process.mjs';
+import { requireSandbox, runProcess, selectSpawn, spawnProcess } from './process.mjs';
 
 // Claude Code runs headless with stream-json on stdin and stdout. Prompts are
 // `user` records; permission prompts, interrupts and the model list use the
@@ -50,10 +50,11 @@ function userRecord(text) {
 }
 
 function openClaudeChannel(input, args) {
-  const spawnImpl = input.spawnImpl || spawnProcess;
+  const spawnImpl = selectSpawn(input);
   if (spawnImpl === spawnProcess) requireSandbox(input.sandbox);
   const events = new EventEmitter();
-  const child = spawnImpl({ ...input, args, cwd: input.workspace, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawnImpl({ ...input, args, cwd: input.workspace, stdio: ['pipe', 'pipe', 'pipe'],
+    processClass: 'session' });
   const pending = new Map();
   const decoder = new StringDecoder('utf8');
   let buffer = '';

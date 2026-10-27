@@ -23,6 +23,7 @@ export async function createRuntime({
   workspace = null,
   workspaceTarget = null,
   home = null,
+  provider = null,
   mcpServers = null,
   defaultCodingAgent = null,
   permissionMode = 'full-access',
@@ -51,6 +52,7 @@ export async function createRuntime({
     workspace,
     workspaceTarget,
     home,
+    provider,
     folders: options.folders,
     ignoredPaths: options.ignoredPaths,
     mcpServers,
@@ -67,6 +69,7 @@ export async function createRuntime({
   });
   return {
     codingAgents,
+    embedded: provider?.kind === 'protocol',
     permissionRequests,
     sendMessage(message) { return codingAgentService.sendMessage(message); },
     listCodingAgents() {

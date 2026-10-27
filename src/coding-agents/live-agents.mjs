@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { openJsonChannel } from './json-channel.mjs';
 import { codexMcpOverrides } from './mcp-servers.mjs';
-import { createPiEventParser } from './pi.mjs';
+import { createPiEventParser, piSessionDirectory } from './pi.mjs';
 import { requirePiVersion } from './pi-version.mjs';
 import { attachCodexApprovals, codexThreadPolicy, verifyCodexPolicy } from './codex-approvals.mjs';
 
@@ -113,15 +113,15 @@ export async function runCodexLive(input) {
 export async function runPiLive(input) {
   checkAbort(input.signal);
   await requirePiVersion(input);
-  const sessionDir = `${input.workspace}/.ala-pi-sessions`;
-  await fs.mkdir(path.join(input.hostWorkspace, '.ala-pi-sessions'), { recursive: true, mode: 0o700 });
+  const { sessionDir, hosted } = piSessionDirectory(input);
+  if (hosted) await fs.mkdir(path.join(input.hostWorkspace, '.ala-pi-sessions'), { recursive: true, mode: 0o700 });
   const previous = input.continuation?.sessionFile;
   if (input.continuation && !previous) throw new Error('Pi continuation has no session file.');
   if (previous) {
     if (!previous.startsWith(`${sessionDir}/`) || path.basename(previous) !== previous.slice(sessionDir.length + 1)) {
       throw new Error('Invalid Pi session file.');
     }
-    await fs.access(path.join(input.hostWorkspace, '.ala-pi-sessions', path.basename(previous)));
+    if (hosted) await fs.access(path.join(input.hostWorkspace, '.ala-pi-sessions', path.basename(previous)));
   }
   const rpc = openJsonChannel(input, ['--mode', 'rpc', '--session-dir', sessionDir, '--approve',
     ...(previous ? ['--session', previous] : []), ...(input.model ? ['--model', input.model] : []),

@@ -17,6 +17,8 @@ As a Ploinky agent, ALA may expose the same operations through Ploinky CLI, rout
 
 Remote-agent protocols, retained [task-workspace](wiki.html#definition-task-workspace) values, and retry counts remain specialized deployment contracts. The standalone distribution must preserve portable repository paths, bounded input handling, secure credential handling, and result-stream separation. Linux deployments that enable coding agents must provide a functioning `bwrap`; Ploinky and standalone launches must preserve the same fail-closed sandbox and explicit mount contract.
 
+An embedding service that confines native processes itself, such as a worker that builds the sandbox for every execution, integrates through the generic execution-provider interface (DS006): it selects the protocol provider explicitly, passes one control channel at launch, implements the server side of the versioned protocol, and supplies the managed configuration and the private session directory. ALA imports nothing from such a service and parses none of its configuration.
+
 ## Conclusion
 
 ALA integrations must preserve a common task interface and the caller-owned mount contract without reintroducing task-skill catalog management.

@@ -71,6 +71,8 @@ The repeatable `--ignore <absolute-directory>` argument masks an existing direct
 
 An explicit read-only `expose` mount may reveal a strict subdirectory of an ignored source at a separate unmasked destination. The ignored source root and ordinary aliases stay empty and read-only. An export of the ignored root, a writable export or a destination inside a mask must fail before backend execution. An additional ignore below the exported source still masks that subtree at the exported destination. This exception belongs to the caller's explicit mount grant and must not expose the remaining private directory or implicitly discover any files.
 
+When the embedding service selects the protocol execution provider, the mount rules above describe the Bubblewrap provider only: the working directory, folders, exclusions and HOME are virtual paths that the provider resolves, ALA creates no workspace or directory on the host, and embedded mode requires an absolute `ALA_SESSIONS` and a managed `--config` (DS006).
+
 ## Conclusion
 
 ALA exposes explicit working directories, configuration homes, and resumable conversations with ALA-owned session transcripts while preserving fail-closed isolation and retained-workspace behavior for callers that rely on ALA's temporary directory.

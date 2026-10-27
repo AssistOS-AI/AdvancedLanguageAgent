@@ -1,18 +1,19 @@
-import { spawn } from 'node:child_process';
-
-import { buildSandboxArgs, findBubblewrap } from './sandbox.mjs';
-import { ALAError, EXIT_CODES } from '../errors.mjs';
+import { requireProvider } from './provider.mjs';
 
 const OUTPUT_LIMIT = 4 * 1024 * 1024;
 
+// Every native process starts through the execution provider carried by the sandbox context. There is no direct
+// start: a context without a provider is an error, and process creation exists only inside provider implementations.
 export function requireSandbox(sandbox) {
-  if (!sandbox) {
-    throw new ALAError(
-      'Coding-agent processes must run inside the ALA Bubblewrap sandbox.',
-      EXIT_CODES.execution
-    );
-  }
+  requireProvider(sandbox);
   return sandbox;
+}
+
+// A spawn function injected by a test may replace the provider unless the context's provider is the protocol
+// provider, whose guarantee is that nothing but the worker's provider starts a process.
+export function selectSpawn(input) {
+  if (input.sandbox?.provider?.kind === 'protocol') return spawnProcess;
+  return input.spawnImpl || spawnProcess;
 }
 
 function appendLimited(current, chunk, limit = OUTPUT_LIMIT) {
@@ -23,30 +24,14 @@ function appendLimited(current, chunk, limit = OUTPUT_LIMIT) {
   return next.subarray(start).toString('utf8');
 }
 
-export function spawnProcess({ binary, args, cwd, env = process.env, stdio, sandbox = null }) {
-  const executionEnv = { ...process.env, ...env };
-  delete executionEnv.NODE_TEST_CONTEXT;
-  if (!sandbox) {
-    return spawn(binary, args, { cwd, env: executionEnv, stdio });
-  }
-  const bwrap = sandbox.bwrap || findBubblewrap();
-  return spawn(bwrap || '/usr/bin/bwrap', buildSandboxArgs({
-    workspace: sandbox.hostWorkspace,
-    workspaceTarget: sandbox.workspaceTarget,
-    backend: sandbox.backend,
-    binary,
-    args,
-    env: executionEnv,
-    bwrap,
-    privateProc: sandbox.privateProc,
-    home: sandbox.home,
-    folders: sandbox.folders,
-    ignoredPaths: sandbox.ignoredPaths,
-    chdir: cwd
-  }), {
-    cwd: sandbox.hostWorkspace,
-    env: executionEnv,
-    stdio
+export function spawnProcess({
+  binary, args, cwd, env = process.env, stdio, sandbox = null, processClass = 'run', lifecycle = undefined,
+  generatedEnv = undefined
+}) {
+  const provider = requireProvider(sandbox);
+  return provider.start({
+    processClass, binary, args, cwd, env, stdio, sandbox,
+    ...(lifecycle ? { lifecycle } : {}), ...(generatedEnv ? { generatedEnv } : {})
   });
 }
 
@@ -57,13 +42,14 @@ export function runProcess({
   env = process.env,
   signal,
   sandbox = null,
+  generatedEnv = undefined,
   onStdout = null,
   onStderr = null
 }) {
   return new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawnProcess({ binary, args, cwd, env, sandbox, stdio: ['ignore', 'pipe', 'pipe'] });
+      child = spawnProcess({ binary, args, cwd, env, sandbox, generatedEnv, stdio: ['ignore', 'pipe', 'pipe'] });
     } catch (error) {
       reject(error);
       return;

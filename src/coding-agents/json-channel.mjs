@@ -1,11 +1,12 @@
 import { EventEmitter } from 'node:events';
 import { StringDecoder } from 'node:string_decoder';
-import { requireSandbox, spawnProcess } from './process.mjs';
+import { requireSandbox, selectSpawn, spawnProcess } from './process.mjs';
 
-export function openJsonChannel(input, args, spawnImpl = input.spawnImpl || spawnProcess) {
+export function openJsonChannel(input, args, spawnImpl = selectSpawn(input)) {
   if (spawnImpl === spawnProcess) requireSandbox(input.sandbox);
   const events = new EventEmitter();
-  const child = spawnImpl({ ...input, args, cwd: input.workspace, stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawnImpl({ ...input, args, cwd: input.workspace, stdio: ['pipe', 'pipe', 'pipe'],
+    processClass: 'session' });
   const pending = new Map();
   const incoming = new Map();
   const decoder = new StringDecoder('utf8');

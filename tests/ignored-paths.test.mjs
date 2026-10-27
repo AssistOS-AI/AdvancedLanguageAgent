@@ -8,6 +8,7 @@ import { ignoredMountTargets } from '../src/coding-agents/ignored-paths.mjs';
 import { runProcess } from '../src/coding-agents/process.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
 import { canMountPrivateProc, canStartBubblewrap, findBubblewrap } from '../src/coding-agents/sandbox.mjs';
+import { createBubblewrapProvider } from '../src/coding-agents/provider-bubblewrap.mjs';
 
 async function fixture(t) {
   const root = await mkdtemp(path.join(tmpdir(), 'ala-ignore-'));
@@ -105,7 +106,8 @@ test('masked directories are empty and read-only through every mounted alias', {
   `;
   const result = await runProcess({
     binary: process.execPath, args: ['-e', script], cwd: workspace,
-    sandbox: { hostWorkspace: workspace, workspaceTarget: workspace, backend: 'codex',
+    sandbox: { provider: createBubblewrapProvider(),
+      hostWorkspace: workspace, workspaceTarget: workspace, backend: 'codex',
       ignoredPaths: [secret], folders: [
         { source: workspace, alias: 'copy' },
         { source: path.join(secret, 'sessions'), alias: 'history', writable: true }

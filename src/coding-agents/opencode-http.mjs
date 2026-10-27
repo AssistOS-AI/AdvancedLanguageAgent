@@ -20,8 +20,18 @@ function toHeaders(rawHeaders) {
 // destroys every one of them, so no connection can outlive its server or be reused by another server that
 // binds the same loopback origin. The global fetch dispatcher is deliberately not used: it pools connections
 // per origin for the whole process and OpenCode may bind the same port for consecutive servers.
-export function createOpenCodeHttpClient() {
+//
+// `connect(host, port)` is the connection-factory hook. A provider that relays the server from another namespace
+// passes one connected stream per request, and the client opens no socket of its own: the agent's asynchronous
+// createConnection form hands the provider's stream to node:http.
+export function createOpenCodeHttpClient({ connect = null } = {}) {
   const agent = new http.Agent({ keepAlive: true });
+  if (connect) {
+    agent.createConnection = (options, callback) => {
+      Promise.resolve().then(() => connect(String(options.host), Number(options.port)))
+        .then((stream) => callback(null, stream), (error) => callback(error));
+    };
+  }
   let closed = false;
 
   // Resolves with a standard Response once headers arrive. A `signal` abort rejects with `signal.reason` before

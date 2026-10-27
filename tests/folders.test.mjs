@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { runProcess } from '../src/coding-agents/process.mjs';
 import { buildSandboxArgs, canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
 import { resolveFolderMounts } from '../src/coding-agents/folders.mjs';
+import { createBubblewrapProvider } from '../src/coding-agents/provider-bubblewrap.mjs';
 
 const sandboxSupported = canStartBubblewrap();
 const liveSandbox = { skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process' };
@@ -88,7 +89,8 @@ test('folder mounts are visible at their canonical path and alias with caller-se
     const result = await runProcess({
       binary: process.execPath, args: ['-e', script], cwd: workspace,
       env: { HOME: join(root, 'missing-home') },
-      sandbox: { hostWorkspace: workspace, workspaceTarget: workspace, backend: 'pi',
+      sandbox: { provider: createBubblewrapProvider(),
+      hostWorkspace: workspace, workspaceTarget: workspace, backend: 'pi',
         home, folders: [{ source: bridge, alias: 'runtime' }, { source: writable, writable: true }] }
     });
     assert.equal(result.code, 0, result.stderr);

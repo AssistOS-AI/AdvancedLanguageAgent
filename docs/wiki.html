@@ -36,6 +36,17 @@
       <p><a href="index.html">ALA</a> fails with exit code 5 when no backend is available or when the requested backend is not available. <code>--model</code> overrides only the selected backend's native model for one execution.</p>
     </section>
 
+    <section class="wiki-entry" id="definition-execution-provider">
+      <h2>Execution provider</h2>
+      <p>An execution provider is the component through which <a href="index.html">ALA</a> starts every native process of a <a href="#definition-coding-agent">coding agent</a>. ALA describes each process by class (<code>run</code>, <code>session</code> or <code>service</code>), executable, arguments, environment additions, HOME, working directory, folders, exclusions, communication, lifecycle, network and requirements, and the provider either satisfies the request or refuses it. ALA owns the interface, its versioned wire protocol and the provider conformance tests; process creation exists only inside provider implementations.</p>
+      <p>Two providers exist. The Bubblewrap provider is the standalone default and runs the unchanged Linux Bubblewrap launch. The protocol provider is the client of the wire protocol that an embedding service implements; the embedding service selects it explicitly with <code>--execution-provider protocol</code> or <code>ALA_EXECUTION_PROVIDER</code>, and ALA never falls back to the Bubblewrap provider. The Ploinky manifest declaration of the same name in other repositories is a different contract.</p>
+    </section>
+
+    <section class="wiki-entry" id="definition-embedded-mode">
+      <h2>Embedded mode</h2>
+      <p>Embedded mode is an execution whose <a href="#definition-execution-provider">execution provider</a> is the protocol provider. The provider owns the filesystem the workload sees, so <a href="index.html">ALA</a> works on virtual paths for HOME (<code>/home/robot</code>), the working directory, folders and exclusions and performs no operation on them. It discovers backends only through the provider's inventory, requires an absolute <code>ALA_SESSIONS</code> and a managed <code>--config</code>, refuses file, task-file, URL and output paths and Bubblewrap mount aliases, and refuses interactive changes to the stored backend, model or effort.</p>
+    </section>
+
     <section class="wiki-entry" id="definition-agentic-execution">
       <h2>Agentic execution</h2>
       <p>Agentic execution is a bounded multi-step mode in which an eligible agent may plan, invoke tools, retry, validate, and synthesize a result. It is intended for work whose procedure cannot be completed adequately by one straightforward model call.</p>

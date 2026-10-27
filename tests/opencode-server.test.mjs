@@ -9,6 +9,7 @@ import { runOpenCode } from '../src/coding-agents/opencode.mjs';
 import { openCodeEnvironment } from '../src/coding-agents/opencode-server.mjs';
 import { canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
 import { createPermissionRequestManager } from '../src/permission-requests.mjs';
+import { createBubblewrapProvider } from '../src/coding-agents/provider-bubblewrap.mjs';
 
 const sandboxSupported = canStartBubblewrap();
 const nativeTest = (name, callback) => test(name, {
@@ -39,7 +40,8 @@ async function setup(context, onRequest = null, options = {}) {
     binary: fixture, prompt: 'historical-idle', workspace: '/workspace', hostWorkspace: workspace,
     websearch: false, env: { HOME: home }, permissionMode: 'ask-for-approval', permissionRequests,
     // The fixture expects the workspace at /workspace, as an explicit cwd target would place it.
-    sandbox: { hostWorkspace: workspace, workspaceTarget: '/workspace', backend: 'opencode', mounts: [], home },
+    sandbox: { provider: createBubblewrapProvider(),
+      hostWorkspace: workspace, workspaceTarget: '/workspace', backend: 'opencode', mounts: [], home },
     onSession: async ({ sessionId }) => writeFile(join(workspace, 'persisted-before-work'), sessionId)
   };
   const records = async () => (await readFile(join(workspace, 'native-events.jsonl'), 'utf8'))

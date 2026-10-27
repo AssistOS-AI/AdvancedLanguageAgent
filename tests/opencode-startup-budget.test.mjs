@@ -8,6 +8,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
 import * as serverModule from '../src/coding-agents/opencode-server.mjs';
+import { directSandbox } from './direct-provider.mjs';
 
 const fixture = fileURLToPath(new URL('./fixtures/opencode-server.mjs', import.meta.url));
 const TIMED_OUT = /OpenCode HTTP request timed out\./u;
@@ -31,7 +32,7 @@ async function launch(context, hold) {
     state,
     // The explicit env keeps these tests independent of ALA_OPENCODE_STARTUP_TIMEOUT_MS in the caller's shell.
     start: (extra = {}) => serverModule.startOpenCodeServer({
-      binary: fixture, workspace, env: { HOME: root }, websearch: false, ...extra
+      binary: fixture, workspace, env: { HOME: root }, websearch: false, sandbox: directSandbox(), ...extra
     }),
     async held() {
       for (let index = 0; index < 500 && !existsSync(join(workspace, 'held')); index += 1) await sleep(10);

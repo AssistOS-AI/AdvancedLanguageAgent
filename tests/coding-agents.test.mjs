@@ -19,6 +19,7 @@ import { createCodingAgentService } from '../src/coding-agents/service.mjs';
 import { canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
 import { createRuntime } from '../src/runtime.mjs';
 import { captureStream } from './helpers.mjs';
+import { directSandbox } from './direct-provider.mjs';
 
 const sandboxSupported = canStartBubblewrap();
 
@@ -218,13 +219,15 @@ test('forwards live backend text and terminates an incomplete diagnostic line', 
 });
 
 test('forwards cancellation to an active coding-agent process', async () => {
-  assert.throws(() => requireSandbox(null), /must run inside the ALA Bubblewrap sandbox/);
+  assert.throws(() => requireSandbox(null), /require an execution provider/);
+  assert.throws(() => requireSandbox({ provider: {} }), /require an execution provider/);
   const controller = new AbortController();
   const running = runProcess({
     binary: process.execPath,
     args: ['-e', 'setInterval(() => {}, 1000)'],
     cwd: process.cwd(),
-    signal: controller.signal
+    signal: controller.signal,
+    sandbox: directSandbox()
   });
   setTimeout(() => controller.abort(), 25);
   await assert.rejects(running, { name: 'AbortError' });

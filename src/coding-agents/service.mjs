@@ -8,7 +8,11 @@ import { listCodexModels, runCodex } from './codex.mjs';
 import { listOpenCodeModels, runOpenCode } from './opencode.mjs';
 import { listPiModels, runPi } from './pi.mjs';
 import { resolveFolderMounts } from './folders.mjs';
-import { canMountPrivateProc, findBubblewrap } from './sandbox.mjs';
+import { createBubblewrapProvider } from './provider-bubblewrap.mjs';
+import { isProvider, ROBOT_HOME } from './provider.mjs';
+import {
+  requireVirtualPath, resolveVirtualExclusions, resolveVirtualFolders, resolveVirtualHome
+} from './virtual-paths.mjs';
 import { parseMcpServers } from './mcp-servers.mjs';
 import { runCodexLive, runPiLive } from './live-agents.mjs';
 import { listClaudeModels, runClaude } from './claude.mjs';
@@ -21,6 +25,7 @@ export function createCodingAgentService({
   workspace: requestedWorkspace = null,
   workspaceTarget = null,
   home = null,
+  provider = null,
   folders = [],
   ignoredPaths = [],
   mcpServers = null,
@@ -38,15 +43,24 @@ export function createCodingAgentService({
   modelListers = modelAdapters
 }) {
   let requestedPermissionMode = validatePermissionMode(permissionMode);
-  const folderMounts = resolveFolderMounts(folders, cwd);
+  // The caller selects the provider explicitly (selectExecutionProvider); a caller that supplies none gets the
+  // standalone Bubblewrap provider, and an embedded protocol provider is never replaced by it.
+  provider ??= createBubblewrapProvider();
+  if (!isProvider(provider)) throw new ALAError('The execution provider is invalid.', EXIT_CODES.execution);
+  // A protocol provider owns HOME, mounts and the filesystem: every path is virtual and ALA touches none of them.
+  const embedded = provider.kind === 'protocol';
+  const virtualHome = embedded ? resolveVirtualHome(home ?? ROBOT_HOME) : null;
+  if (embedded && workspaceTarget) {
+    throw new ALAError('--cwd as is not available when an execution provider owns the mounts.', EXIT_CODES.usage);
+  }
+  if (embedded && requestedWorkspace) requireVirtualPath(requestedWorkspace, '--cwd');
+  const folderMounts = embedded
+    ? resolveVirtualFolders(folders, { cwd: requestedWorkspace, home: virtualHome })
+    : resolveFolderMounts(folders, cwd);
+  if (embedded) ignoredPaths = resolveVirtualExclusions(ignoredPaths);
   permissionRequests ??= createPermissionRequestManager({ eventSink, logger });
   let activeController = null;
   const available = agents.filter((record) => record.available);
-  const bwrap = findBubblewrap();
-  const sandboxCapabilities = {
-    bwrap,
-    privateProc: canMountPrivateProc(bwrap)
-  };
   let workspace = requestedWorkspace;
   let sandboxWorkspace = workspaceTarget;
   let workspacePrepared = false;
@@ -62,7 +76,10 @@ export function createCodingAgentService({
   async function prepareWorkspace() {
     // A caller-supplied cwd is used as-is. Without one ALA retains an owned
     // temporary directory so the execution can be inspected after it finishes.
-    if (!workspace) workspace = await mkdtemp(join(tmpdir(), 'ala-agent-'));
+    if (!workspace) {
+      workspace = typeof provider.tempdir === 'function'
+        ? await provider.tempdir() : await mkdtemp(join(tmpdir(), 'ala-agent-'));
+    }
     if (!sandboxWorkspace) sandboxWorkspace = workspace;
     workspacePrepared = true;
   }
@@ -89,18 +106,18 @@ export function createCodingAgentService({
   }
 
   function executionContext(selected) {
+    const hostWorkspace = embedded ? null : workspace;
     return {
-      hostWorkspace: workspace,
+      hostWorkspace,
       workspace: sandboxWorkspace,
       sandbox: {
-        hostWorkspace: workspace,
+        provider,
+        hostWorkspace,
         workspaceTarget: sandboxWorkspace,
         backend: selected.name,
-        ...(home ? { home } : {}),
+        ...(embedded ? { home: virtualHome } : home ? { home } : {}),
         folders: folderMounts,
-        ignoredPaths,
-        bwrap: sandboxCapabilities.bwrap,
-        ...(sandboxCapabilities.privateProc ? { privateProc: true } : {})
+        ignoredPaths
       }
     };
   }

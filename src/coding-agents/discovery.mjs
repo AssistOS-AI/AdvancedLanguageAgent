@@ -50,3 +50,14 @@ export async function discoverCodingAgents({ env = process.env } = {}) {
   }
   return records;
 }
+
+// Embedded ALA has no tools of its own filesystem to search. It reports the backends of the provider's tool
+// inventory in the same fixed order and refers to each one by name; the provider resolves the name.
+export async function discoverProviderAgents(provider) {
+  const inventory = await provider.inventory();
+  return AGENT_NAMES.map((name) => {
+    const entry = inventory.find((candidate) => candidate.name === name);
+    return { name, available: Boolean(entry), binary: entry ? name : null,
+      ...(entry?.version ? { version: entry.version } : {}) };
+  });
+}
