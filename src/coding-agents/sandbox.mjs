@@ -13,6 +13,8 @@ const privateProcSupport = new Map();
 const privateProcModes = new Map();
 const sandboxSupport = new Map();
 const probeDiagnostics = new Map();
+// The probe command; minimal images keep `true` only in /bin.
+const PROBE_TRUE = ['/usr/bin/true', '/bin/true'].find((candidate) => fs.existsSync(candidate)) || '/usr/bin/true';
 
 const SHARED_ENVIRONMENT = Object.freeze([
   'LANG', 'LANGUAGE', 'LC_ALL', 'TERM', 'COLORTERM', 'NO_COLOR', 'FORCE_COLOR', 'TZ',
@@ -45,8 +47,12 @@ export const CREDENTIAL_ENVIRONMENT = Object.freeze({
   claude: Object.freeze(CLAUDE_ENVIRONMENT.filter(name => name !== 'ANTHROPIC_BASE_URL'))
 });
 
-export function findBubblewrap() {
-  for (const candidate of ['/usr/bin/bwrap', '/bin/bwrap']) {
+// ALA_BWRAP names an explicit Bubblewrap binary, for example a static build shipped beside the coding agents
+// for a container that has no bwrap of its own. When it is set but unusable, no other binary is tried.
+export function findBubblewrap(env = process.env) {
+  const explicit = typeof env?.ALA_BWRAP === 'string' ? env.ALA_BWRAP.trim() : '';
+  for (const candidate of explicit ? [explicit] : ['/usr/bin/bwrap', '/bin/bwrap']) {
+    if (!path.isAbsolute(candidate)) continue;
     try {
       const resolved = fs.realpathSync(candidate);
       const metadata = fs.statSync(resolved);
@@ -61,14 +67,14 @@ export function canMountPrivateProc(bwrap = findBubblewrap(), dependencies = {})
   if (!bwrap) return false;
   const userNamespaceArgs = ['--die-with-parent', '--unshare-user', '--unshare-pid'];
   addSystemMounts(userNamespaceArgs);
-  userNamespaceArgs.push('--proc', '/proc', '--', '/usr/bin/true');
+  userNamespaceArgs.push('--proc', '/proc', '--', PROBE_TRUE);
   if (probeBubblewrap(privateProcSupport, bwrap, userNamespaceArgs, dependencies)) {
     privateProcModes.set(bwrap, 'userns');
     return true;
   }
   const outerCapabilityArgs = ['--die-with-parent', '--unshare-pid', '--cap-drop', 'ALL'];
   addSystemMounts(outerCapabilityArgs);
-  outerCapabilityArgs.push('--proc', '/proc', '--', '/usr/bin/true');
+  outerCapabilityArgs.push('--proc', '/proc', '--', PROBE_TRUE);
   if (probeBubblewrap(privateProcSupport, bwrap, outerCapabilityArgs, dependencies)) {
     privateProcModes.set(bwrap, 'outer-cap');
     return true;
@@ -81,7 +87,7 @@ export function canStartBubblewrap(bwrap = findBubblewrap(), dependencies = {}) 
   if (!bwrap) return false;
   const args = ['--die-with-parent', '--unshare-user', '--unshare-pid'];
   addSystemMounts(args);
-  args.push('--dir', '/proc', '--', '/usr/bin/true');
+  args.push('--dir', '/proc', '--', PROBE_TRUE);
   return probeBubblewrap(sandboxSupport, bwrap, args, dependencies);
 }
 
@@ -304,7 +310,7 @@ export function buildSandboxArgs({
   binary,
   args = [],
   env = process.env,
-  bwrap = findBubblewrap(),
+  bwrap = findBubblewrap(env),
   privateProc = canMountPrivateProc(bwrap),
   home = null,
   folders = [],
@@ -313,7 +319,7 @@ export function buildSandboxArgs({
 }) {
   if (!bwrap) {
     throw new ALAError(
-      'Coding-agent execution requires Bubblewrap (bwrap); no unsandboxed fallback is permitted.',
+      'Coding-agent execution requires Bubblewrap (bwrap at /usr/bin/bwrap, /bin/bwrap or ALA_BWRAP); no unsandboxed fallback is permitted.',
       EXIT_CODES.execution
     );
   }
@@ -332,7 +338,8 @@ export function buildSandboxArgs({
   if (['codex', 'opencode'].includes(backend) && !privateProc) {
     const diagnostic = probeDiagnostics.get(bwrap);
     throw new ALAError(
-      `${backend === 'codex' ? 'Codex' : 'OpenCode'} requires a private /proc inside Bubblewrap, but the capability probe failed${diagnostic ? ` (${diagnostic})` : ''}.`,
+      `${backend === 'codex' ? 'Codex' : 'OpenCode'} requires a private /proc inside Bubblewrap, but the capability probe failed${diagnostic ? ` (${diagnostic})` : ''}. `
+        + 'The container running ALA must allow a new procfs in a user namespace (for Podman: --security-opt unmask=/proc/*).',
       EXIT_CODES.execution
     );
   }

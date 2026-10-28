@@ -293,3 +293,14 @@ test('mounts a writable cwd and a read-only parent at their canonical paths', as
   assert.equal(args[args.indexOf('--chdir') + 1], workspace);
   assert.equal(args.some(value => value.includes('.agents')), false);
 });
+
+test('ALA_BWRAP selects an explicit Bubblewrap binary and is never replaced by the system one', async (context) => {
+  const root = await mkdtemp(join(tmpdir(), 'ala-bwrap-override-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const binary = join(root, 'bwrap');
+  await writeFile(binary, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+  assert.equal(findBubblewrap({ ALA_BWRAP: binary }), await realpath(binary));
+  assert.equal(findBubblewrap({ ALA_BWRAP: join(root, 'missing') }), null);
+  assert.equal(findBubblewrap({ ALA_BWRAP: 'bwrap' }), null, 'a relative name is refused');
+  assert.equal(findBubblewrap({}), findBubblewrap());
+});

@@ -42,7 +42,7 @@ export function createCodingAgentService({
   permissionRequests ??= createPermissionRequestManager({ eventSink, logger });
   let activeController = null;
   const available = agents.filter((record) => record.available);
-  const bwrap = findBubblewrap();
+  const bwrap = findBubblewrap(env);
   const sandboxCapabilities = {
     bwrap,
     privateProc: canMountPrivateProc(bwrap)

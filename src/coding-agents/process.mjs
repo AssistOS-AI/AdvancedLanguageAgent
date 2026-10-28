@@ -29,7 +29,7 @@ export function spawnProcess({ binary, args, cwd, env = process.env, stdio, sand
   if (!sandbox) {
     return spawn(binary, args, { cwd, env: executionEnv, stdio });
   }
-  const bwrap = sandbox.bwrap || findBubblewrap();
+  const bwrap = sandbox.bwrap || findBubblewrap(executionEnv);
   return spawn(bwrap || '/usr/bin/bwrap', buildSandboxArgs({
     workspace: sandbox.hostWorkspace,
     workspaceTarget: sandbox.workspaceTarget,
