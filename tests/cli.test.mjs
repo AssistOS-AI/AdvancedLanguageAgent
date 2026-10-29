@@ -181,8 +181,12 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"s
     env: {
       ...process.env,
       HOME: join(root, 'home'),
-      PATH: `${root}:/usr/bin`,
+      PATH: root,
       CODEX_BIN: binary,
+      OPENCODE_BIN: join(root, 'absent-opencode'),
+      PI_BIN: join(root, 'absent-pi'),
+      OMP_BIN: join(root, 'absent-omp'),
+      CLAUDE_BIN: join(root, 'absent-claude'),
       CODEX_HOME: authRoot
     },
     stdin: inputStream([
@@ -211,8 +215,8 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"s
   assert.equal(code, 0, stderr.read());
   const outputLines = stdout.read().trim().split('\n');
   // /status prints one padded line per agent; the session's configured codex is its default.
-  const statusLines = outputLines.filter((line) => /^(codex|opencode|pi|claude) {2,}/u.test(line));
-  assert.deepEqual(statusLines.map((line) => line.split(/\s+/u)[0]), ['codex', 'opencode', 'pi', 'claude']);
+  const statusLines = outputLines.filter((line) => /^(codex|opencode|pi|omp|claude) {2,}/u.test(line));
+  assert.deepEqual(statusLines.map((line) => line.split(/\s+/u)[0]), ['codex', 'opencode', 'pi', 'omp', 'claude']);
   assert.match(statusLines[0], /^codex {5}available {6}.*default$/u);
   assert.deepEqual(outputLines.filter((line) => !statusLines.includes(line)), ['codex', 'gpt-test', 'slash result']);
   const diagnostics = stderr.read();

@@ -110,59 +110,101 @@ export async function runCodexLive(input) {
   }
 }
 
-export async function runPiLive(input) {
-  checkAbort(input.signal);
-  await requirePiVersion(input);
-  const sessionDir = `${input.workspace}/.ala-pi-sessions`;
-  await fs.mkdir(path.join(input.hostWorkspace, '.ala-pi-sessions'), { recursive: true, mode: 0o700 });
-  const previous = input.continuation?.sessionFile;
-  if (input.continuation && !previous) throw new Error('Pi continuation has no session file.');
-  if (previous) {
-    if (!previous.startsWith(`${sessionDir}/`) || path.basename(previous) !== previous.slice(sessionDir.length + 1)) {
-      throw new Error('Invalid Pi session file.');
-    }
-    await fs.access(path.join(input.hostWorkspace, '.ala-pi-sessions', path.basename(previous)));
-  }
-  const rpc = openJsonChannel(input, ['--mode', 'rpc', '--session-dir', sessionDir, '--approve',
-    ...(previous ? ['--session', previous] : []), ...(input.model ? ['--model', input.model] : []),
-    ...(input.effort ? ['--thinking', input.effort] : [])]);
-  const parser = createPiEventParser({ onText: input.onVisibleText });
-  rpc.events.on('event', (event) => parser.push(Buffer.from(`${JSON.stringify(event)}\n`)));
-  let cancelTimer;
-  const abort = () => {
-    cancelTimer ||= setTimeout(() => { void rpc.close(); }, 1500);
-    void rpc.request({ type: 'clear_queue' }).then(() => rpc.request({ type: 'abort' })).catch(() => {});
-  };
-  input.signal?.addEventListener('abort', abort, { once: true });
-  try {
-    const state = await rpc.request({ type: 'get_state' });
-    if (input.effort && state.thinkingLevel !== input.effort) {
-      throw new Error('Pi did not apply the requested thinking level: ' + input.effort);
-    }
-    if (!state.sessionFile || !state.sessionId) throw new Error('Pi did not expose a persistent session.');
-    if (previous && (state.sessionFile !== previous || state.sessionId !== input.continuation.sessionId)) {
-      throw new Error('Pi did not restore the requested native session.');
-    }
-    const continuation = { sessionId: state.sessionId, sessionFile: state.sessionFile };
-    await input.onSession?.(continuation);
-    checkAbort(input.signal);
-    const complete = rpc.wait((event) => event.type === 'agent_settled');
-    await rpc.request({ type: 'prompt', message: input.prompt });
-    if (input.signal?.aborted) abort();
-    input.setMessageHandler?.(async (message) => {
-      await rpc.request({ type: 'steer', message });
-      return { delivery: 'delivered' };
-    });
-    await complete;
-    parser.finish();
-    checkAbort(input.signal);
-    if (parser.errorMessage()) throw new Error(parser.errorMessage());
-    if (!parser.finalText()) throw new Error('Pi completed without a final assistant message.');
-    return { outputText: parser.finalText(), continuation };
-  } finally {
-    clearTimeout(cancelTimer);
-    input.setMessageHandler?.(null);
-    input.signal?.removeEventListener('abort', abort);
-    await rpc.close();
-  }
+
+// The Pi family (Pi, OMP) shares one live RPC protocol. Releases differ in
+// the turn-settled event name and may lack clear_queue, so both settled
+// signals are accepted and queue clearing stays best-effort before abort.
+function piFamilySettled(event) {
+  return event.type === 'agent_settled' || event.type === 'session_settled';
 }
+
+function createPiFamilyLiveRunner({ label, sessionLabel, rpcArguments, nativeContinuation }) {
+  return async function runPiFamilyLive(input) {
+    checkAbort(input.signal);
+    await requirePiVersion(input);
+    const sessionDir = `${input.workspace}/.ala-${sessionLabel}-sessions`;
+    await fs.mkdir(path.join(input.hostWorkspace, `.ala-${sessionLabel}-sessions`), { recursive: true, mode: 0o700 });
+    const previous = nativeContinuation.resumeValue(input);
+    if (input.continuation && !previous) throw new Error(`${label} continuation has no resumable session.`);
+    if (previous) await nativeContinuation.validateResumeValue(previous, sessionDir, input);
+    const rpc = openJsonChannel(input, rpcArguments({ sessionDir, previous, model: input.model, effort: input.effort }));
+    const parser = createPiEventParser({ onText: input.onVisibleText });
+    rpc.events.on('event', (event) => parser.push(Buffer.from(`${JSON.stringify(event)}\n`)));
+    let cancelTimer;
+    const abort = () => {
+      cancelTimer ||= setTimeout(() => { void rpc.close(); }, 1500);
+      void rpc.request({ type: 'clear_queue' }).catch(() => {})
+        .then(() => rpc.request({ type: 'abort' }).catch(() => {}));
+    };
+    input.signal?.addEventListener('abort', abort, { once: true });
+    try {
+      const state = await rpc.request({ type: 'get_state' });
+      if (input.effort && state.thinkingLevel !== input.effort) {
+        throw new Error(`${label} did not apply the requested thinking level: ` + input.effort);
+      }
+      const continuation = nativeContinuation.fromState(state);
+      if (!continuation) throw new Error(`${label} did not expose a persistent session.`);
+      if (previous && !nativeContinuation.matches(state, input.continuation)) {
+        throw new Error(`${label} did not restore the requested native session.`);
+      }
+      await input.onSession?.(continuation);
+      checkAbort(input.signal);
+      const complete = rpc.wait(piFamilySettled);
+      await rpc.request({ type: 'prompt', message: input.prompt });
+      if (input.signal?.aborted) abort();
+      input.setMessageHandler?.(async (message) => {
+        await rpc.request({ type: 'steer', message });
+        return { delivery: 'delivered' };
+      });
+      await complete;
+      parser.finish();
+      checkAbort(input.signal);
+      if (parser.errorMessage()) throw new Error(parser.errorMessage());
+      if (!parser.finalText()) throw new Error(`${label} completed without a final assistant message.`);
+      return { outputText: parser.finalText(), continuation };
+    } finally {
+      clearTimeout(cancelTimer);
+      input.setMessageHandler?.(null);
+      input.signal?.removeEventListener('abort', abort);
+      await rpc.close();
+    }
+  };
+}
+
+export const runPiLive = createPiFamilyLiveRunner({
+  label: 'Pi',
+  sessionLabel: 'pi',
+  rpcArguments: ({ sessionDir, previous, model, effort }) => ['--mode', 'rpc', '--session-dir', sessionDir, '--approve',
+    ...(previous ? ['--session', previous] : []), ...(model ? ['--model', model] : []),
+    ...(effort ? ['--thinking', effort] : [])],
+  nativeContinuation: {
+    resumeValue: (input) => input.continuation?.sessionFile,
+    async validateResumeValue(previous, sessionDir, input) {
+      if (!previous.startsWith(`${sessionDir}/`) || path.basename(previous) !== previous.slice(sessionDir.length + 1)) {
+        throw new Error('Invalid Pi session file.');
+      }
+      await fs.access(path.join(input.hostWorkspace, '.ala-pi-sessions', path.basename(previous)));
+    },
+    fromState: (state) => (state.sessionFile && state.sessionId)
+      ? { sessionId: state.sessionId, sessionFile: state.sessionFile } : null,
+    matches: (state, continuation) => state.sessionFile === continuation.sessionFile
+      && state.sessionId === continuation.sessionId
+  }
+});
+
+export const runOmpLive = createPiFamilyLiveRunner({
+  label: 'OMP',
+  sessionLabel: 'omp',
+  rpcArguments: ({ sessionDir, previous, model, effort }) => ['--mode', 'rpc', '--session-dir', sessionDir, '--auto-approve',
+    ...(previous ? ['--resume', previous] : []), ...(model ? ['--model', model] : []),
+    ...(effort ? ['--thinking', effort] : [])],
+  nativeContinuation: {
+    resumeValue: (input) => input.continuation?.sessionId,
+    async validateResumeValue(previous) {
+      // OMP resumes by session identifier; identifiers never carry paths.
+      if (!/^[A-Za-z0-9_-]{1,128}$/u.test(previous)) throw new Error('Invalid OMP session identifier.');
+    },
+    fromState: (state) => state.sessionId ? { sessionId: state.sessionId } : null,
+    matches: (state, continuation) => state.sessionId === continuation.sessionId
+  }
+});

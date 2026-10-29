@@ -28,7 +28,7 @@
     <p>Repeatable <code>--folder &lt;path&gt; [write] [as &lt;alias&gt;|at &lt;absolute-path&gt;] [expose]</code> options expose caller-owned directories. ALA handles path validation and mounting only. The caller owns dependencies, configuration, communication protocols, and cleanup. Unix sockets inside a mount remain caller-owned and accessible according to their permissions.</p>
 
     <h2>Discovery and portability</h2>
-    <p>ALA's only discovery is coding-agent backend detection at process startup through <code>CODEX_BIN</code>, <code>OPENCODE_BIN</code>, <code>PI_BIN</code>, <code>CLAUDE_BIN</code>, standard installation locations, and <code>PATH</code>. It never scans a caller workspace for task descriptors.</p>
+    <p>ALA's only discovery is coding-agent backend detection at process startup through <code>CODEX_BIN</code>, <code>OPENCODE_BIN</code>, <code>PI_BIN</code>, <code>OMP_BIN</code>, <code>CLAUDE_BIN</code>, standard installation locations, and <code>PATH</code>. It never scans a caller workspace for task descriptors.</p>
     <p>The package declares no runtime npm dependencies; it relies on Node.js built-ins, Bubblewrap, and the already installed coding-agent CLIs. Imported task skill instructions, code, pages, and specifications remain in the repository that owns them.</p>
   </article></main>
   <div data-include="partials/footer.html"></div>

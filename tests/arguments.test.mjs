@@ -25,7 +25,7 @@ test('parses coding-agent discovery and explicit delegation options', () => {
   assert.deepEqual(parseArguments(['agent', 'models', 'claude', '--json', '--home', '/robot']), {
     command: 'agent', action: 'models', agent: 'claude', json: true, help: false, home: '/robot'
   });
-  assert.throws(() => parseArguments(['agent', 'models']), /ala agent models <codex\|opencode\|pi\|claude>/);
+  assert.throws(() => parseArguments(['agent', 'models']), /ala agent models <codex\|opencode\|pi\|omp\|claude>/);
   assert.throws(() => parseArguments(['agent', 'models', 'unknown']), /Usage: ala agent/);
   assert.throws(() => parseArguments(['agent', 'list', '--home', '/robot']), /Unknown agent option: --home/);
   assert.deepEqual(parseArguments(['status', '--json', '--home', '/robot', '--config', 'ala.json']), {
@@ -38,6 +38,7 @@ test('parses coding-agent discovery and explicit delegation options', () => {
   assert.throws(() => parseArguments(['--agent', 'unknown', 'task']), /must be auto/);
   for (const flag of ['--agent', '--ca']) {
     assert.equal(parseArguments([flag, 'pi', 'run']).agent, 'pi');
+    assert.equal(parseArguments([flag, 'omp', 'run']).agent, 'omp');
   }
   assert.equal(parseArguments(['--ca', 'pi', '--model', 'fast', '--task', 'task']).model, 'fast');
   assert.throws(() => parseArguments(['--websearch', 'research']), /Unknown option: --websearch/);

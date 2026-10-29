@@ -29,7 +29,7 @@ async function executable(root, name, source = '#!/bin/sh\nexit 0\n') {
   return filePath;
 }
 
-test('discovers configured and PATH coding-agent executables in the fixed codex, opencode, pi, claude order', async (context) => {
+test('discovers configured and PATH coding-agent executables in the fixed codex, opencode, pi, omp, claude order', async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-agent-discovery-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const codex = await executable(root, 'codex');
@@ -37,10 +37,11 @@ test('discovers configured and PATH coding-agent executables in the fixed codex,
   const agents = await discoverCodingAgents({
     env: { HOME: join(root, 'home'), PATH: root, OPENCODE_BIN: opencode, ALA_CODING_AGENT_PRIORITY: 'pi,opencode' }
   });
-  assert.deepEqual(agents.map((agent) => agent.name), ['codex', 'opencode', 'pi', 'claude']);
+  assert.deepEqual(agents.map((agent) => agent.name), ['codex', 'opencode', 'pi', 'omp', 'claude']);
   assert.equal(agents[0].binary, codex);
   assert.equal(agents[1].binary, opencode);
   assert.equal(agents[2].available, false);
+  assert.equal(agents[3].available, false);
 });
 
 test('auto selects the configured default agent when installed, otherwise the first available', async () => {
@@ -286,14 +287,14 @@ test('ask mode rejects selected Pi before workspace creation or native session m
   });
   t.after(() => service.close());
   await assert.rejects(service.execute('task'), {
-    message: 'Pi does not support ask-for-approval; select full-access or use Codex, OpenCode or Claude Code.', exitCode: 2
+    message: 'Pi and OMP support full-access only; select full-access or use Codex, OpenCode or Claude Code.', exitCode: 2
   });
   assert.equal(calls, 0);
   await assert.rejects(access(join(root, '.agents')));
   service.setPermissionMode('full-access');
   assert.equal(await service.execute('task'), 'Pi ran');
   service.setPermissionMode('ask-for-approval');
-  await assert.rejects(service.execute('next'), /Pi does not support ask-for-approval/);
+  await assert.rejects(service.execute('next'), /Pi and OMP support full-access only/);
 });
 
 test('service cancellation releases pending approval and interrupts the active native operation', {
@@ -344,4 +345,12 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"d
   });
   context.after(() => runtime.close());
   assert.equal(await runtime.execute('perform task'), 'delegated');
+});
+
+test('OMP one-shot arguments carry model, thinking level and the prompt', async () => {
+  const { buildOmpArguments } = await import('../src/coding-agents/omp.mjs');
+  assert.deepEqual(buildOmpArguments({ prompt: 'work', sessionDir: '/s' }),
+    ['--mode', 'json', '--session-dir', '/s', '--auto-approve', '-p', 'work']);
+  assert.deepEqual(buildOmpArguments({ prompt: 'work', sessionDir: '/s', model: 'm', effort: 'high' }),
+    ['--mode', 'json', '--session-dir', '/s', '--model', 'm', '--thinking', 'high', '--auto-approve', '-p', 'work']);
 });

@@ -1,5 +1,6 @@
 import { ALAError, EXIT_CODES } from './errors.mjs';
 import { validatePermissionMode } from './permission-requests.mjs';
+import { AGENT_NAMES } from './coding-agents/discovery.mjs';
 
 const valueOptions = new Map([
   ['--text', 'text'],
@@ -56,7 +57,7 @@ function parseAlias(argv, index, option) {
   return { alias: optionValue(argv, index + 1, `${option} as`), index: index + 2 };
 }
 
-const AGENT_USAGE = 'Usage: ala agent list [--json] | ala agent models <codex|opencode|pi|claude> [--json] [--home <path>].';
+const AGENT_USAGE = 'Usage: ala agent list [--json] | ala agent models <codex|opencode|pi|omp|claude> [--json] [--home <path>].';
 
 function parseAgentCommand(argv) {
   const options = {
@@ -65,7 +66,7 @@ function parseAgentCommand(argv) {
   let index = 2;
   if (options.action === 'models') {
     options.agent = argv[2];
-    if (!['codex', 'opencode', 'pi', 'claude'].includes(options.agent)) throw new ALAError(AGENT_USAGE, EXIT_CODES.usage);
+    if (!AGENT_NAMES.includes(options.agent)) throw new ALAError(AGENT_USAGE, EXIT_CODES.usage);
     index = 3;
   } else if (options.action !== 'list') {
     throw new ALAError(AGENT_USAGE, EXIT_CODES.usage);
@@ -162,8 +163,8 @@ export function parseArguments(argv) {
     throw new ALAError('--effort requires a native effort name or default.', EXIT_CODES.usage);
   }
 
-  if (options.agent && !['auto', 'codex', 'opencode', 'pi', 'claude'].includes(options.agent)) {
-    throw new ALAError('--agent must be auto, codex, opencode, pi, or claude.', EXIT_CODES.usage);
+  if (options.agent && !['auto', ...AGENT_NAMES].includes(options.agent)) {
+    throw new ALAError('--agent must be auto, codex, opencode, pi, omp, or claude.', EXIT_CODES.usage);
   }
   return options;
 }
@@ -173,18 +174,18 @@ export const HELP_TEXT = `Advanced Language Agent
 Usage:
   ala [options] [instruction...]
   ala agent list [--json]
-  ala agent models <codex|opencode|pi|claude> [--json] [--home <path>]
+  ala agent models <codex|opencode|pi|omp|claude> [--json] [--home <path>]
   ala status [--json] [--home <path>] [--config <path>]
 
 Agent commands:
-  agent list                 List detected coding agents in the order codex, opencode, pi, claude
+  agent list                 List detected coding agents in the order codex, opencode, pi, omp, claude
   agent models <name>        List the agent's native models; --json adds each model's supported efforts
   status                     Show each coding agent's installation and login and the default agent;
                              logins are found from credential files and variables, never verified
 
 Execution options:
-  --ca <name>                Coding agent: auto, codex, opencode, pi, or claude (default: config
-                             codingAgent, then the first available of codex, opencode, pi, claude)
+  --ca <name>                Coding agent: auto, codex, opencode, pi, omp, or claude (default: config
+                             codingAgent, then the first available of codex, opencode, pi, omp, claude)
   --permissions <mode>       ask-for-approval or full-access (default: full-access)
   --home <path>              Explicit coding-agent home/configuration directory
   --cwd <path> [as <alias>]  Writable working directory; omit to use a retained temporary directory

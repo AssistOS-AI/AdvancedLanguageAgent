@@ -16,7 +16,7 @@ import { SANDBOX_WORKSPACE } from './coding-agents/paths.mjs';
 import { createDiagnosticLogger, createRuntime } from './runtime.mjs';
 import { createCodingAgentService } from './coding-agents/service.mjs';
 import { createRuntimeEventSink } from './runtime-events.mjs';
-import { discoverCodingAgents } from './coding-agents/discovery.mjs';
+import { AGENT_NAMES, discoverCodingAgents } from './coding-agents/discovery.mjs';
 import { openSessionState, resolveSessionsRoot } from './session-state.mjs';
 import { collectStatus, formatStatus, runStatusCommand } from './status-command.mjs';
 import { homeEnvironment } from './coding-agents/logins.mjs';
@@ -40,6 +40,7 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
   /agent codex <prompt>          Delegate to Codex
   /agent opencode <prompt>       Delegate to OpenCode
   /agent pi <prompt>             Delegate to Pi
+  /agent omp <prompt>            Delegate to OMP (Oh My Pi)
   /agent claude <prompt>         Delegate to Claude Code
   /status                        Show each coding agent's installation and login and the default agent
   /permissions [mode]            Show or set ask-for-approval or full-access for this session
@@ -153,11 +154,11 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
             } else if (action === 'list') {
               const names = runtime.listCodingAgents();
               io.stdout.write(names.map((name) => `${name}\n`).join(''));
-            } else if (['codex', 'opencode', 'pi', 'claude'].includes(action) && parts[2] === 'models') {
+            } else if (AGENT_NAMES.includes(action) && parts[2] === 'models') {
               if (parts.length !== 3) throw new ALAError(`Usage: /agent ${action} models`, EXIT_CODES.usage);
               const models = await runtime.listCodingAgentModels(action, { signal });
               io.stdout.write(models.map((model) => `${model}\n`).join(''));
-            } else if (['codex', 'opencode', 'pi', 'claude'].includes(action) && parts[2] === 'model') {
+            } else if (AGENT_NAMES.includes(action) && parts[2] === 'model') {
               const model = parts.slice(3).join(' ').trim();
               if (!model) throw new ALAError(`Usage: /agent ${action} model <model-name|default>`, EXIT_CODES.usage);
               const useDefault = model === 'default';
@@ -175,7 +176,7 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
               io.stderr.write(useDefault
                 ? `ala: ${action} model reset to agent default\n`
                 : `ala: ${action} model set to ${model}\n`);
-            } else if (['codex', 'opencode', 'pi', 'claude'].includes(action) && parts[2] === 'effort') {
+            } else if (AGENT_NAMES.includes(action) && parts[2] === 'effort') {
               const effort = parts[3];
               if (parts.length !== 4 || !/^[A-Za-z0-9_-]+$/u.test(effort)) {
                 throw new ALAError(`Usage: /agent ${action} effort <effort|default>`, EXIT_CODES.usage);
@@ -205,15 +206,15 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
                 : `ala: ${action} effort set to ${effort}\n`);
             } else if (action === 'use') {
               const name = parts[2];
-              if (parts.length !== 3 || !['codex', 'opencode', 'pi', 'claude'].includes(name)) {
-                throw new ALAError('Usage: /agent use <codex|opencode|pi|claude>', EXIT_CODES.usage);
+              if (parts.length !== 3 || !AGENT_NAMES.includes(name)) {
+                throw new ALAError('Usage: /agent use <codex|opencode|pi|omp|claude>', EXIT_CODES.usage);
               }
               const nextConfig = { ...activeConfig, codingAgent: name };
               await saveConfig(configPath, nextConfig);
               activeConfig = nextConfig;
               runtime.setDefaultCodingAgent(name);
               io.stderr.write(`ala: default coding agent set to ${name}\n`);
-            } else if (['auto', 'codex', 'opencode', 'pi', 'claude'].includes(action)) {
+            } else if (['auto', ...AGENT_NAMES].includes(action)) {
               const prompt = parts.slice(2).join(' ').trim();
               if (!prompt) throw new ALAError(`/agent ${action} requires a prompt.`, EXIT_CODES.usage);
               const result = await thinking.run(
@@ -308,7 +309,7 @@ async function runExecution(options, io, env) {
   const codingAgents = await discoverCodingAgents({ env: runtimeEnv });
   const available = codingAgents.filter((agent) => agent.available);
   if (available.length === 0) {
-    throw new ALAError('No coding agent is available. Install and authenticate Codex, OpenCode, Pi, or Claude Code.',
+    throw new ALAError('No coding agent is available. Install and authenticate Codex, OpenCode, Pi, OMP, or Claude Code.',
       EXIT_CODES.execution);
   }
   if (options.agent !== 'auto' && !available.some((agent) => agent.name === options.agent)) {

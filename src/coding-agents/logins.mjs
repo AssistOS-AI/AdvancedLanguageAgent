@@ -26,6 +26,7 @@ function stateDirectory(name, env) {
   if (name === 'pi') {
     return env.PI_CODING_AGENT_DIR ? path.resolve(env.PI_CODING_AGENT_DIR) : path.join(home, '.pi', 'agent');
   }
+  if (name === 'omp') return env.OMP_DIR ? path.resolve(env.OMP_DIR) : path.join(home, '.omp');
   if (name === 'claude') return path.resolve(env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'));
   throw new TypeError(`Unknown coding agent: ${name}`);
 }
@@ -34,6 +35,7 @@ const LOGIN_FILES = Object.freeze({
   codex: ['auth.json'],
   opencode: ['auth.json', 'opencode.db', 'opencode.db-wal'],
   pi: ['auth.json'],
+  omp: ['agent/agent.db', 'agent/agent.db-wal'],
   claude: ['.credentials.json', '.claude.json']
 });
 
@@ -50,6 +52,7 @@ export function homeEnvironment(env, home) {
     XDG_CACHE_HOME: path.join(root, '.cache'),
     XDG_STATE_HOME: path.join(root, '.local', 'state'),
     PI_CODING_AGENT_DIR: path.join(root, '.pi', 'agent'),
+    OMP_DIR: path.join(root, '.omp'),
     CLAUDE_CONFIG_DIR: path.join(root, '.claude')
   };
 }
@@ -139,6 +142,35 @@ async function piLogin(directory) {
       || (entry.type === 'oauth' && filled(entry.access))));
 }
 
+// OMP keeps its logins as rows of agent/agent.db; a row that was disabled (for example after a revoked
+// refresh token) is not a login, and an unreadable database is no login.
+async function ompLogin(directory) {
+  const file = path.join(directory, 'agent', 'agent.db');
+  try {
+    const metadata = await fs.lstat(file);
+    if (!metadata.isFile()) return false;
+    for (const suffix of ['-wal', '-shm', '-journal']) {
+      const sibling = await fs.lstat(file + suffix).catch((error) => {
+        if (error.code !== 'ENOENT') throw error;
+      });
+      if (sibling && !sibling.isFile()) return false;
+    }
+    const DatabaseSync = await openSqlite();
+    if (!DatabaseSync) return false;
+    const database = new DatabaseSync(file, { readOnly: true });
+    try {
+      const tables = new Set(database.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all()
+        .map((row) => row.name));
+      return tables.has('auth_credentials')
+        && Boolean(database.prepare('SELECT 1 FROM auth_credentials WHERE disabled_cause IS NULL LIMIT 1').get());
+    } finally {
+      database.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
 // Claude Code keeps a subscription login in .credentials.json and an API key in .claude.json, both under
 // CLAUDE_CONFIG_DIR, which the sandbox always sets.
 async function claudeLogin(directory) {
@@ -149,7 +181,7 @@ async function claudeLogin(directory) {
   return isRecord(config) && filled(config.primaryApiKey);
 }
 
-const DETECTORS = Object.freeze({ codex: codexLogin, opencode: openCodeLogin, pi: piLogin, claude: claudeLogin });
+const DETECTORS = Object.freeze({ codex: codexLogin, opencode: openCodeLogin, pi: piLogin, omp: ompLogin, claude: claudeLogin });
 
 // { loggedIn, file, env }: whether a stored login exists, and the names of the set credential variables.
 export async function detectCodingAgentLogin(name, { env = process.env } = {}) {

@@ -44,6 +44,7 @@ export const CREDENTIAL_ENVIRONMENT = Object.freeze({
   codex: Object.freeze(['OPENAI_API_KEY']),
   opencode: PROVIDER_CREDENTIALS,
   pi: PROVIDER_CREDENTIALS,
+  omp: PROVIDER_CREDENTIALS,
   claude: Object.freeze(CLAUDE_ENVIRONMENT.filter(name => name !== 'ANTHROPIC_BASE_URL'))
 });
 
@@ -188,6 +189,11 @@ export function collectAgentStateMounts(backend, env = process.env) {
       : path.join(home, '.pi', 'agent');
     return [stateMount(configured, `${SANDBOX_HOME}/.pi/agent`)].filter(Boolean);
   }
+  if (backend === 'omp') {
+    const configured = env.OMP_DIR ? path.resolve(env.OMP_DIR) : path.join(home, '.omp');
+    // OMP keeps auth, sessions, and the auth-broker vault under ~/.omp.
+    return [stateMount(configured, `${SANDBOX_HOME}/.omp`)].filter(Boolean);
+  }
   return [];
 }
 
@@ -220,7 +226,7 @@ export function sandboxEnvironment(backend, runtimeMounts = [], env = process.en
   const allowed = new Set([
     ...SHARED_ENVIRONMENT,
     ...(backend === 'codex' ? ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_ORGANIZATION', 'OPENAI_PROJECT'] : []),
-    ...(['opencode', 'pi'].includes(backend) ? PROVIDER_ENVIRONMENT : []),
+    ...(['opencode', 'pi', 'omp'].includes(backend) ? PROVIDER_ENVIRONMENT : []),
     ...(backend === 'opencode' ? [
       'OPENCODE_ENABLE_EXA', 'OPENCODE_CONFIG_CONTENT', 'OPENCODE_SERVER_PASSWORD'
     ] : []),

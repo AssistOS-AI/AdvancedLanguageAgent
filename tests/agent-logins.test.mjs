@@ -23,7 +23,7 @@ async function write(root, file, content) {
 }
 
 const loggedIn = (logins) => Object.fromEntries(Object.entries(logins).map(([name, login]) => [name, login.loggedIn]));
-const NONE = { codex: false, opencode: false, pi: false, claude: false };
+const NONE = { codex: false, opencode: false, pi: false, omp: false, claude: false };
 
 test('an empty home holds no coding-agent login', async (context) => {
   const home = await tempRoot(context);
@@ -37,7 +37,7 @@ test('each agent counts as logged in only when its own credential store holds so
   await write(home, '.pi/agent/auth.json', { anthropic: { type: 'oauth', access: 'a', refresh: 'r', expires: 1 } });
   await write(home, '.claude/.credentials.json', { claudeAiOauth: { accessToken: 'a', refreshToken: 'r' } });
   const logins = await detectCodingAgentLogins({ env: { HOME: home } });
-  assert.deepEqual(loggedIn(logins), { codex: true, opencode: true, pi: true, claude: true });
+  assert.deepEqual(loggedIn(logins), { codex: true, opencode: true, pi: true, omp: false, claude: true });
   assert.deepEqual(logins.codex, { loggedIn: true, file: true, env: [] });
 });
 
@@ -82,7 +82,7 @@ test('state directories follow the agent variables, and an explicit home replace
   await write(root, 'data/opencode/auth.json', { openai: { type: 'oauth' } });
   await write(root, 'pi/auth.json', { openai: { type: 'api_key', env: 'OPENAI_API_KEY' } });
   await write(root, 'claude/.credentials.json', { claudeAiOauth: { refreshToken: 'r' } });
-  assert.deepEqual(loggedIn(await detectCodingAgentLogins({ env })), { codex: true, opencode: true, pi: true, claude: true });
+  assert.deepEqual(loggedIn(await detectCodingAgentLogins({ env })), { codex: true, opencode: true, pi: true, omp: false, claude: true });
   assert.deepEqual(codingAgentLoginFiles('claude', { env }),
     [join(root, 'claude/.credentials.json'), join(root, 'claude/.claude.json')]);
   const robot = join(root, 'robot');
@@ -129,6 +129,7 @@ test('ala status reports installation, logins and the default agent without prin
     ['codex', true, true, { file: false, env: ['OPENAI_API_KEY'] }],
     ['opencode', false, true, { file: false, env: ['OPENAI_API_KEY'] }],
     ['pi', false, true, { file: false, env: ['OPENAI_API_KEY'] }],
+    ['omp', false, true, { file: false, env: ['OPENAI_API_KEY'] }],
     ['claude', true, true, { file: true, env: [] }]
   ]);
   const text = await run(['status']);
@@ -137,6 +138,7 @@ test('ala status reports installation, logins and the default agent without prin
     'codex     available      logged in (OPENAI_API_KEY)',
     'opencode  not installed  logged in (OPENAI_API_KEY)',
     'pi        not installed  logged in (OPENAI_API_KEY)',
+    'omp       not installed  logged in (OPENAI_API_KEY)',
     'claude    available      logged in (credentials file)  default',
     ''
   ].join('\n'));
@@ -144,8 +146,30 @@ test('ala status reports installation, logins and the default agent without prin
   await write(robot, '.codex/auth.json', { tokens: { access_token: 'a' } });
   const explicit = JSON.parse((await run(['status', '--json', '--home', robot])).stdout);
   assert.equal(explicit.configuredAgent, null);
-  assert.deepEqual(explicit.agents.map((agent) => agent.login.file), [true, false, false, false]);
+  assert.deepEqual(explicit.agents.map((agent) => agent.login.file), [true, false, false, false, false]);
   const invalid = await run(['status', '--model', 'x']);
   assert.equal(invalid.code, 2);
   assert.match(invalid.stderr, /Unknown status option: --model/);
+});
+
+test('OMP counts as logged in only for an enabled credential row in its agent database', async (context) => {
+  const { DatabaseSync } = await import('node:sqlite');
+  const home = await tempRoot(context);
+  const file = join(home, '.omp', 'agent', 'agent.db');
+  await mkdir(dirname(file), { recursive: true });
+  const database = new DatabaseSync(file);
+  database.exec('CREATE TABLE auth_credentials (id INTEGER PRIMARY KEY, provider TEXT, credential_type TEXT, data TEXT, disabled_cause TEXT DEFAULT NULL)');
+  database.prepare("INSERT INTO auth_credentials (provider, credential_type, data, disabled_cause) VALUES ('p', 'oauth', 'secret', 'revoked')").run();
+  database.close();
+  const login = async (env) => (await detectCodingAgentLogin('omp', { env })).file;
+  assert.equal(await login({ HOME: home }), false);
+  const writable = new DatabaseSync(file);
+  writable.prepare("INSERT INTO auth_credentials (provider, credential_type, data) VALUES ('q', 'api_key', 'secret')").run();
+  writable.close();
+  assert.equal(await login({ HOME: home }), true);
+  assert.equal(await login({ HOME: join(home, 'elsewhere') }), false);
+  assert.equal(await login({ HOME: join(home, 'elsewhere'), OMP_DIR: join(home, '.omp') }), true);
+  assert.deepEqual(codingAgentLoginFiles('omp', { env: { HOME: home } }), [
+    join(home, '.omp', 'agent', 'agent.db'), join(home, '.omp', 'agent', 'agent.db-wal')
+  ]);
 });
