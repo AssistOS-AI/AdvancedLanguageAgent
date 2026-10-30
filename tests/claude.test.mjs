@@ -6,7 +6,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { buildClaudeArguments, listClaudeModels, requireClaudeVersion, runClaude } from '../src/coding-agents/claude.mjs';
+import { buildClaudeArguments, listClaudeModels, requireClaudeVersion, runClaude } from '../src/coding-agents/agents/claude/runner.mjs';
 import { collectAgentStateMounts, sandboxEnvironment } from '../src/coding-agents/sandbox.mjs';
 
 const fake = fileURLToPath(new URL('./fixtures/fake-claude.mjs', import.meta.url));

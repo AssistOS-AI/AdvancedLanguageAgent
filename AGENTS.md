@@ -63,7 +63,9 @@ All model interactions run through the selected coding agent's native CLI; ALA c
 - `bin/ala.mjs` — Node.js executable entry point used by the npm package mapping.
 - `src/` — CLI, configuration, coding-agent adapters, and runtime modules.
 - `src/transcript.mjs` — public transcript readers exported as `advanced-language-agent/transcript`.
-- `src/coding-agents/` — backend adapters, folder resolution, Bubblewrap sandbox construction, and the coding-agent service.
+- `src/coding-agents/` — the agent registry, folder resolution, Bubblewrap sandbox construction, and the coding-agent service.
+- `src/coding-agents/registry.mjs` — the single ordered list of coding agents; modules outside `agents/` read every per-agent fact from it and name no agent.
+- `src/coding-agents/agents/<name>/` — one coding agent: `index.mjs` (descriptor), `adapter.mjs` (entry point), and its protocol modules. Add a coding agent as described in [DS001](docs/specs/DS001-coding-style.md).
 - `tests/` — deterministic unit, contract, and CLI integration tests.
 - `README.md` — user-facing overview, configuration, and usage.
 - `docs/index.html` — technical documentation entry point.

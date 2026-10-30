@@ -23,6 +23,10 @@ function appendLimited(current, chunk, limit = OUTPUT_LIMIT) {
   return next.subarray(start).toString('utf8');
 }
 
+export function checkAbort(signal) {
+  if (signal?.aborted) throw Object.assign(new Error('Coding-agent execution was interrupted.'), { name: 'AbortError' });
+}
+
 export function spawnProcess({ binary, args, cwd, env = process.env, stdio, sandbox = null }) {
   const executionEnv = { ...process.env, ...env };
   delete executionEnv.NODE_TEST_CONTEXT;

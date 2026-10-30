@@ -16,7 +16,8 @@ import { SANDBOX_WORKSPACE } from './coding-agents/paths.mjs';
 import { createDiagnosticLogger, createRuntime } from './runtime.mjs';
 import { createCodingAgentService } from './coding-agents/service.mjs';
 import { createRuntimeEventSink } from './runtime-events.mjs';
-import { AGENT_NAMES, discoverCodingAgents } from './coding-agents/discovery.mjs';
+import { discoverCodingAgents } from './coding-agents/discovery.mjs';
+import { AGENT_NAMES, AGENTS, agentChoices, enumerate } from './coding-agents/registry.mjs';
 import { openSessionState, resolveSessionsRoot } from './session-state.mjs';
 import { collectStatus, formatStatus, runStatusCommand } from './status-command.mjs';
 import { homeEnvironment } from './coding-agents/logins.mjs';
@@ -37,11 +38,7 @@ const INTERACTIVE_HELP_TEXT = `Interactive commands:
   /agent <name> effort default   Remove the effort and use the model default
   /agent use <name>              Persist the default coding agent
   /agent auto <prompt>           Delegate to the first available backend
-  /agent codex <prompt>          Delegate to Codex
-  /agent opencode <prompt>       Delegate to OpenCode
-  /agent pi <prompt>             Delegate to Pi
-  /agent omp <prompt>            Delegate to OMP (Oh My Pi)
-  /agent claude <prompt>         Delegate to Claude Code
+${AGENTS.map(({ name, description }) => `  /agent ${name} <prompt>`.padEnd(33) + `Delegate to ${description}`).join('\n')}
   /status                        Show each coding agent's installation and login and the default agent
   /permissions [mode]            Show or set ask-for-approval or full-access for this session
   /quit | /exit | :quit | :exit  Close the interactive session`;
@@ -70,7 +67,7 @@ async function runAgentCommand(options, io, env) {
 async function listAgentModels(options, io, env) {
   const home = options.home ? await realpath(resolve(io.cwd, options.home)) : null;
   if (home && !(await stat(home)).isDirectory()) throw new ALAError('--home must reference an existing directory.', EXIT_CODES.usage);
-  const agentEnv = home ? { ...env, HOME: home, CODEX_HOME: resolve(home, '.codex') } : env;
+  const agentEnv = home ? homeEnvironment(env, home) : env;
   const agents = await discoverCodingAgents({ env: agentEnv });
   if (!agents.some((agent) => agent.name === options.agent && agent.available)) {
     throw new ALAError(`Coding agent is not available: ${options.agent}`, EXIT_CODES.execution);
@@ -207,7 +204,7 @@ async function interactiveLoop(runtime, initialPrompt, initialInstruction, optio
             } else if (action === 'use') {
               const name = parts[2];
               if (parts.length !== 3 || !AGENT_NAMES.includes(name)) {
-                throw new ALAError('Usage: /agent use <codex|opencode|pi|omp|claude>', EXIT_CODES.usage);
+                throw new ALAError(`Usage: /agent use <${agentChoices()}>`, EXIT_CODES.usage);
               }
               const nextConfig = { ...activeConfig, codingAgent: name };
               await saveConfig(configPath, nextConfig);
@@ -287,9 +284,7 @@ async function runExecution(options, io, env) {
   if (executionHome && !(await stat(executionHome)).isDirectory()) {
     throw new ALAError('--home must reference an existing directory.', EXIT_CODES.usage);
   }
-  const runtimeEnv = executionHome
-    ? { ...env, HOME: executionHome, CODEX_HOME: resolve(executionHome, '.codex') }
-    : env;
+  const runtimeEnv = executionHome ? homeEnvironment(env, executionHome) : env;
   if (options.taskFile) {
     const taskFile = resolve(io.cwd, options.taskFile);
     options.instructionParts.unshift(await readFile(taskFile, 'utf8'));
@@ -309,7 +304,7 @@ async function runExecution(options, io, env) {
   const codingAgents = await discoverCodingAgents({ env: runtimeEnv });
   const available = codingAgents.filter((agent) => agent.available);
   if (available.length === 0) {
-    throw new ALAError('No coding agent is available. Install and authenticate Codex, OpenCode, Pi, OMP, or Claude Code.',
+    throw new ALAError(`No coding agent is available. Install and authenticate ${enumerate(AGENTS.map((agent) => agent.label))}.`,
       EXIT_CODES.execution);
   }
   if (options.agent !== 'auto' && !available.some((agent) => agent.name === options.agent)) {

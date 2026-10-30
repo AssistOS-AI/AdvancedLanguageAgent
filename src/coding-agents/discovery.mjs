@@ -1,17 +1,9 @@
 import { access, realpath } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { delimiter, isAbsolute, join, resolve } from 'node:path';
+import { delimiter, isAbsolute, resolve } from 'node:path';
 import { homedir } from 'node:os';
 
-export const AGENT_NAMES = Object.freeze(['codex', 'opencode', 'pi', 'omp', 'claude']);
-
-const overrides = Object.freeze({ codex: 'CODEX_BIN', opencode: 'OPENCODE_BIN', pi: 'PI_BIN', omp: 'OMP_BIN', claude: 'CLAUDE_BIN' });
-
-function standardCandidates(name, env) {
-  const home = env.HOME || homedir();
-  if (name === 'opencode') return [join(home, '.opencode', 'bin', 'opencode')];
-  return [join(home, '.local', 'bin', name)];
-}
+import { AGENTS } from './registry.mjs';
 
 async function executable(candidate) {
   try {
@@ -35,11 +27,11 @@ async function resolveCandidate(candidate, env) {
   return null;
 }
 
-// Agents are reported in the fixed order codex, opencode, pi, omp, claude; the first
+// Agents are reported in the fixed registry order.
 export async function discoverCodingAgents({ env = process.env } = {}) {
   const records = [];
-  for (const name of AGENT_NAMES) {
-    const candidates = [env[overrides[name]], ...standardCandidates(name, env), name].filter(Boolean);
+  for (const { name, binary: location } of AGENTS) {
+    const candidates = [env[location.env], ...location.installPaths(env.HOME || homedir()), name].filter(Boolean);
     let binary = null;
     for (const candidate of candidates) {
       binary = await resolveCandidate(candidate, env);

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildCodexArguments } from '../src/coding-agents/codex.mjs';
-import { buildPiArguments, piModelDetails } from '../src/coding-agents/pi.mjs';
-import { openCodeModelDetails } from '../src/coding-agents/opencode.mjs';
+import { buildCodexArguments } from '../src/coding-agents/agents/codex/runner.mjs';
+import { buildPiArguments, piModelDetails } from '../src/coding-agents/agents/pi/runner.mjs';
+import { openCodeModelDetails } from '../src/coding-agents/agents/opencode/runner.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
 import { loadConfig, saveConfig } from '../src/config.mjs';
 
@@ -70,7 +70,7 @@ for (const backend of ['codex', 'pi', 'opencode']) {
 }
 
 test('OpenCode sends effort as a native prompt variant on a resumed session', async () => {
-    const { executeOpenCodeTurn, openCodePermissionRules } = await import('../src/coding-agents/opencode-turn.mjs');
+    const { executeOpenCodeTurn, openCodePermissionRules } = await import('../src/coding-agents/agents/opencode/turn.mjs');
     let submitted;
     const server = {
         signal: new AbortController().signal,

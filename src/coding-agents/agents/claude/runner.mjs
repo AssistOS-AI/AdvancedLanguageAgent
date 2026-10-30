@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { StringDecoder } from 'node:string_decoder';
 
-import { requireSandbox, runProcess, spawnProcess } from './process.mjs';
+import { checkAbort, requireSandbox, runProcess, spawnProcess } from '../../process.mjs';
 
 // Claude Code runs headless with stream-json on stdin and stdout. Prompts are
 // `user` records; permission prompts, interrupts and the model list use the
@@ -11,10 +11,6 @@ const MINIMUM_VERSION = [2, 1, 0];
 const RECORD_LIMIT = 16 * 1024 * 1024;
 const prerequisite = `Claude Code >=${MINIMUM_VERSION.join('.')} is required. `
   + 'Install @anthropic-ai/claude-code or configure CLAUDE_BIN to a compatible executable.';
-
-function checkAbort(signal) {
-  if (signal?.aborted) throw Object.assign(new Error('Coding-agent execution was interrupted.'), { name: 'AbortError' });
-}
 
 export async function requireClaudeVersion(input) {
   const result = await runProcess({ binary: input.binary, args: ['--version'], cwd: input.workspace,

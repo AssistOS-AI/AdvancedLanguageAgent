@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 
-import { createPermissionRequestManager, validatePermissionMode } from '../permission-requests.mjs';
-import { consumeOpenCodeEvents } from './opencode-server.mjs';
+import { createPermissionRequestManager, validatePermissionMode } from '../../../permission-requests.mjs';
+import { consumeOpenCodeEvents } from './server.mjs';
 
 export function openCodePermissionRules(mode, websearch) {
   validatePermissionMode(mode);

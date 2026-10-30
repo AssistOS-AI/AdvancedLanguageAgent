@@ -1,0 +1,104 @@
+import { checkAbort } from '../../process.mjs';
+import { openJsonChannel } from '../../json-channel.mjs';
+import { attachCodexApprovals, codexThreadPolicy, verifyCodexPolicy } from './approvals.mjs';
+import { codexMcpOverrides } from './mcp.mjs';
+
+export async function runCodexLive(input) {
+  checkAbort(input.signal);
+  const rpc = openJsonChannel(input, [...codexMcpOverrides(input.mcpServers || []),
+    '--config', `web_search=${JSON.stringify(input.websearch ? 'live' : 'disabled')}`, 'app-server']);
+  let threadId = input.continuation?.threadId;
+  let turnId = null;
+  let turnStarted = false;
+  let finalText = '';
+  let pendingMessage = '';
+  const flushProgress = () => {
+    if (pendingMessage) input.onVisibleText?.(pendingMessage, { outputKind: 'assistant', outputComplete: true });
+    pendingMessage = '';
+  };
+  let cancelTimer;
+  let interrupted = false;
+  let nativeError;
+  let interruptSent = false;
+  const abort = () => {
+    interrupted = true;
+    cancelTimer ||= setTimeout(() => { void rpc.close(); }, 1500);
+    if (turnId && !interruptSent) {
+      interruptSent = true;
+      void rpc.request({ method: 'turn/interrupt', params: { threadId, turnId } }).catch(() => {});
+    }
+  };
+  const approvals = attachCodexApprovals({ rpc, input, interrupt: abort,
+    fail: (error) => { nativeError = error; abort(); } });
+  input.signal?.addEventListener('abort', abort, { once: true });
+  rpc.events.on('event', (event) => {
+    if (event.params?.threadId && threadId && event.params.threadId !== threadId) return;
+    if (event.method === 'turn/started') turnId = event.params?.turn?.id;
+    const item = event.params?.item;
+    if (event.method === 'item/started' && item?.type !== 'agentMessage') flushProgress();
+    if (event.method === 'item/completed' && item?.type === 'agentMessage') {
+      flushProgress();
+      const text = item.text || '';
+      if (item.phase === 'commentary') input.onVisibleText?.(text, { outputKind: 'assistant', outputComplete: true });
+      else {
+        finalText = text;
+        // Older native protocols omit phase. Keep the last message for the result;
+        // only subsequent work proves it was an intermediate message.
+        if (item.phase !== 'final_answer') pendingMessage = text;
+      }
+    }
+    if (event.method === 'item/completed' && item?.type === 'commandExecution') {
+      flushProgress();
+      if (item.aggregatedOutput) input.onVisibleText?.(item.aggregatedOutput);
+    }
+  });
+  try {
+    await rpc.request({ method: 'initialize', params: { clientInfo: { name: 'ala', version: '1' } } });
+    rpc.send({ method: 'initialized', params: {} });
+    checkAbort(input.signal);
+    const policy = codexThreadPolicy(input.permissionMode);
+    const thread = await rpc.request({ method: threadId ? 'thread/resume' : 'thread/start', params: {
+      ...(threadId ? { threadId } : {}), cwd: input.workspace,
+      ...policy,
+      ...(input.model ? { model: input.model } : {})
+    } });
+    if (!thread.thread?.id || (threadId && thread.thread.id !== threadId)) {
+      throw new Error('Codex did not restore the requested native thread.');
+    }
+    threadId = thread.thread.id;
+    verifyCodexPolicy(thread, policy);
+    if (input.continuation?.threadId) await input.onSession?.({ threadId });
+    checkAbort(input.signal);
+    const complete = rpc.wait((event) => event.method === 'turn/completed' && event.params?.threadId === threadId);
+    turnStarted = true;
+    const started = await rpc.request({ method: 'turn/start', params: {
+      threadId, input: [{ type: 'text', text: input.prompt }],
+      ...(input.effort ? { effort: input.effort } : {})
+    } });
+    turnId = started.turn.id;
+    if (!input.continuation?.threadId) await input.onSession?.({ threadId });
+    if (input.signal?.aborted || interrupted) abort();
+    input.setMessageHandler?.(async (message) => {
+      await rpc.request({ method: 'turn/steer', params: {
+        threadId, expectedTurnId: turnId, input: [{ type: 'text', text: message }]
+      } });
+      return { delivery: 'delivered' };
+    });
+    const ended = await complete;
+    input.setMessageHandler?.(null);
+    checkAbort(input.signal);
+    if (nativeError) throw nativeError;
+    if (interrupted) throw Object.assign(new Error('Coding-agent execution was interrupted.'), { name: 'AbortError' });
+    if (ended.params.turn.status !== 'completed') throw new Error(ended.params.turn.error?.message || 'Codex turn failed.');
+    if (!finalText) throw new Error('Codex completed without a final assistant message.');
+    return { outputText: finalText, continuation: { threadId } };
+  } catch (error) {
+    throw nativeError || error;
+  } finally {
+    approvals.close();
+    clearTimeout(cancelTimer);
+    input.setMessageHandler?.(null);
+    input.signal?.removeEventListener('abort', abort);
+    await rpc.close();
+  }
+}

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { createPermissionRequestManager } from '../src/permission-requests.mjs';
 import { attachCodexApprovals, codexApprovalChoices, verifyCodexPolicy, codexThreadPolicy }
-  from '../src/coding-agents/codex-approvals.mjs';
-import { buildCodexArguments } from '../src/coding-agents/codex.mjs';
+  from '../src/coding-agents/agents/codex/approvals.mjs';
+import { buildCodexArguments } from '../src/coding-agents/agents/codex/runner.mjs';
 
 function fixture() {
   const events = [];

@@ -5,7 +5,8 @@ import { PassThrough } from 'node:stream';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { runCodexLive, runPiLive } from '../src/coding-agents/live-agents.mjs';
+import { runCodexLive } from '../src/coding-agents/agents/codex/live.mjs';
+import { runPiLive } from '../src/coding-agents/agents/pi/live.mjs';
 import { openJsonChannel } from '../src/coding-agents/json-channel.mjs';
 
 function processFixture(handle, { version } = {}) {

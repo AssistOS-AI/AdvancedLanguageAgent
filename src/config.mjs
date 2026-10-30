@@ -3,9 +3,10 @@ import { homedir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 
+import { AGENT_NAMES as AGENT_LIST, enumerate } from './coding-agents/registry.mjs';
 import { ALAError, EXIT_CODES } from './errors.mjs';
 
-const AGENT_NAMES = new Set(['codex', 'opencode', 'pi', 'omp', 'claude']);
+const AGENT_NAMES = new Set(AGENT_LIST);
 const CONFIG_FIELDS = new Set(['codingAgent', 'models', 'efforts']);
 
 export function resolveConfigPath({ cliPath, env = process.env, cwd = process.cwd(), homeDirectory = homedir() } = {}) {
@@ -33,7 +34,7 @@ function validateConfig(value, configPath) {
   }
   const codingAgent = value.codingAgent ?? null;
   if (codingAgent !== null && !AGENT_NAMES.has(codingAgent)) {
-    throw new ALAError(`codingAgent must be codex, opencode, pi, omp, or claude in ${configPath}.`, EXIT_CODES.usage);
+    throw new ALAError(`codingAgent must be ${enumerate(AGENT_LIST)} in ${configPath}.`, EXIT_CODES.usage);
   }
   const configuredModels = value.models ?? {};
   if (!configuredModels || typeof configuredModels !== 'object' || Array.isArray(configuredModels)) {
@@ -42,7 +43,7 @@ function validateConfig(value, configPath) {
   const models = {};
   for (const [name, model] of Object.entries(configuredModels)) {
     if (!AGENT_NAMES.has(name) || typeof model !== 'string' || !model.trim()) {
-      throw new ALAError(`models must map codex, opencode, pi, omp, or claude to non-empty model names in ${configPath}.`, EXIT_CODES.usage);
+      throw new ALAError(`models must map ${enumerate(AGENT_LIST)} to non-empty model names in ${configPath}.`, EXIT_CODES.usage);
     }
     models[name] = model.trim();
   }

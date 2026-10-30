@@ -5,8 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { runOpenCode } from '../src/coding-agents/opencode.mjs';
-import { openCodeEnvironment } from '../src/coding-agents/opencode-server.mjs';
+import { runOpenCode } from '../src/coding-agents/agents/opencode/runner.mjs';
+import { openCodeEnvironment } from '../src/coding-agents/agents/opencode/server.mjs';
 import { canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
 import { createPermissionRequestManager } from '../src/permission-requests.mjs';
 

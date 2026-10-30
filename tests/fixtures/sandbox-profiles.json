@@ -1,0 +1,220 @@
+{
+  "codex": {
+    "environment": {
+      "CODEX_HOME": "/home/ala/.codex",
+      "HOME": "/home/ala",
+      "HTTP_PROXY": "offered",
+      "LANG": "offered",
+      "LOGNAME": "ala",
+      "NODE_EXTRA_CA_CERTS": "offered",
+      "OPENAI_API_KEY": "offered",
+      "OPENAI_BASE_URL": "offered",
+      "OPENAI_ORGANIZATION": "offered",
+      "OPENAI_PROJECT": "offered",
+      "TMPDIR": "/tmp",
+      "USER": "ala",
+      "XDG_CACHE_HOME": "/home/ala/.cache",
+      "XDG_CONFIG_HOME": "/home/ala/.config",
+      "XDG_DATA_HOME": "/home/ala/.local/share",
+      "XDG_STATE_HOME": "/home/ala/.local/state"
+    },
+    "mounts": [
+      {
+        "source": "<home>/.codex",
+        "target": "/home/ala/.codex",
+        "writable": true,
+        "purpose": "agent-state"
+      }
+    ]
+  },
+  "opencode": {
+    "environment": {
+      "ANTHROPIC_API_KEY": "offered",
+      "ANTHROPIC_BASE_URL": "offered",
+      "AWS_ACCESS_KEY_ID": "offered",
+      "AWS_DEFAULT_REGION": "offered",
+      "AWS_REGION": "offered",
+      "AWS_SECRET_ACCESS_KEY": "offered",
+      "AWS_SESSION_TOKEN": "offered",
+      "AZURE_OPENAI_API_KEY": "offered",
+      "AZURE_OPENAI_ENDPOINT": "offered",
+      "COHERE_API_KEY": "offered",
+      "DEEPSEEK_API_KEY": "offered",
+      "GEMINI_API_KEY": "offered",
+      "GOOGLE_API_KEY": "offered",
+      "GROQ_API_KEY": "offered",
+      "HOME": "/home/ala",
+      "HTTP_PROXY": "offered",
+      "LANG": "offered",
+      "LOGNAME": "ala",
+      "MISTRAL_API_KEY": "offered",
+      "NODE_EXTRA_CA_CERTS": "offered",
+      "OPENAI_API_KEY": "offered",
+      "OPENAI_BASE_URL": "offered",
+      "OPENAI_ORGANIZATION": "offered",
+      "OPENAI_PROJECT": "offered",
+      "OPENCODE_CONFIG_CONTENT": "offered",
+      "OPENCODE_ENABLE_EXA": "offered",
+      "OPENCODE_SERVER_PASSWORD": "offered",
+      "OPENCODE_SERVER_USERNAME": "offered",
+      "OPENROUTER_API_KEY": "offered",
+      "TMPDIR": "/tmp",
+      "TOGETHER_API_KEY": "offered",
+      "USER": "ala",
+      "XAI_API_KEY": "offered",
+      "XDG_CACHE_HOME": "/home/ala/.cache",
+      "XDG_CONFIG_HOME": "/home/ala/.config",
+      "XDG_DATA_HOME": "/home/ala/.local/share",
+      "XDG_STATE_HOME": "/home/ala/.local/state"
+    },
+    "mounts": [
+      {
+        "source": "<home>/.config/opencode",
+        "target": "/home/ala/.config/opencode",
+        "writable": true,
+        "purpose": "agent-state"
+      },
+      {
+        "source": "<home>/.local/share/opencode",
+        "target": "/home/ala/.local/share/opencode",
+        "writable": true,
+        "purpose": "agent-state"
+      },
+      {
+        "source": "<home>/.cache/opencode",
+        "target": "/home/ala/.cache/opencode",
+        "writable": true,
+        "purpose": "agent-state"
+      },
+      {
+        "source": "<home>/.local/state/opencode",
+        "target": "/home/ala/.local/state/opencode",
+        "writable": true,
+        "purpose": "agent-state"
+      }
+    ]
+  },
+  "pi": {
+    "environment": {
+      "ANTHROPIC_API_KEY": "offered",
+      "ANTHROPIC_BASE_URL": "offered",
+      "AWS_ACCESS_KEY_ID": "offered",
+      "AWS_DEFAULT_REGION": "offered",
+      "AWS_REGION": "offered",
+      "AWS_SECRET_ACCESS_KEY": "offered",
+      "AWS_SESSION_TOKEN": "offered",
+      "AZURE_OPENAI_API_KEY": "offered",
+      "AZURE_OPENAI_ENDPOINT": "offered",
+      "COHERE_API_KEY": "offered",
+      "DEEPSEEK_API_KEY": "offered",
+      "GEMINI_API_KEY": "offered",
+      "GOOGLE_API_KEY": "offered",
+      "GROQ_API_KEY": "offered",
+      "HOME": "/home/ala",
+      "HTTP_PROXY": "offered",
+      "LANG": "offered",
+      "LOGNAME": "ala",
+      "MISTRAL_API_KEY": "offered",
+      "NODE_EXTRA_CA_CERTS": "offered",
+      "OPENAI_API_KEY": "offered",
+      "OPENAI_BASE_URL": "offered",
+      "OPENAI_ORGANIZATION": "offered",
+      "OPENAI_PROJECT": "offered",
+      "OPENROUTER_API_KEY": "offered",
+      "PI_CODING_AGENT_DIR": "/home/ala/.pi/agent",
+      "PI_OFFLINE": "1",
+      "PI_SKIP_VERSION_CHECK": "1",
+      "TMPDIR": "/tmp",
+      "TOGETHER_API_KEY": "offered",
+      "USER": "ala",
+      "XAI_API_KEY": "offered",
+      "XDG_CACHE_HOME": "/home/ala/.cache",
+      "XDG_CONFIG_HOME": "/home/ala/.config",
+      "XDG_DATA_HOME": "/home/ala/.local/share",
+      "XDG_STATE_HOME": "/home/ala/.local/state"
+    },
+    "mounts": [
+      {
+        "source": "<home>/.pi/agent",
+        "target": "/home/ala/.pi/agent",
+        "writable": true,
+        "purpose": "agent-state"
+      }
+    ]
+  },
+  "omp": {
+    "environment": {
+      "ANTHROPIC_API_KEY": "offered",
+      "ANTHROPIC_BASE_URL": "offered",
+      "AWS_ACCESS_KEY_ID": "offered",
+      "AWS_DEFAULT_REGION": "offered",
+      "AWS_REGION": "offered",
+      "AWS_SECRET_ACCESS_KEY": "offered",
+      "AWS_SESSION_TOKEN": "offered",
+      "AZURE_OPENAI_API_KEY": "offered",
+      "AZURE_OPENAI_ENDPOINT": "offered",
+      "COHERE_API_KEY": "offered",
+      "DEEPSEEK_API_KEY": "offered",
+      "GEMINI_API_KEY": "offered",
+      "GOOGLE_API_KEY": "offered",
+      "GROQ_API_KEY": "offered",
+      "HOME": "/home/ala",
+      "HTTP_PROXY": "offered",
+      "LANG": "offered",
+      "LOGNAME": "ala",
+      "MISTRAL_API_KEY": "offered",
+      "NODE_EXTRA_CA_CERTS": "offered",
+      "OPENAI_API_KEY": "offered",
+      "OPENAI_BASE_URL": "offered",
+      "OPENAI_ORGANIZATION": "offered",
+      "OPENAI_PROJECT": "offered",
+      "OPENROUTER_API_KEY": "offered",
+      "TMPDIR": "/tmp",
+      "TOGETHER_API_KEY": "offered",
+      "USER": "ala",
+      "XAI_API_KEY": "offered",
+      "XDG_CACHE_HOME": "/home/ala/.cache",
+      "XDG_CONFIG_HOME": "/home/ala/.config",
+      "XDG_DATA_HOME": "/home/ala/.local/share",
+      "XDG_STATE_HOME": "/home/ala/.local/state"
+    },
+    "mounts": [
+      {
+        "source": "<home>/.omp",
+        "target": "/home/ala/.omp",
+        "writable": true,
+        "purpose": "agent-state"
+      }
+    ]
+  },
+  "claude": {
+    "environment": {
+      "ANTHROPIC_API_KEY": "offered",
+      "ANTHROPIC_AUTH_TOKEN": "offered",
+      "ANTHROPIC_BASE_URL": "offered",
+      "CLAUDE_CODE_OAUTH_TOKEN": "offered",
+      "CLAUDE_CONFIG_DIR": "/home/ala/.claude",
+      "DISABLE_AUTOUPDATER": "1",
+      "HOME": "/home/ala",
+      "HTTP_PROXY": "offered",
+      "IS_SANDBOX": "1",
+      "LANG": "offered",
+      "LOGNAME": "ala",
+      "NODE_EXTRA_CA_CERTS": "offered",
+      "TMPDIR": "/tmp",
+      "USER": "ala",
+      "XDG_CACHE_HOME": "/home/ala/.cache",
+      "XDG_CONFIG_HOME": "/home/ala/.config",
+      "XDG_DATA_HOME": "/home/ala/.local/share",
+      "XDG_STATE_HOME": "/home/ala/.local/state"
+    },
+    "mounts": [
+      {
+        "source": "<home>/.claude",
+        "target": "/home/ala/.claude",
+        "writable": true,
+        "purpose": "agent-state"
+      }
+    ]
+  }
+}

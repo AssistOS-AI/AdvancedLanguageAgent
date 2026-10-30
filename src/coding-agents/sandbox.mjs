@@ -6,8 +6,9 @@ import { spawnSync } from 'node:child_process';
 import { ALAError, EXIT_CODES } from '../errors.mjs';
 import { resolveFolderMounts } from './folders.mjs';
 import { ignoredMountTargets } from './ignored-paths.mjs';
+import { SANDBOX_HOME } from './paths.mjs';
+import { AGENTS, getAgent } from './registry.mjs';
 
-const SANDBOX_HOME = '/home/ala';
 const PROBE_CACHE_TTL_MS = 30_000;
 const privateProcSupport = new Map();
 const privateProcModes = new Map();
@@ -22,31 +23,6 @@ const SHARED_ENVIRONMENT = Object.freeze([
   'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy',
   'SSL_CERT_FILE', 'SSL_CERT_DIR', 'NODE_EXTRA_CA_CERTS'
 ]);
-const PROVIDER_ENVIRONMENT = Object.freeze([
-  'ANTHROPIC_API_KEY', 'ANTHROPIC_BASE_URL', 'OPENAI_API_KEY', 'OPENAI_BASE_URL',
-  'OPENAI_ORGANIZATION', 'OPENAI_PROJECT', 'AZURE_OPENAI_API_KEY', 'AZURE_OPENAI_ENDPOINT',
-  'GOOGLE_API_KEY', 'GEMINI_API_KEY', 'GROQ_API_KEY', 'MISTRAL_API_KEY', 'XAI_API_KEY',
-  'OPENROUTER_API_KEY', 'COHERE_API_KEY', 'DEEPSEEK_API_KEY', 'TOGETHER_API_KEY',
-  'AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN', 'AWS_REGION',
-  'AWS_DEFAULT_REGION', 'OPENCODE_SERVER_USERNAME', 'OPENCODE_SERVER_PASSWORD'
-]);
-
-// Claude Code uses only Anthropic credentials, from its login or these variables.
-const CLAUDE_ENVIRONMENT = Object.freeze([
-  'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_BASE_URL', 'CLAUDE_CODE_OAUTH_TOKEN'
-]);
-
-// The allowed variables through which each backend can authenticate without a stored login. Status
-// reporting names the ones that are set and never their values.
-const PROVIDER_CREDENTIALS = Object.freeze(PROVIDER_ENVIRONMENT
-  .filter(name => name.endsWith('_API_KEY') || name === 'AWS_ACCESS_KEY_ID'));
-export const CREDENTIAL_ENVIRONMENT = Object.freeze({
-  codex: Object.freeze(['OPENAI_API_KEY']),
-  opencode: PROVIDER_CREDENTIALS,
-  pi: PROVIDER_CREDENTIALS,
-  omp: PROVIDER_CREDENTIALS,
-  claude: Object.freeze(CLAUDE_ENVIRONMENT.filter(name => name !== 'ANTHROPIC_BASE_URL'))
-});
 
 // ALA_BWRAP names an explicit Bubblewrap binary, for example a static build shipped beside the coding agents
 // for a container that has no bwrap of its own. When it is set but unusable, no other binary is tried.
@@ -148,10 +124,11 @@ export function collectAgentRuntimeMounts(binary) {
   if (path.basename(resolved) === 'node' && path.basename(path.dirname(resolved)) === 'bin') {
     return [path.dirname(path.dirname(resolved))];
   }
-  const openCodeMarker = `${path.sep}.opencode${path.sep}`;
-  const openCodeIndex = resolved.indexOf(openCodeMarker);
-  if (openCodeIndex >= 0) {
-    return [resolved.slice(0, openCodeIndex + openCodeMarker.length - 1)];
+  // An agent that installs under its own marked directory needs that whole directory.
+  for (const { sandbox: { installMarker } } of AGENTS) {
+    const marker = `${path.sep}${installMarker}${path.sep}`;
+    const index = installMarker ? resolved.indexOf(marker) : -1;
+    if (index >= 0) return [resolved.slice(0, index + marker.length - 1)];
   }
   return [path.dirname(resolved)];
 }
@@ -163,38 +140,8 @@ function stateMount(source, target) {
 
 export function collectAgentStateMounts(backend, env = process.env) {
   const home = path.resolve(env.HOME || homedir());
-  if (backend === 'codex') {
-    const codexHome = path.resolve(env.CODEX_HOME || path.join(home, '.codex'));
-    return [stateMount(codexHome, `${SANDBOX_HOME}/.codex`)].filter(Boolean);
-  }
-  if (backend === 'opencode') {
-    const configHome = path.resolve(env.XDG_CONFIG_HOME || path.join(home, '.config'));
-    const dataHome = path.resolve(env.XDG_DATA_HOME || path.join(home, '.local', 'share'));
-    const cacheHome = path.resolve(env.XDG_CACHE_HOME || path.join(home, '.cache'));
-    const stateHome = path.resolve(env.XDG_STATE_HOME || path.join(home, '.local', 'state'));
-    return [
-      stateMount(path.join(configHome, 'opencode'), `${SANDBOX_HOME}/.config/opencode`),
-      stateMount(path.join(dataHome, 'opencode'), `${SANDBOX_HOME}/.local/share/opencode`),
-      stateMount(path.join(cacheHome, 'opencode'), `${SANDBOX_HOME}/.cache/opencode`),
-      stateMount(path.join(stateHome, 'opencode'), `${SANDBOX_HOME}/.local/state/opencode`)
-    ].filter(Boolean);
-  }
-  if (backend === 'claude') {
-    const configured = path.resolve(env.CLAUDE_CONFIG_DIR || path.join(home, '.claude'));
-    return [stateMount(configured, `${SANDBOX_HOME}/.claude`)].filter(Boolean);
-  }
-  if (backend === 'pi') {
-    const configured = env.PI_CODING_AGENT_DIR
-      ? path.resolve(env.PI_CODING_AGENT_DIR)
-      : path.join(home, '.pi', 'agent');
-    return [stateMount(configured, `${SANDBOX_HOME}/.pi/agent`)].filter(Boolean);
-  }
-  if (backend === 'omp') {
-    const configured = env.OMP_DIR ? path.resolve(env.OMP_DIR) : path.join(home, '.omp');
-    // OMP keeps auth, sessions, and the auth-broker vault under ~/.omp.
-    return [stateMount(configured, `${SANDBOX_HOME}/.omp`)].filter(Boolean);
-  }
-  return [];
+  const state = getAgent(backend)?.state(env, home) || [];
+  return state.map(({ source, target }) => stateMount(source, target)).filter(Boolean);
 }
 
 function runtimeSearchPaths(runtimeMounts) {
@@ -223,15 +170,8 @@ export function sandboxRuntimeMounts(sources, sandboxWorkspace = null) {
 
 export function sandboxEnvironment(backend, runtimeMounts = [], env = process.env) {
   const values = {};
-  const allowed = new Set([
-    ...SHARED_ENVIRONMENT,
-    ...(backend === 'codex' ? ['OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_ORGANIZATION', 'OPENAI_PROJECT'] : []),
-    ...(['opencode', 'pi', 'omp'].includes(backend) ? PROVIDER_ENVIRONMENT : []),
-    ...(backend === 'opencode' ? [
-      'OPENCODE_ENABLE_EXA', 'OPENCODE_CONFIG_CONTENT', 'OPENCODE_SERVER_PASSWORD'
-    ] : []),
-    ...(backend === 'claude' ? CLAUDE_ENVIRONMENT : [])
-  ]);
+  const agent = getAgent(backend);
+  const allowed = new Set([...SHARED_ENVIRONMENT, ...(agent?.sandbox.envAllow || [])]);
   for (const name of allowed) {
     if (typeof env[name] === 'string' && env[name]) values[name] = env[name];
   }
@@ -247,22 +187,7 @@ export function sandboxEnvironment(backend, runtimeMounts = [], env = process.en
     XDG_STATE_HOME: `${SANDBOX_HOME}/.local/state`,
     PATH: [...runtimeSearchPaths(runtimeMounts), '/usr/local/bin', '/usr/bin', '/bin'].join(':')
   });
-  if (backend === 'codex') {
-    values.CODEX_HOME = `${SANDBOX_HOME}/.codex`;
-  }
-  if (backend === 'claude') {
-    // All Claude Code state, including .claude.json and the login, lives here.
-    values.CLAUDE_CONFIG_DIR = `${SANDBOX_HOME}/.claude`;
-    // The sandbox may run as uid 0; Claude Code refuses bypassPermissions as
-    // root unless it is told it runs inside a sandbox.
-    values.IS_SANDBOX = '1';
-    values.DISABLE_AUTOUPDATER = '1';
-  }
-  if (backend === 'pi') {
-    values.PI_CODING_AGENT_DIR = `${SANDBOX_HOME}/.pi/agent`;
-    values.PI_OFFLINE = '1';
-    values.PI_SKIP_VERSION_CHECK = '1';
-  }
+  Object.assign(values, agent?.sandbox.envSet);
   return values;
 }
 
@@ -341,10 +266,11 @@ export function buildSandboxArgs({
   if (!hostWorkspace || !command) {
     throw new ALAError('Coding-agent sandbox workspace or executable is unavailable.', EXIT_CODES.execution);
   }
-  if (['codex', 'opencode'].includes(backend) && !privateProc) {
+  const agent = getAgent(backend);
+  if (agent?.capabilities.privateProc && !privateProc) {
     const diagnostic = probeDiagnostics.get(bwrap);
     throw new ALAError(
-      `${backend === 'codex' ? 'Codex' : 'OpenCode'} requires a private /proc inside Bubblewrap, but the capability probe failed${diagnostic ? ` (${diagnostic})` : ''}. `
+      `${agent.label} requires a private /proc inside Bubblewrap, but the capability probe failed${diagnostic ? ` (${diagnostic})` : ''}. `
         + 'The container running ALA must allow a new procfs in a user namespace (for Podman: --security-opt unmask=/proc/*).',
       EXIT_CODES.execution
     );

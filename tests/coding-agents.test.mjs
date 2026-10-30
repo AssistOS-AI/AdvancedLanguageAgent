@@ -9,11 +9,11 @@ import {
   createCodexEventParser,
   createCodexStderrParser,
   parseCodexOutput
-} from '../src/coding-agents/codex.mjs';
+} from '../src/coding-agents/agents/codex/runner.mjs';
 import { discoverCodingAgents } from '../src/coding-agents/discovery.mjs';
-import { parseOpenCodeModels } from '../src/coding-agents/opencode.mjs';
-import { openCodeEnvironment } from '../src/coding-agents/opencode-server.mjs';
-import { buildPiArguments, createPiEventParser, parsePiModels, parsePiOutput } from '../src/coding-agents/pi.mjs';
+import { parseOpenCodeModels } from '../src/coding-agents/agents/opencode/runner.mjs';
+import { openCodeEnvironment } from '../src/coding-agents/agents/opencode/server.mjs';
+import { buildPiArguments, createPiEventParser, parsePiModels, parsePiOutput } from '../src/coding-agents/agents/pi/runner.mjs';
 import { requireSandbox, runProcess } from '../src/coding-agents/process.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
 import { canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
@@ -348,7 +348,7 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"d
 });
 
 test('OMP one-shot arguments carry model, thinking level and the prompt', async () => {
-  const { buildOmpArguments } = await import('../src/coding-agents/omp.mjs');
+  const { buildOmpArguments } = await import('../src/coding-agents/agents/omp/runner.mjs');
   assert.deepEqual(buildOmpArguments({ prompt: 'work', sessionDir: '/s' }),
     ['--mode', 'json', '--session-dir', '/s', '--auto-approve', '-p', 'work']);
   assert.deepEqual(buildOmpArguments({ prompt: 'work', sessionDir: '/s', model: 'm', effort: 'high' }),

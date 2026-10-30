@@ -32,7 +32,7 @@ export async function collectStatus({ env = process.env, config = {}, agents = n
   };
 }
 
-// One line per agent, for example `codex     available      logged in (credentials file)  default`.
+// One line per agent: its name, installation, login, and whether it is the default.
 export function formatStatus(status) {
   return status.agents.map((agent) => {
     const sources = [agent.login.file ? 'credentials file' : null, ...agent.login.env].filter(Boolean);

@@ -1,6 +1,6 @@
 import { ALAError, EXIT_CODES } from './errors.mjs';
 import { validatePermissionMode } from './permission-requests.mjs';
-import { AGENT_NAMES } from './coding-agents/discovery.mjs';
+import { AGENT_NAMES, agentChoices, enumerate } from './coding-agents/registry.mjs';
 
 const valueOptions = new Map([
   ['--text', 'text'],
@@ -57,7 +57,7 @@ function parseAlias(argv, index, option) {
   return { alias: optionValue(argv, index + 1, `${option} as`), index: index + 2 };
 }
 
-const AGENT_USAGE = 'Usage: ala agent list [--json] | ala agent models <codex|opencode|pi|omp|claude> [--json] [--home <path>].';
+const AGENT_USAGE = `Usage: ala agent list [--json] | ala agent models <${agentChoices()}> [--json] [--home <path>].`;
 
 function parseAgentCommand(argv) {
   const options = {
@@ -164,7 +164,7 @@ export function parseArguments(argv) {
   }
 
   if (options.agent && !['auto', ...AGENT_NAMES].includes(options.agent)) {
-    throw new ALAError('--agent must be auto, codex, opencode, pi, omp, or claude.', EXIT_CODES.usage);
+    throw new ALAError(`--agent must be auto, ${enumerate(AGENT_NAMES)}.`, EXIT_CODES.usage);
   }
   return options;
 }
@@ -174,18 +174,18 @@ export const HELP_TEXT = `Advanced Language Agent
 Usage:
   ala [options] [instruction...]
   ala agent list [--json]
-  ala agent models <codex|opencode|pi|omp|claude> [--json] [--home <path>]
+  ala agent models <${agentChoices()}> [--json] [--home <path>]
   ala status [--json] [--home <path>] [--config <path>]
 
 Agent commands:
-  agent list                 List detected coding agents in the order codex, opencode, pi, omp, claude
+  agent list                 List detected coding agents in the order ${AGENT_NAMES.join(', ')}
   agent models <name>        List the agent's native models; --json adds each model's supported efforts
   status                     Show each coding agent's installation and login and the default agent;
                              logins are found from credential files and variables, never verified
 
 Execution options:
-  --ca <name>                Coding agent: auto, codex, opencode, pi, omp, or claude (default: config
-                             codingAgent, then the first available of codex, opencode, pi, omp, claude)
+  --ca <name>                Coding agent: auto, ${enumerate(AGENT_NAMES)} (default: config
+                             codingAgent, then the first available of ${AGENT_NAMES.join(', ')})
   --permissions <mode>       ask-for-approval or full-access (default: full-access)
   --home <path>              Explicit coding-agent home/configuration directory
   --cwd <path> [as <alias>]  Writable working directory; omit to use a retained temporary directory

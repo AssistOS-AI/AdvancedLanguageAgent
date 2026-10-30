@@ -1,6 +1,6 @@
-import { executionError, requireSandbox, runProcess } from './process.mjs';
-import { startOpenCodeServer } from './opencode-server.mjs';
-import { executeOpenCodeTurn } from './opencode-turn.mjs';
+import { executionError, requireSandbox, runProcess } from '../../process.mjs';
+import { startOpenCodeServer } from './server.mjs';
+import { executeOpenCodeTurn } from './turn.mjs';
 
 export async function runOpenCode(input) {
   requireSandbox(input.sandbox);

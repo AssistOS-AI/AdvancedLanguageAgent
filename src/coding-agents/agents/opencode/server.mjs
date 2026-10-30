@@ -1,9 +1,9 @@
 import { randomBytes } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 
-import { createOpenCodeHttpClient } from './opencode-http.mjs';
-import { executionError, runProcess, spawnProcess } from './process.mjs';
-import { createLineDecoder } from './streaming.mjs';
+import { createOpenCodeHttpClient } from './http.mjs';
+import { executionError, runProcess, spawnProcess } from '../../process.mjs';
+import { createLineDecoder } from '../../streaming.mjs';
 
 const PREREQUISITE = 'OpenCode requires version 1.15.10 or a compatible later unprefixed session/permission API; '
   + 'install a supported version or configure OPENCODE_BIN.';

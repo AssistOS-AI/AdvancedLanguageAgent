@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
-import * as serverModule from '../src/coding-agents/opencode-server.mjs';
+import * as serverModule from '../src/coding-agents/agents/opencode/server.mjs';
 
 const fixture = fileURLToPath(new URL('./fixtures/opencode-server.mjs', import.meta.url));
 const TIMED_OUT = /OpenCode HTTP request timed out\./u;

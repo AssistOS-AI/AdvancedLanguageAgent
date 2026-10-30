@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 import {
   OPENCODE_STARTUP_TIMEOUT_MS, consumeOpenCodeEvents, startOpenCodeServer
-} from '../src/coding-agents/opencode-server.mjs';
+} from '../src/coding-agents/agents/opencode/server.mjs';
 import { createOrigin, loadApiDocument, waitFor } from './fixtures/opencode-origin.mjs';
 
 const api = await loadApiDocument();

@@ -2,10 +2,10 @@ import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { openJsonChannel } from './json-channel.mjs';
-import { executionError, requireSandbox, runProcess } from './process.mjs';
-import { appendBoundedTail, contentText, createLineDecoder, unseenText } from './streaming.mjs';
-import { requirePiVersion } from './pi-version.mjs';
+import { openJsonChannel } from '../../json-channel.mjs';
+import { executionError, requireSandbox, runProcess } from '../../process.mjs';
+import { appendBoundedTail, contentText, createLineDecoder, unseenText } from '../../streaming.mjs';
+import { requirePiVersion } from './version.mjs';
 
 export function parsePiOutput(stdout) {
   const parser = createPiEventParser();

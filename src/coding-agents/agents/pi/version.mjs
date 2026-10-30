@@ -1,11 +1,12 @@
-import { requireSandbox, spawnProcess } from './process.mjs';
+import { requireSandbox, spawnProcess } from '../../process.mjs';
+import { approvalAgentLabels } from '../../registry.mjs';
 
 const prerequisite = 'Pi RPC requires Pi >=0.85.1 (or a compatible OMP release) with prompt lifecycle support. '
   + 'Upgrade the managed installation or configure PI_BIN/OMP_BIN to a compatible executable.';
 
 export async function requirePiVersion(input) {
   if (input.permissionMode && input.permissionMode !== 'full-access') {
-    throw new Error('Pi does not support ask-for-approval; select full-access or use Codex, OpenCode or Claude Code.');
+    throw new Error(`Pi does not support ask-for-approval; select full-access or use ${approvalAgentLabels()}.`);
   }
   const spawn = input.spawnImpl || spawnProcess;
   if (spawn === spawnProcess) requireSandbox(input.sandbox);

@@ -4,19 +4,27 @@ import { join } from 'node:path';
 
 import { ALAError, EXIT_CODES } from '../errors.mjs';
 import { createPermissionRequestManager, validatePermissionMode } from '../permission-requests.mjs';
-import { listCodexModels, runCodex } from './codex.mjs';
-import { listOpenCodeModels, runOpenCode } from './opencode.mjs';
-import { listPiModels, runPi } from './pi.mjs';
-import { listOmpModels, runOmp } from './omp.mjs';
 import { resolveFolderMounts } from './folders.mjs';
 import { canMountPrivateProc, findBubblewrap } from './sandbox.mjs';
 import { parseMcpServers } from './mcp-servers.mjs';
-import { runCodexLive, runOmpLive, runPiLive } from './live-agents.mjs';
-import { listClaudeModels, runClaude } from './claude.mjs';
-import { AGENT_NAMES } from './discovery.mjs';
+import { AGENTS, AGENT_NAMES, approvalAgentLabels, enumerate, getAgent } from './registry.mjs';
 
-const adapters = Object.freeze({ codex: runCodex, opencode: runOpenCode, pi: runPi, omp: runOmp, claude: runClaude });
-const modelAdapters = Object.freeze({ codex: listCodexModels, opencode: listOpenCodeModels, pi: listPiModels, omp: listOmpModels, claude: listClaudeModels });
+// Embedding tests may inject runners or model listers; otherwise each agent's adapter supplies them.
+async function resolveRunner(name, live, runners) {
+  if (runners) return runners[name];
+  const adapter = await getAgent(name).adapter();
+  return (live && adapter.runLive) || adapter.run;
+}
+
+async function resolveModelLister(name, modelListers) {
+  return modelListers ? modelListers[name] : (await getAgent(name).adapter()).listModels;
+}
+
+function fullAccessOnlyMessage() {
+  const labels = AGENTS.filter((agent) => !agent.capabilities.approvals).map((agent) => agent.label);
+  return `${enumerate(labels, { word: 'and', serial: false })} support full-access only; `
+    + `select full-access or use ${approvalAgentLabels()}.`;
+}
 
 export function createCodingAgentService({
   agents,
@@ -36,8 +44,8 @@ export function createCodingAgentService({
   sessionState = null,
   permissionMode = 'full-access',
   permissionRequests = null,
-  runners = adapters,
-  modelListers = modelAdapters
+  runners = null,
+  modelListers = null
 }) {
   let requestedPermissionMode = validatePermissionMode(permissionMode);
   const folderMounts = resolveFolderMounts(folders, cwd);
@@ -116,11 +124,8 @@ export function createCodingAgentService({
       const turnPermissionMode = requestedPermissionMode;
       const turnModel = configuredModels[selected.name] || null;
       const turnEffort = configuredEfforts[selected.name] || null;
-      if (['pi', 'omp'].includes(selected.name) && turnPermissionMode === 'ask-for-approval') {
-        throw new ALAError(
-          'Pi and OMP support full-access only; select full-access or use Codex, OpenCode or Claude Code.',
-          EXIT_CODES.usage
-        );
+      if (getAgent(selected.name)?.capabilities.approvals === false && turnPermissionMode === 'ask-for-approval') {
+        throw new ALAError(fullAccessOnlyMessage(), EXIT_CODES.usage);
       }
       executing = true;
       const controller = new AbortController();
@@ -151,7 +156,8 @@ export function createCodingAgentService({
         await ensureWorkspace();
         controller.signal.throwIfAborted();
         if (turnEffort) {
-          const catalog = await modelListers[selected.name]({ binary: selected.binary,
+          const listModels = await resolveModelLister(selected.name, modelListers);
+          const catalog = await listModels({ binary: selected.binary,
             cwd: sandboxWorkspace, env, signal: controller.signal, details: true, ...executionContext(selected) });
           if (!catalog.find((entry) => entry.id === turnModel)?.efforts?.includes(turnEffort)) {
             throw new ALAError('The selected model does not advertise this effort: ' + turnEffort, EXIT_CODES.usage);
@@ -167,9 +173,8 @@ export function createCodingAgentService({
           permissionMode: turnPermissionMode,
           ...(configuredModels[selected.name] ? { model: configuredModels[selected.name] } : {})
         });
-        const runner = (sessionState || turnPermissionMode === 'ask-for-approval') && runners === adapters
-          ? ({ codex: runCodexLive, pi: runPiLive, omp: runOmpLive, opencode: runOpenCode, claude: runClaude })[selected.name]
-          : runners[selected.name];
+        const live = Boolean(sessionState) || turnPermissionMode === 'ask-for-approval';
+        const runner = await resolveRunner(selected.name, live, runners);
         const result = await runner({
           binary: selected.binary,
           prompt,
@@ -218,7 +223,8 @@ export function createCodingAgentService({
       const selected = available.find((record) => record.name === name);
       if (!selected) throw new ALAError(`Coding agent is not available: ${name}`, EXIT_CODES.execution);
       await ensureWorkspace();
-      return modelListers[name]({
+      const listModels = await resolveModelLister(name, modelListers);
+      return listModels({
         binary: selected.binary,
         details,
         cwd: sandboxWorkspace,

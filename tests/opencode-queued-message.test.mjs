@@ -8,8 +8,8 @@ import { PassThrough } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
 import { runControlledExecution } from '../src/controlled-execution.mjs';
-import { startOpenCodeServer } from '../src/coding-agents/opencode-server.mjs';
-import { executeOpenCodeTurn } from '../src/coding-agents/opencode-turn.mjs';
+import { startOpenCodeServer } from '../src/coding-agents/agents/opencode/server.mjs';
+import { executeOpenCodeTurn } from '../src/coding-agents/agents/opencode/turn.mjs';
 
 const fixture = fileURLToPath(new URL('./fixtures/opencode-server.mjs', import.meta.url));
 

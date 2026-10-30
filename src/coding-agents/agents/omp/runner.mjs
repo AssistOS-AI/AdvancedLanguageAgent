@@ -1,9 +1,9 @@
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { executionError, requireSandbox, runProcess } from './process.mjs';
-import { createPiEventParser, listPiModels } from './pi.mjs';
-import { requirePiVersion } from './pi-version.mjs';
+import { executionError, requireSandbox, runProcess } from '../../process.mjs';
+import { createPiEventParser, listPiModels } from '../pi/runner.mjs';
+import { requirePiVersion } from '../pi/version.mjs';
 
 // OMP (Oh My Pi) speaks the Pi stream and RPC protocol. Only its one-shot CLI
 // surface differs: prompts ride on -p with --auto-approve and sessions resume

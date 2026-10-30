@@ -1,6 +1,6 @@
-import { executionError, requireSandbox, runProcess, spawnProcess } from './process.mjs';
-import { appendBoundedTail, createLineDecoder } from './streaming.mjs';
-import { codexMcpOverrides } from './mcp-servers.mjs';
+import { executionError, requireSandbox, runProcess, spawnProcess } from '../../process.mjs';
+import { appendBoundedTail, createLineDecoder } from '../../streaming.mjs';
+import { codexMcpOverrides } from './mcp.mjs';
 
 export function buildCodexArguments({
   prompt, continuation = null, model = null, effort = null, websearch = false, mcpServers = [], permissionMode = 'full-access'
