@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 
 import { ALAError, EXIT_CODES } from '../errors.mjs';
 import { resolveFolderMounts } from './folders.mjs';
-import { ignoredMountTargets } from './ignored-paths.mjs';
+import { ignoredMounts } from './ignored-paths.mjs';
 import { SANDBOX_HOME } from './paths.mjs';
 import { AGENTS, getAgent } from './registry.mjs';
 
@@ -177,8 +177,8 @@ export function sandboxEnvironment(backend, runtimeMounts = [], env = process.en
   }
   Object.assign(values, {
     HOME: SANDBOX_HOME,
-    USER: 'ala',
-    LOGNAME: 'ala',
+    USER: path.basename(SANDBOX_HOME),
+    LOGNAME: path.basename(SANDBOX_HOME),
     SHELL: fs.existsSync('/bin/bash') ? '/bin/bash' : '/bin/sh',
     TMPDIR: '/tmp',
     XDG_CONFIG_HOME: `${SANDBOX_HOME}/.config`,
@@ -246,7 +246,8 @@ export function buildSandboxArgs({
   home = null,
   folders = [],
   ignoredPaths = [],
-  chdir = null
+  chdir = null,
+  newSession = true
 }) {
   if (!bwrap) {
     throw new ALAError(
@@ -280,7 +281,8 @@ export function buildSandboxArgs({
     throw new ALAError('A mounted folder duplicates the working directory.', EXIT_CODES.execution);
   }
   const outerCapabilityProc = privateProcModes.get(bwrap) === 'outer-cap';
-  const sandboxArgs = ['--die-with-parent', '--new-session'];
+  const sandboxArgs = ['--die-with-parent'];
+  if (newSession) sandboxArgs.push('--new-session');
   if (!outerCapabilityProc) sandboxArgs.push('--unshare-user');
   sandboxArgs.push('--unshare-pid', '--unshare-ipc', '--unshare-uts', '--share-net');
   if (outerCapabilityProc) sandboxArgs.push('--cap-drop', 'ALL');
@@ -323,8 +325,9 @@ export function buildSandboxArgs({
   }
   const exposedMounts = [...runtimeMounts, ...stateMounts, ...orderedMounts,
     ...(explicitHome ? [{ source: explicitHome, target: SANDBOX_HOME }] : [])];
-  for (const ignored of ignoredMountTargets(ignoredPaths, exposedMounts, chdir || target)) {
-    sandboxArgs.push('--perms', '0555', '--tmpfs', ignored, '--remount-ro', ignored);
+  for (const { target: ignored, directory } of ignoredMounts(ignoredPaths, exposedMounts, chdir || target)) {
+    if (directory) sandboxArgs.push('--perms', '0555', '--tmpfs', ignored, '--remount-ro', ignored);
+    else sandboxArgs.push('--ro-bind', '/dev/null', ignored);
   }
   sandboxArgs.push('--remount-ro', '/');
   for (const [name, value] of Object.entries(sandboxEnvironment(backend, runtimeMounts, env))) {

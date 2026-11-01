@@ -191,7 +191,7 @@ Execution options:
   --cwd <path> [as <alias>]  Writable working directory; omit to use a retained temporary directory
   --folder <path> [write] [as <alias> | at <absolute-path>] [expose]
                            Mount a directory; expose explicitly exports a read-only subtree
-  --ignore <absolute-path>  Mask an existing directory with an empty read-only mount (repeatable)
+  --ignore <absolute-path>  Mask an existing directory or file with an empty read-only mount (repeatable)
   --session-id <uuid>        Persistent conversation identity; requires --home and --cwd.
                              The transcript is appended to $ALA_SESSIONS/sessions/<uuid>.jsonl
                              (default: <cwd>/.ala)
