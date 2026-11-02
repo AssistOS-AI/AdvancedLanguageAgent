@@ -28,7 +28,8 @@ export function ignoredMounts(ignoredPaths, mounts, workingDirectory) {
     }
     let exposed = false;
     for (const mount of mounts) {
-      const mountedSource = fs.realpathSync(mount.source);
+      // A pinned mount shows what it was opened on, so its checked name decides where the mask belongs.
+      const mountedSource = mount.fd !== undefined ? mount.source : fs.realpathSync(mount.source);
       if (mount.expose && contains(source, mountedSource)) {
         if (source === mountedSource || mount.writable) {
           throw new ALAError('--folder expose may export only a read-only strict subdirectory of --ignore.',

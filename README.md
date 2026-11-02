@@ -22,6 +22,8 @@ ala --help
 
 ## Private directories
 
+ALA opens each `--cwd` and `--folder` once and binds it by descriptor, which requires Bubblewrap 0.10.0 or newer, so changing a path afterwards cannot change what the sandbox shows. A caller that checked a path can add `--expect-dir <dev>:<ino>:<path>`; ALA then exits with code 78 unless the directory it opens has that identity.
+
 Pass repeatable `--ignore /absolute/path` options to mask existing directories or files inside the coding-agent sandbox. Masked directories appear empty and read-only. Files are hidden by read-only binds of `/dev/null`; Linux may deny reads of those device binds. Names remain visible and host contents stay unchanged. Masks cover canonical paths, folder aliases, and mounts sourced from ignored subdirectories. Invalid, missing, unmounted paths and masks covering the working directory are rejected. Supply the options again when resuming a session.
 An embedding caller may explicitly export one read-only subtree with `--folder /project/.private/public at /project/public expose`. The export must have an explicit destination outside the masked paths and a source strictly below the ignored directory; exporting the ignored root or a writable subtree is rejected. Only that subtree is visible at the chosen destination. Ordinary aliases of ignored data stay masked, and additional ignores inside the exported subtree still apply. ALA does not select or inspect exported contents.
 

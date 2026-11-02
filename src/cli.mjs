@@ -1,3 +1,4 @@
+import { closeSync } from 'node:fs';
 import { mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -13,6 +14,7 @@ import { createPermissionCommand } from './interactive-permissions.mjs';
 import { createThinkingIndicator } from './interactive-status.mjs';
 import { writeResult } from './output.mjs';
 import { SANDBOX_WORKSPACE } from './coding-agents/paths.mjs';
+import { parseExpectedDirectories, pinDirectory, pinFolderMounts } from './coding-agents/folders.mjs';
 import { createDiagnosticLogger, createRuntime } from './runtime.mjs';
 import { createCodingAgentService } from './coding-agents/service.mjs';
 import { createRuntimeEventSink } from './runtime-events.mjs';
@@ -310,6 +312,19 @@ async function runExecution(options, io, env) {
   if (options.agent !== 'auto' && !available.some((agent) => agent.name === options.agent)) {
     throw new ALAError(`Coding agent is not available: ${options.agent}`, EXIT_CODES.execution);
   }
+  // A recorded identity is checked before ALA writes anything below these paths. The service then opens and
+  // checks each directory again, and those descriptors are what the sandbox binds.
+  const expected = parseExpectedDirectories(options.expectedDirectories, io.cwd);
+  const requestedCwd = options.cwd ? resolve(io.cwd, options.cwd) : null;
+  const mountBase = executionCwd || io.cwd;
+  const named = new Set([requestedCwd, ...options.folders.map((folder) => resolve(mountBase, folder.source))]);
+  const unmatched = Object.keys(expected).find((name) => !named.has(name));
+  if (unmatched) throw new ALAError(`--expect-dir names no --cwd or --folder: ${unmatched}`, EXIT_CODES.usage);
+  const workspaceIdentity = requestedCwd ? expected[requestedCwd] ?? null : null;
+  const folderIdentities = Object.fromEntries(options.folders.map((folder) => resolve(mountBase, folder.source))
+    .filter((name) => expected[name]).map((name) => [name, expected[name]]));
+  if (workspaceIdentity) closeSync(pinDirectory(executionCwd, workspaceIdentity).fd);
+  for (const { fd } of pinFolderMounts(options.folders, mountBase, folderIdentities)) closeSync(fd);
   const sessionState = options.sessionId ? await openSessionState({
     id: options.sessionId, sessionsRoot: resolveSessionsRoot({ env, cwd: executionCwd }), resume: options.resumeSession
   }) : null;
@@ -324,6 +339,8 @@ async function runExecution(options, io, env) {
     workspace: executionCwd,
     workspaceTarget,
     home: executionHome,
+    workspaceIdentity,
+    folderIdentities,
     mcpServers: options.mcpServers,
     permissionMode: options.permissionMode,
     cwd: executionCwd || io.cwd,
