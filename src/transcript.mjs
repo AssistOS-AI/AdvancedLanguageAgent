@@ -16,7 +16,7 @@ export function sessionTranscriptPath(sessionsRoot, id) {
 
 // Parse JSONL records. A trailing line without a newline is an interrupted
 // append and is ignored; any other malformed line is an error.
-function parseRecords(text, file) {
+export function parseRecords(text, file) {
   // The element after the last newline is either empty or an unfinished append.
   return text.split('\n').slice(0, -1).filter((line) => line.trim()).map((line, index) => {
     try { return JSON.parse(line); }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { closeSync, fstatSync, realpathSync } from 'node:fs';
+import { closeSync, constants, fstatSync, realpathSync } from 'node:fs';
 import { lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -222,12 +222,12 @@ test('a recorded identity decides before the configuration, and a missing or non
   // A robot-written FIFO would hang ALA if the configuration were read first.
   const fifo = await setup();
   assert.equal(spawnSync('mkfifo', [join(fifo.home, '.ala', 'config.json')]).status, 0);
-  await rm(fifo.f.workspace, { recursive: true });
+  await rename(fifo.f.workspace, `${fifo.f.workspace}-moved`);
   await mkdir(fifo.f.workspace);
   assert.equal(run(fifo.f, fifo.home, ['--expect-dir', `${fifo.cwdIdentity}:${fifo.f.workspace}`]).status, 78);
   const invalid = await setup();
   await writeFile(join(invalid.home, '.ala', 'config.json'), '{"bogus":1}');
-  await rm(invalid.f.workspace, { recursive: true });
+  await rename(invalid.f.workspace, `${invalid.f.workspace}-moved`);
   await mkdir(invalid.f.workspace);
   assert.equal(run(invalid.f, invalid.home, ['--expect-dir', `${invalid.cwdIdentity}:${invalid.f.workspace}`]).status, 78);
   const missing = await setup();
@@ -261,6 +261,46 @@ test('a planted private directory link is refused before anything is written thr
   await assert.rejects(lstat(join(f.sibling, '.ala')), { code: 'ENOENT' });
 });
 
+test('a session file that is a link or not a regular file is refused without following or blocking', async context => {
+  const { openRegularFile } = await import('../src/session-state.mjs');
+  const f = await swapFixture(context);
+  const outside = join(f.root, 'outside.jsonl');
+  await writeFile(outside, 'outside');
+  const link = join(f.root, 'link.jsonl');
+  await symlink(outside, link);
+  const fifo = join(f.root, 'fifo.jsonl');
+  assert.equal(spawnSync('mkfifo', [fifo]).status, 0);
+  for (const file of [link, fifo, f.root]) {
+    await assert.rejects(openRegularFile(file, constants.O_RDWR | constants.O_APPEND), { exitCode: 78, message: /must be a regular file/u }, file);
+  }
+  const handle = await openRegularFile(outside, constants.O_RDWR | constants.O_APPEND);
+  assert.equal(await handle.readFile('utf8'), 'outside');
+  await handle.appendFile('+');
+  await handle.close();
+  assert.equal(await readFile(outside, 'utf8'), 'outside+');
+  await assert.rejects(openRegularFile(join(f.root, 'missing'), constants.O_RDONLY), { code: 'ENOENT' });
+});
+
+test('resuming through a planted transcript or lock link leaves the outside file untouched', {
+  skip: process.platform === 'linux' ? false : 'Session locks read /proc'
+}, async context => {
+  const f = await swapFixture(context);
+  const id = '11111111-1111-4111-8111-111111111111';
+  const root = join(f.workspace, '.ala', 'sessions');
+  await mkdir(root, { recursive: true });
+  const outside = join(f.root, 'outside.jsonl');
+  const body = `${JSON.stringify({ seq: 1, type: 'session', id })}\n${JSON.stringify({ seq: 2, type: 'continuation', agent: 'codex', continuation: { threadId: 't' } })}\n`;
+  await writeFile(outside, body);
+  await symlink(outside, join(root, `${id}.jsonl`));
+  await assert.rejects(openSessionState({ id, sessionsRoot: join(f.workspace, '.ala'), resume: true, anchor: f.workspace }), { exitCode: 78 });
+  assert.equal(await readFile(outside, 'utf8'), body);
+  await rm(join(root, `${id}.jsonl`));
+  await symlink(outside, join(root, `${id}.jsonl.lock`));
+  await assert.rejects(openSessionState({ id, sessionsRoot: join(f.workspace, '.ala'), anchor: f.workspace }), { exitCode: 78 });
+  assert.equal(await readFile(outside, 'utf8'), body);
+  await lstat(join(root, `${id}.jsonl.lock`));
+});
+
 test('closing a session whose folder was swapped away reports the original failure, not its lock', {
   skip: process.platform === 'linux' ? false : 'Session locks read /proc'
 }, async context => {
@@ -268,7 +308,11 @@ test('closing a session whose folder was swapped away reports the original failu
   const state = await openSessionState({ id: '11111111-1111-4111-8111-111111111111', sessionsRoot: join(f.workspace, '.ala'), anchor: f.workspace });
   await rename(f.workspace, `${f.workspace}-moved`);
   await symlink(f.sibling, f.workspace);
+  await state.append('turn-end');
   await state.close();
+  // Appends follow the opened file, not the swapped path.
+  assert.match(await readFile(join(`${f.workspace}-moved`, '.ala', 'sessions', '11111111-1111-4111-8111-111111111111.jsonl'), 'utf8'), /turn-end/u);
+  await assert.rejects(lstat(join(f.sibling, '.ala')), { code: 'ENOENT' });
 });
 
 test('the service binds pinned descriptors, so a later swap changes neither mounts nor masks', async context => {
