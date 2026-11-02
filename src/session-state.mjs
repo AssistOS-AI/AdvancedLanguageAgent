@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
+import { ALAError, EXIT_CODES } from './errors.mjs';
 import { readTranscriptRecords, sessionTranscriptPath } from './transcript.mjs';
 
 async function processIdentity(pid) {
@@ -43,16 +44,33 @@ async function acquireLock(lock) {
   } finally { await fs.unlink(recovery); }
 }
 
+// Below the working folder a robot may have planted a link, and mkdir -p would write through it.
+async function createSessionsDirectory(root, anchor) {
+  const relative = anchor ? path.relative(anchor, root) : '..';
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    await fs.mkdir(root, { recursive: true, mode: 0o700 });
+    return;
+  }
+  let current = anchor;
+  for (const name of relative.split(path.sep)) {
+    current = path.join(current, name);
+    await fs.mkdir(current, { mode: 0o700 }).catch((error) => { if (error.code !== 'EEXIST') throw error; });
+    if (!(await fs.lstat(current)).isDirectory()) throw new ALAError(`Session storage must be a real directory: ${current}`, EXIT_CODES.directoryChanged);
+  }
+}
+
 // One append-only JSONL transcript per session. Every line is written once;
 // the native continuation is the last `continuation` record.
-export async function openSessionState({ id, sessionsRoot, resume = false }) {
+export async function openSessionState({ id, sessionsRoot, resume = false, anchor = null }) {
   if (!/^[0-9a-f-]{36}$/u.test(id) || !sessionsRoot) {
     throw new Error('Persistent sessions require a UUID and a sessions directory.');
   }
   const root = path.join(sessionsRoot, 'sessions');
-  await fs.mkdir(root, { recursive: true, mode: 0o700 });
+  await createSessionsDirectory(root, anchor);
   const file = sessionTranscriptPath(sessionsRoot, id);
   const lock = `${file}.lock`;
+  // The lock is reached by path: if the folder was swapped away the original failure must still be reported.
+  const unlock = () => fs.unlink(lock).catch((error) => { if (error.code !== 'ENOENT') throw error; });
   await acquireLock(lock);
   try {
     const record = { id, agent: null, continuation: null };
@@ -98,7 +116,7 @@ export async function openSessionState({ id, sessionsRoot, resume = false }) {
         Object.assign(record, next);
         return append('continuation', { agent: record.agent, continuation: record.continuation });
       },
-      async close() { try { await writes; } finally { await fs.unlink(lock); } }
+      async close() { try { await writes; } finally { await unlock(); } }
     };
-  } catch (error) { await fs.unlink(lock); throw error; }
+  } catch (error) { await unlock(); throw error; }
 }

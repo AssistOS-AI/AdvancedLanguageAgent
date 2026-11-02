@@ -4,11 +4,14 @@ import { closeSync, fstatSync, realpathSync } from 'node:fs';
 import { lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 import { runCli } from '../src/cli.mjs';
 import { runProcess } from '../src/coding-agents/process.mjs';
 import { buildSandboxArgs, canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
-import { resolveFolderMounts } from '../src/coding-agents/folders.mjs';
+import { pinFolderMounts, resolveFolderMounts } from '../src/coding-agents/folders.mjs';
+import { openSessionState } from '../src/session-state.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
 import { captureStream, inputStream } from './helpers.mjs';
 
@@ -206,6 +209,68 @@ test('--expect-dir refuses a swapped cwd or folder before any session file exist
   assert.equal((await run(['--expect-dir', 'malformed'])).code, 2);
 });
 
+test('a recorded identity decides before the configuration, and a missing or non-directory path exits 78', async context => {
+  const ala = fileURLToPath(new URL('../bin/ala.mjs', import.meta.url));
+  const run = (f, home, argv) => spawnSync(process.execPath, [ala, '--home', home, '--cwd', f.workspace, '--session-id', '11111111-1111-4111-8111-111111111111',
+    '--task', 'x', ...argv], { encoding: 'utf8', timeout: 5000, env: { CODEX_BIN: process.execPath, HOME: home, PATH: process.env.PATH } });
+  const setup = async () => {
+    const f = await swapFixture(context);
+    const home = join(f.root, 'home');
+    await mkdir(join(home, '.ala'), { recursive: true });
+    return { f, home, cwdIdentity: await identityOf(f.workspace), folderIdentity: await identityOf(f.folder) };
+  };
+  // A robot-written FIFO would hang ALA if the configuration were read first.
+  const fifo = await setup();
+  assert.equal(spawnSync('mkfifo', [join(fifo.home, '.ala', 'config.json')]).status, 0);
+  await rm(fifo.f.workspace, { recursive: true });
+  await mkdir(fifo.f.workspace);
+  assert.equal(run(fifo.f, fifo.home, ['--expect-dir', `${fifo.cwdIdentity}:${fifo.f.workspace}`]).status, 78);
+  const invalid = await setup();
+  await writeFile(join(invalid.home, '.ala', 'config.json'), '{"bogus":1}');
+  await rm(invalid.f.workspace, { recursive: true });
+  await mkdir(invalid.f.workspace);
+  assert.equal(run(invalid.f, invalid.home, ['--expect-dir', `${invalid.cwdIdentity}:${invalid.f.workspace}`]).status, 78);
+  const missing = await setup();
+  await rm(missing.f.workspace, { recursive: true });
+  assert.equal(run(missing.f, missing.home, ['--expect-dir', `${missing.cwdIdentity}:${missing.f.workspace}`]).status, 78);
+  const file = await setup();
+  await rm(file.f.workspace, { recursive: true });
+  await writeFile(file.f.workspace, 'x');
+  assert.equal(run(file.f, file.home, ['--expect-dir', `${file.cwdIdentity}:${file.f.workspace}`]).status, 78);
+  for (const remove of [(f) => rm(f.folder, { recursive: true }), async (f) => { await rm(f.folder, { recursive: true }); await writeFile(f.folder, 'x'); }]) {
+    const folder = await setup();
+    await remove(folder.f);
+    assert.equal(run(folder.f, folder.home, ['--folder', folder.f.folder, '--expect-dir', `${folder.folderIdentity}:${folder.f.folder}`]).status, 78);
+  }
+  // A late swap inside the service is reported the same way as the check before it.
+  assert.throws(() => pinFolderMounts([{ source: join(missing.f.root, 'gone') }], missing.f.root, { [join(missing.f.root, 'gone')]: '1:1' }), { exitCode: 78 });
+});
+
+test('a planted private directory link is refused before anything is written through it', async context => {
+  const f = await swapFixture(context);
+  const home = join(f.root, 'home');
+  await mkdir(home);
+  const cwdIdentity = await identityOf(f.workspace);
+  await symlink(f.sibling, join(f.workspace, '.roboteam'));
+  const stderr = captureStream();
+  const code = await runCli({ argv: ['--home', home, '--cwd', f.workspace, '--session-id', '11111111-1111-4111-8111-111111111111', '--control-stdin',
+    '--expect-dir', `${cwdIdentity}:${f.workspace}`], env: { CODEX_BIN: process.execPath, HOME: home, PATH: process.env.PATH, ALA_SESSIONS: join(f.workspace, '.roboteam', '.ala') },
+  stdin: inputStream(''), stdout: captureStream(), stderr, cwd: f.root, fetchImpl: () => { throw new Error('unused'); } });
+  assert.equal(code, 78, stderr.read());
+  assert.match(stderr.read(), /Session storage must be a real directory/u);
+  await assert.rejects(lstat(join(f.sibling, '.ala')), { code: 'ENOENT' });
+});
+
+test('closing a session whose folder was swapped away reports the original failure, not its lock', {
+  skip: process.platform === 'linux' ? false : 'Session locks read /proc'
+}, async context => {
+  const f = await swapFixture(context);
+  const state = await openSessionState({ id: '11111111-1111-4111-8111-111111111111', sessionsRoot: join(f.workspace, '.ala'), anchor: f.workspace });
+  await rename(f.workspace, `${f.workspace}-moved`);
+  await symlink(f.sibling, f.workspace);
+  await state.close();
+});
+
 test('the service binds pinned descriptors, so a later swap changes neither mounts nor masks', async context => {
   const f = await swapFixture(context);
   const bwrap = await fakeBubblewrap(f.root);
@@ -311,11 +376,11 @@ test('a Bubblewrap without descriptor binds keeps path binds for plain callers a
   assert.equal(contexts[0].workspaceFd, undefined);
   assert.equal(contexts[0].folders[0].fd, undefined);
   assert.throws(() => createCodingAgentService({ agents, workspace: f.workspace, env: { ALA_BWRAP: bwrap },
-    workspaceIdentity: '1:1' }), { exitCode: 5, message: /Bubblewrap 0\.10\.0/u });
+    workspaceIdentity: '1:1' }), { exitCode: 5, message: /Bubblewrap with --bind-fd/u });
 });
 
 test('a live sandbox shows the pinned folder after a swap and inherits no descriptor', {
-  skip: sandboxSupported && canBindDescriptors() ? false : 'Requires Bubblewrap 0.10.0 or newer on Linux'
+  skip: sandboxSupported && canBindDescriptors() ? false : 'Requires a Bubblewrap with --bind-fd on Linux'
 }, async context => {
   const f = await swapFixture(context);
   const home = join(f.root, 'home');
@@ -334,7 +399,7 @@ test('a live sandbox shows the pinned folder after a swap and inherits no descri
   const [input] = contexts;
   const script = `
     const fs = require('node:fs');
-    const out = { files: fs.readdirSync('/workspace/runtime'), descriptors: fs.readdirSync('/proc/self/fd').length };
+    const out = { files: fs.readdirSync('/workspace/runtime') };
     const stat = fs.lstatSync('/workspace/runtime', { bigint: true });
     out.identity = stat.dev + ':' + stat.ino;
     try { fs.writeFileSync('/workspace/runtime/new', 'x'); out.write = 'allowed'; } catch { out.write = 'denied'; }
@@ -346,7 +411,13 @@ test('a live sandbox shows the pinned folder after a swap and inherits no descri
   assert.deepEqual(out.files, ['granted.txt']);
   assert.equal(out.identity, recorded);
   assert.equal(out.write, 'denied');
-  // The standard streams and the listing's own directory descriptor, and neither pinned descriptor.
-  assert.equal(out.descriptors <= 4, true, `Inherited descriptors: ${out.descriptors}`);
   assert.equal(await readFile(join(f.workspace, 'artifact'), 'utf8'), 'x');
+  // A shell holds only what it inherited: the standard streams and ls's own listing, never a pinned directory.
+  const listed = await runProcess({ binary: '/bin/sh', args: ['-c', 'ls -l /proc/self/fd'], cwd: f.workspace, sandbox: input.sandbox });
+  assert.equal(listed.code, 0, listed.stderr);
+  const links = listed.stdout.split('\n').flatMap((line) => /\s(\d+) -> (.+)$/u.exec(line)?.slice(1) ? [/\s(\d+) -> (.+)$/u.exec(line).slice(1)] : []);
+  assert.equal(links.length >= 3, true, listed.stdout);
+  for (const [number, target] of links) {
+    assert.equal(Number(number) <= 2 || /^\/proc\/\d+\/fd$/u.test(target), true, `Inherited descriptor: ${number} -> ${target}`);
+  }
 });

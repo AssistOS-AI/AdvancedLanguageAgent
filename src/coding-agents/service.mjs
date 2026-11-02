@@ -57,7 +57,7 @@ export function createCodingAgentService({
   const bwrap = findBubblewrap(env);
   const bindDescriptors = canBindDescriptors(bwrap);
   if (bwrap && !bindDescriptors && (workspaceIdentity || Object.keys(folderIdentities).length)) {
-    throw new ALAError('--expect-dir requires Bubblewrap 0.10.0 or newer.', EXIT_CODES.execution);
+    throw new ALAError('--expect-dir requires a Bubblewrap with --bind-fd.', EXIT_CODES.execution);
   }
   // Each directory is opened once here and bound by descriptor for every process of this service.
   const pins = [];

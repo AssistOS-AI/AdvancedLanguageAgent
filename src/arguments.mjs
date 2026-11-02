@@ -194,7 +194,7 @@ Execution options:
   --folder <path> [write] [as <alias> | at <absolute-path>] [expose]
                            Mount a directory; expose explicitly exports a read-only subtree
   --ignore <absolute-path>  Mask an existing directory or file with an empty read-only mount (repeatable)
-  --expect-dir <dev>:<ino>:<path>
+  --expect-dir <dev>:<ino>:<absolute-path>
                            Refuse to start unless this --cwd or --folder path is still the directory
                            with this device and inode (repeatable)
   --session-id <uuid>        Persistent conversation identity; requires --home and --cwd.

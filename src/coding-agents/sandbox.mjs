@@ -73,7 +73,7 @@ export function canStartBubblewrap(bwrap = findBubblewrap(), dependencies = {}) 
   return probeBubblewrap(sandboxSupport, bwrap, args, dependencies);
 }
 
-// --bind-fd and --ro-bind-fd exist from Bubblewrap 0.10.0. Older versions report them as unknown options.
+// --bind-fd and --ro-bind-fd exist upstream from 0.10.0 and in backports such as Debian's 0.8.0. Without them Bubblewrap reports an unknown option.
 export function canBindDescriptors(bwrap = findBubblewrap()) {
   if (!bwrap) return false;
   if (!descriptorSupport.has(bwrap)) {
