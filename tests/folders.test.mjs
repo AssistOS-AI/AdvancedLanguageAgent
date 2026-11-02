@@ -5,6 +5,7 @@ import { lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFi
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import net from 'node:net';
 import { fileURLToPath } from 'node:url';
 
 import { runCli } from '../src/cli.mjs';
@@ -270,7 +271,16 @@ test('a session file that is a link or not a regular file is refused without fol
   await symlink(outside, link);
   const fifo = join(f.root, 'fifo.jsonl');
   assert.equal(spawnSync('mkfifo', [fifo]).status, 0);
-  for (const file of [link, fifo, f.root]) {
+  const files = [link, fifo, f.root];
+  if (process.platform === 'linux') {
+    // Opening a socket fails differently elsewhere, and a socket path is short there.
+    const socket = join(f.root, 's.sock');
+    const server = net.createServer();
+    await new Promise(resolve => server.listen(socket, resolve));
+    context.after(() => server.close());
+    files.push(socket);
+  }
+  for (const file of files) {
     await assert.rejects(openRegularFile(file, constants.O_RDWR | constants.O_APPEND), { exitCode: 78, message: /must be a regular file/u }, file);
   }
   const handle = await openRegularFile(outside, constants.O_RDWR | constants.O_APPEND);
@@ -279,6 +289,57 @@ test('a session file that is a link or not a regular file is refused without fol
   await handle.close();
   assert.equal(await readFile(outside, 'utf8'), 'outside+');
   await assert.rejects(openRegularFile(join(f.root, 'missing'), constants.O_RDONLY), { code: 'ENOENT' });
+});
+
+test('transcript readers refuse a FIFO, a link and a socket without blocking', async context => {
+  const f = await swapFixture(context);
+  const id = '11111111-1111-4111-8111-111111111111';
+  const sessions = join(f.root, 'state', 'sessions');
+  await mkdir(sessions, { recursive: true });
+  const file = join(sessions, `${id}.jsonl`);
+  const outside = join(f.root, 'outside.jsonl');
+  await writeFile(outside, `${JSON.stringify({ seq: 1, type: 'session', id })}\n`);
+  const server = net.createServer();
+  context.after(() => server.close());
+  const plant = {
+    fifo: () => assert.equal(spawnSync('mkfifo', [file]).status, 0),
+    link: () => symlink(outside, file),
+    ...(process.platform === 'linux' ? { socket: () => new Promise(resolve => server.listen(file, resolve)) } : {}),
+  };
+  // A reader that blocks on the FIFO never returns, so each reader runs in its own process with a time limit.
+  const script = `import { readTranscriptRecordsSync, readSessionSummarySync, listSessionsSync } from ${JSON.stringify(new URL('../src/transcript.mjs', import.meta.url).href)};
+    const [root, id, file] = process.argv.slice(1);
+    const outcome = (read) => { try { return read(); } catch (error) { return error.exitCode; } };
+    console.log(JSON.stringify([outcome(() => readTranscriptRecordsSync(file)), outcome(() => readSessionSummarySync(root, id)), outcome(() => listSessionsSync(root))]));`;
+  for (const [kind, make] of Object.entries(plant)) {
+    await rm(file, { force: true });
+    await make();
+    const run = spawnSync(process.execPath, ['--input-type=module', '-e', script, join(f.root, 'state'), id, file], { encoding: 'utf8', timeout: 5000 });
+    assert.equal(run.status, 0, `${kind}: ${run.error?.message || run.stderr}`);
+    assert.deepEqual(JSON.parse(run.stdout), [78, null, []], kind);
+  }
+  await rm(file, { force: true });
+  await writeFile(file, `${JSON.stringify({ seq: 1, type: 'session', id })}\n`);
+  const ok = spawnSync(process.execPath, ['--input-type=module', '-e', script, join(f.root, 'state'), id, file], { encoding: 'utf8', timeout: 5000 });
+  assert.equal(JSON.parse(ok.stdout)[0][0].id, id);
+});
+
+test('a socket or a directory in place of a session lock exits 78 and is left alone', {
+  skip: process.platform === 'linux' ? false : 'Session locks read /proc'
+}, async context => {
+  const f = await swapFixture(context);
+  const id = '11111111-1111-4111-8111-111111111111';
+  const root = join(f.workspace, '.ala', 'sessions');
+  await mkdir(root, { recursive: true });
+  const lock = join(root, `${id}.jsonl.lock`);
+  const server = net.createServer();
+  context.after(() => server.close());
+  for (const make of [() => mkdir(lock), () => new Promise(resolve => server.listen(lock, resolve))]) {
+    await make();
+    await assert.rejects(openSessionState({ id, sessionsRoot: join(f.workspace, '.ala'), anchor: f.workspace }), { exitCode: 78, message: /must be a regular file/u });
+    await lstat(lock);
+    await rm(lock, { recursive: true, force: true });
+  }
 });
 
 test('resuming through a planted transcript or lock link leaves the outside file untouched', {

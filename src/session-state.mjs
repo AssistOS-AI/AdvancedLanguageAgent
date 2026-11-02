@@ -5,7 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import { ALAError, EXIT_CODES } from './errors.mjs';
-import { parseRecords, sessionTranscriptPath } from './transcript.mjs';
+import { parseRecords, refusedByOpen, regularFileRefused, sessionTranscriptPath } from './transcript.mjs';
 
 async function processIdentity(pid) {
   const stat = await fs.readFile(`/proc/${pid}/stat`, 'utf8');
@@ -21,19 +21,21 @@ export function resolveSessionsRoot({ env = process.env, cwd }) {
 
 // A robot that can write above the sessions directory may plant a link or a FIFO in place of a session file.
 export async function openRegularFile(file, flags) {
-  const refused = () => new ALAError(`Session storage must be a regular file: ${file}`, EXIT_CODES.directoryChanged);
   let handle;
   try { handle = await fs.open(file, flags | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
-  catch (error) { throw ['ELOOP', 'EISDIR'].includes(error.code) ? refused() : error; }
+  catch (error) { throw refusedByOpen(error) ? regularFileRefused(file) : error; }
   if ((await handle.stat()).isFile()) return handle;
   await handle.close();
-  throw refused();
+  throw regularFileRefused(file);
 }
 
 async function acquireLock(lock) {
   const owner = { host: os.hostname(), pid: process.pid, start: await processIdentity(process.pid), token: randomUUID() };
   try { await fs.writeFile(lock, JSON.stringify(owner), { flag: 'wx', mode: 0o600 }); return; }
   catch (error) { if (error.code !== 'EEXIST') throw error; }
+  // A directory, socket or link in place of the lock is never a lock to recover.
+  const entry = await fs.lstat(lock).catch(() => null);
+  if (entry && !entry.isFile()) throw regularFileRefused(lock);
   const recovery = `${lock}.recovery`;
   // Serialize stale-lock removal. Fresh contenders still compete through wx.
   // A crash during recovery fails closed instead of guessing which lock to remove.
