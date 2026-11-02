@@ -42,7 +42,12 @@ function openRegularSync(file) {
   throw regularFileRefused(file);
 }
 
+// `file` is a path or a descriptor the caller opened; a descriptor is checked and read but left open.
 export function readTranscriptRecordsSync(file) {
+  if (typeof file === 'number') {
+    if (!fs.fstatSync(file).isFile()) throw regularFileRefused(String(file));
+    return parseRecords(fs.readFileSync(file, 'utf8'), String(file));
+  }
   const descriptor = openRegularSync(file);
   try { return parseRecords(fs.readFileSync(descriptor, 'utf8'), file); }
   finally { fs.closeSync(descriptor); }

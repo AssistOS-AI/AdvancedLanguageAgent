@@ -7,7 +7,9 @@ import { randomUUID } from 'node:crypto';
 
 import { openSessionState, resolveSessionsRoot } from '../src/session-state.mjs';
 import { createTranscriptRecorder } from '../src/transcript-recorder.mjs';
-import { listSessions, readSession, readSessionSummary, readTurn } from '../src/transcript.mjs';
+import { listSessions, readSession, readSessionSummary, readTranscriptRecordsSync, readTurn } from '../src/transcript.mjs';
+import { openSync, closeSync, constants, fstatSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 
 async function tempRoot(t) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'ala-transcript-'));
@@ -85,6 +87,21 @@ test('an unfinished trailing append is ignored by readers', async (t) => {
   await state.close();
   await fs.appendFile(path.join(root, 'sessions', `${id}.jsonl`), '{"seq":3,"type":"fin');
   assert.equal((await readSession(root, id)).turns[0].user, 'hello');
+});
+
+test('a reader accepts a descriptor the caller opened, leaves it open and refuses one that is not a regular file', async (t) => {
+  const root = await tempRoot(t);
+  const file = path.join(root, 'records.jsonl');
+  await fs.writeFile(file, '{"seq":1,"type":"session","id":"x"}\n');
+  const descriptor = openSync(file, constants.O_RDONLY);
+  try {
+    assert.equal(readTranscriptRecordsSync(descriptor)[0].type, 'session');
+    assert.ok(fstatSync(descriptor).isFile(), 'the descriptor is still open');
+  } finally { closeSync(descriptor); }
+  const fifo = path.join(root, 'fifo');
+  assert.equal(spawnSync('mkfifo', [fifo]).status, 0);
+  const pipe = openSync(fifo, constants.O_RDONLY | constants.O_NONBLOCK);
+  try { assert.throws(() => readTranscriptRecordsSync(pipe), { exitCode: 78 }); } finally { closeSync(pipe); }
 });
 
 test('session listing returns summaries newest first and skips foreign files', async (t) => {
