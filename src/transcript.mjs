@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { ALAError, EXIT_CODES } from './errors.mjs';
+
 // Readers for the append-only session transcripts. Embedding applications
 // import this module (package export "advanced-language-agent/transcript")
 // instead of parsing the files themselves. Every reader is synchronous with an
@@ -16,7 +18,7 @@ export function sessionTranscriptPath(sessionsRoot, id) {
 
 // Parse JSONL records. A trailing line without a newline is an interrupted
 // append and is ignored; any other malformed line is an error.
-function parseRecords(text, file) {
+export function parseRecords(text, file) {
   // The element after the last newline is either empty or an unfinished append.
   return text.split('\n').slice(0, -1).filter((line) => line.trim()).map((line, index) => {
     try { return JSON.parse(line); }
@@ -24,13 +26,34 @@ function parseRecords(text, file) {
   });
 }
 
-export function readTranscriptRecordsSync(file) {
-  return parseRecords(fs.readFileSync(file, 'utf8'), file);
+export const regularFileRefused = (file) => new ALAError(`Session storage must be a regular file: ${file}`, EXIT_CODES.directoryChanged);
+
+// Opening a link, a directory or a socket fails with one of these codes.
+export const refusedByOpen = (error) => ['ELOOP', 'EISDIR', 'ENXIO', 'EOPNOTSUPP'].includes(error.code);
+
+// A robot that can write the sessions directory may plant a FIFO or a link in place of a transcript. Opening it without
+// blocking and without following a link keeps the reader from hanging on it or reaching a file elsewhere.
+function openRegularSync(file) {
+  let descriptor;
+  try { descriptor = fs.openSync(file, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK); }
+  catch (error) { throw refusedByOpen(error) ? regularFileRefused(file) : error; }
+  if (fs.fstatSync(descriptor).isFile()) return descriptor;
+  fs.closeSync(descriptor);
+  throw regularFileRefused(file);
 }
 
-export async function readTranscriptRecords(file) {
-  return parseRecords(await fs.promises.readFile(file, 'utf8'), file);
+// `file` is a path or a descriptor the caller opened; a descriptor is checked and read but left open.
+export function readTranscriptRecordsSync(file) {
+  if (typeof file === 'number') {
+    if (!fs.fstatSync(file).isFile()) throw regularFileRefused(String(file));
+    return parseRecords(fs.readFileSync(file, 'utf8'), String(file));
+  }
+  const descriptor = openRegularSync(file);
+  try { return parseRecords(fs.readFileSync(descriptor, 'utf8'), file); }
+  finally { fs.closeSync(descriptor); }
 }
+
+export async function readTranscriptRecords(file) { return readTranscriptRecordsSync(file); }
 
 function emptyTurn(turnId, at) {
   return { turnId, startedAt: at, user: null, followUps: [], messages: [], final: null,
@@ -81,12 +104,12 @@ export function readTurnSync(sessionsRoot, id, turnId) {
 
 // Cheap listing data: the header and first user record from the beginning of
 // the file plus its modification time. Returns null when the session has no
-// transcript yet.
+// transcript yet or the entry is not a regular file.
 export function readSessionSummarySync(sessionsRoot, id) {
   const file = sessionTranscriptPath(sessionsRoot, id);
   let descriptor;
-  try { descriptor = fs.openSync(file, 'r'); }
-  catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+  try { descriptor = openRegularSync(file); }
+  catch (error) { if (error.code === 'ENOENT' || error instanceof ALAError) return null; throw error; }
   try {
     const { mtime } = fs.fstatSync(descriptor);
     const buffer = Buffer.alloc(SUMMARY_BYTES);

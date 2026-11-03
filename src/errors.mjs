@@ -4,6 +4,7 @@ export const EXIT_CODES = Object.freeze({
   input: 3,
   repository: 4,
   execution: 5,
+  directoryChanged: 78,
   interrupted: 130
 });
 

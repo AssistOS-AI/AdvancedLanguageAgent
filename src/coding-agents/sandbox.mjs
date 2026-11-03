@@ -4,16 +4,21 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 import { ALAError, EXIT_CODES } from '../errors.mjs';
-import { resolveFolderMounts } from './folders.mjs';
-import { ignoredMountTargets } from './ignored-paths.mjs';
+import { pinDirectory, resolveFolderMounts } from './folders.mjs';
+import { ignoredMounts } from './ignored-paths.mjs';
 import { SANDBOX_HOME } from './paths.mjs';
 import { AGENTS, getAgent } from './registry.mjs';
+
+export { pinDirectory };
 
 const PROBE_CACHE_TTL_MS = 30_000;
 const privateProcSupport = new Map();
 const privateProcModes = new Map();
 const sandboxSupport = new Map();
 const probeDiagnostics = new Map();
+const descriptorSupport = new Map();
+// Inherited descriptors follow the three standard streams in the child.
+const FIRST_INHERITED_FD = 3;
 // The probe command; minimal images keep `true` only in /bin.
 const PROBE_TRUE = ['/usr/bin/true', '/bin/true'].find((candidate) => fs.existsSync(candidate)) || '/usr/bin/true';
 
@@ -66,6 +71,21 @@ export function canStartBubblewrap(bwrap = findBubblewrap(), dependencies = {}) 
   addSystemMounts(args);
   args.push('--dir', '/proc', '--', PROBE_TRUE);
   return probeBubblewrap(sandboxSupport, bwrap, args, dependencies);
+}
+
+// --bind-fd and --ro-bind-fd exist upstream from 0.10.0 and in backports such as Debian's 0.8.0. Without them Bubblewrap reports an unknown option.
+export function canBindDescriptors(bwrap = findBubblewrap()) {
+  if (!bwrap) return false;
+  if (!descriptorSupport.has(bwrap)) {
+    const result = spawnSync(bwrap, ['--help'], { encoding: 'utf8', env: {}, maxBuffer: 64 * 1024, timeout: 5000 });
+    descriptorSupport.set(bwrap, result.status === 0 && String(result.stdout).includes('--bind-fd'));
+  }
+  return descriptorSupport.get(bwrap);
+}
+
+// The host descriptors a sandboxed process inherits, in child descriptor order.
+export function sandboxDescriptors({ workspaceFd = null, folders = [] } = {}) {
+  return [workspaceFd, ...folders.map((folder) => folder.fd)].filter(Number.isInteger);
 }
 
 export function bubblewrapProbeDiagnostic(bwrap) {
@@ -177,8 +197,8 @@ export function sandboxEnvironment(backend, runtimeMounts = [], env = process.en
   }
   Object.assign(values, {
     HOME: SANDBOX_HOME,
-    USER: 'ala',
-    LOGNAME: 'ala',
+    USER: path.basename(SANDBOX_HOME),
+    LOGNAME: path.basename(SANDBOX_HOME),
     SHELL: fs.existsSync('/bin/bash') ? '/bin/bash' : '/bin/sh',
     TMPDIR: '/tmp',
     XDG_CONFIG_HOME: `${SANDBOX_HOME}/.config`,
@@ -223,7 +243,7 @@ function normalizedMounts(mounts) {
   const seen = new Set();
   const result = [];
   for (const mount of mounts) {
-    const source = resolveExisting(mount.source);
+    const source = mount.fd !== undefined ? mount.source : resolveExisting(mount.source);
     const target = path.resolve(mount.target);
     if (!source) throw new ALAError(`Sandbox mount source is unavailable: ${mount.source}`, EXIT_CODES.execution);
     const key = `${source}\0${target}\0${Boolean(mount.writable)}`;
@@ -236,6 +256,7 @@ function normalizedMounts(mounts) {
 
 export function buildSandboxArgs({
   workspace,
+  workspaceFd = null,
   workspaceTarget = null,
   backend,
   binary,
@@ -246,7 +267,8 @@ export function buildSandboxArgs({
   home = null,
   folders = [],
   ignoredPaths = [],
-  chdir = null
+  chdir = null,
+  newSession = true
 }) {
   if (!bwrap) {
     throw new ALAError(
@@ -260,7 +282,7 @@ export function buildSandboxArgs({
       EXIT_CODES.execution
     );
   }
-  const hostWorkspace = resolveExisting(workspace);
+  const hostWorkspace = workspaceFd !== null ? path.resolve(workspace) : resolveExisting(workspace);
   const command = resolveExisting(binary);
   const folderMounts = resolveFolderMounts(folders, process.cwd());
   if (!hostWorkspace || !command) {
@@ -280,7 +302,8 @@ export function buildSandboxArgs({
     throw new ALAError('A mounted folder duplicates the working directory.', EXIT_CODES.execution);
   }
   const outerCapabilityProc = privateProcModes.get(bwrap) === 'outer-cap';
-  const sandboxArgs = ['--die-with-parent', '--new-session'];
+  const sandboxArgs = ['--die-with-parent'];
+  if (newSession) sandboxArgs.push('--new-session');
   if (!outerCapabilityProc) sandboxArgs.push('--unshare-user');
   sandboxArgs.push('--unshare-pid', '--unshare-ipc', '--unshare-uts', '--share-net');
   if (outerCapabilityProc) sandboxArgs.push('--cap-drop', 'ALL');
@@ -314,17 +337,22 @@ export function buildSandboxArgs({
   // Mount ancestors before their descendants so a read-only parent cannot hide
   // the writable working directory mounted below it.
   const orderedMounts = [
-    { source: hostWorkspace, target, writable: true, purpose: 'workspace' },
+    { source: hostWorkspace, target, writable: true, purpose: 'workspace', ...(workspaceFd !== null ? { fd: workspaceFd } : {}) },
     ...folderMounts
   ].sort((left, right) => left.target.length - right.target.length);
+  // Bubblewrap binds a descriptor without resolving a path and fails if what it mounted differs from the descriptor.
+  const inherited = sandboxDescriptors({ workspaceFd, folders: folderMounts });
   for (const mount of normalizedMounts(orderedMounts)) {
     addParentDirs(sandboxArgs, mount.target);
-    sandboxArgs.push(mount.writable ? '--bind' : '--ro-bind', mount.source, mount.target);
+    if (mount.fd !== undefined) {
+      sandboxArgs.push(mount.writable ? '--bind-fd' : '--ro-bind-fd', String(FIRST_INHERITED_FD + inherited.indexOf(mount.fd)), mount.target);
+    } else sandboxArgs.push(mount.writable ? '--bind' : '--ro-bind', mount.source, mount.target);
   }
   const exposedMounts = [...runtimeMounts, ...stateMounts, ...orderedMounts,
     ...(explicitHome ? [{ source: explicitHome, target: SANDBOX_HOME }] : [])];
-  for (const ignored of ignoredMountTargets(ignoredPaths, exposedMounts, chdir || target)) {
-    sandboxArgs.push('--perms', '0555', '--tmpfs', ignored, '--remount-ro', ignored);
+  for (const { target: ignored, directory } of ignoredMounts(ignoredPaths, exposedMounts, chdir || target)) {
+    if (directory) sandboxArgs.push('--perms', '0555', '--tmpfs', ignored, '--remount-ro', ignored);
+    else sandboxArgs.push('--ro-bind', '/dev/null', ignored);
   }
   sandboxArgs.push('--remount-ro', '/');
   for (const [name, value] of Object.entries(sandboxEnvironment(backend, runtimeMounts, env))) {

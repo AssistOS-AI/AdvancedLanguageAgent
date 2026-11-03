@@ -1,3 +1,4 @@
+import { closeSync } from 'node:fs';
 import { mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -13,6 +14,7 @@ import { createPermissionCommand } from './interactive-permissions.mjs';
 import { createThinkingIndicator } from './interactive-status.mjs';
 import { writeResult } from './output.mjs';
 import { SANDBOX_WORKSPACE } from './coding-agents/paths.mjs';
+import { parseExpectedDirectories, pinDirectory } from './coding-agents/folders.mjs';
 import { createDiagnosticLogger, createRuntime } from './runtime.mjs';
 import { createCodingAgentService } from './coding-agents/service.mjs';
 import { createRuntimeEventSink } from './runtime-events.mjs';
@@ -260,8 +262,16 @@ async function runExecution(options, io, env) {
     io.stdout.write(`${await packageVersion()}\n`);
     return EXIT_CODES.success;
   }
-  const executionCwd = options.cwd ? await realpath(resolve(io.cwd, options.cwd)) : null;
-  if (executionCwd && !(await stat(executionCwd)).isDirectory()) {
+  // A recorded identity is checked before ALA reads or writes anything a robot can reach, including its home.
+  const expected = parseExpectedDirectories(options.expectedDirectories);
+  const requestedCwd = options.cwd ? resolve(io.cwd, options.cwd) : null;
+  const named = new Set([requestedCwd, ...options.folders.map((folder) => resolve(requestedCwd || io.cwd, folder.source))]);
+  const unmatched = Object.keys(expected).find((name) => !named.has(name));
+  if (unmatched) throw new ALAError(`--expect-dir names no --cwd or --folder: ${unmatched}`, EXIT_CODES.usage);
+  for (const [name, identity] of Object.entries(expected)) closeSync(pinDirectory(name, identity).fd);
+  // A checked cwd is canonical and is never resolved again.
+  const executionCwd = requestedCwd && (expected[requestedCwd] ? requestedCwd : await realpath(requestedCwd));
+  if (executionCwd && !expected[requestedCwd] && !(await stat(executionCwd)).isDirectory()) {
     throw new ALAError('--cwd must reference an existing directory.', EXIT_CODES.usage);
   }
   const workspaceTarget = workspaceAliasTarget(options.cwdAlias);
@@ -311,7 +321,7 @@ async function runExecution(options, io, env) {
     throw new ALAError(`Coding agent is not available: ${options.agent}`, EXIT_CODES.execution);
   }
   const sessionState = options.sessionId ? await openSessionState({
-    id: options.sessionId, sessionsRoot: resolveSessionsRoot({ env, cwd: executionCwd }), resume: options.resumeSession
+    id: options.sessionId, sessionsRoot: resolveSessionsRoot({ env, cwd: executionCwd }), resume: options.resumeSession, anchor: executionCwd
   }) : null;
   const recorder = sessionState ? createTranscriptRecorder(sessionState, options.turnId || randomUUID()) : null;
   const sink = recorder ? (event) => { recorder.observe(event); eventSink(event); } : eventSink;
@@ -324,6 +334,8 @@ async function runExecution(options, io, env) {
     workspace: executionCwd,
     workspaceTarget,
     home: executionHome,
+    workspaceIdentity: expected[requestedCwd] ?? null,
+    folderIdentities: expected,
     mcpServers: options.mcpServers,
     permissionMode: options.permissionMode,
     cwd: executionCwd || io.cwd,

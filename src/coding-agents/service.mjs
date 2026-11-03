@@ -1,11 +1,12 @@
+import { closeSync, existsSync, realpathSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { ALAError, EXIT_CODES } from '../errors.mjs';
 import { createPermissionRequestManager, validatePermissionMode } from '../permission-requests.mjs';
-import { resolveFolderMounts } from './folders.mjs';
-import { canMountPrivateProc, findBubblewrap } from './sandbox.mjs';
+import { pinDirectory, pinFolderMounts } from './folders.mjs';
+import { canBindDescriptors, canMountPrivateProc, findBubblewrap } from './sandbox.mjs';
 import { parseMcpServers } from './mcp-servers.mjs';
 import { AGENTS, AGENT_NAMES, approvalAgentLabels, enumerate, getAgent } from './registry.mjs';
 
@@ -33,6 +34,8 @@ export function createCodingAgentService({
   home = null,
   folders = [],
   ignoredPaths = [],
+  workspaceIdentity = null,
+  folderIdentities = {},
   mcpServers = null,
   models = {},
   efforts = {},
@@ -48,16 +51,30 @@ export function createCodingAgentService({
   modelListers = null
 }) {
   let requestedPermissionMode = validatePermissionMode(permissionMode);
-  const folderMounts = resolveFolderMounts(folders, cwd);
   permissionRequests ??= createPermissionRequestManager({ eventSink, logger });
   let activeController = null;
   const available = agents.filter((record) => record.available);
   const bwrap = findBubblewrap(env);
+  const bindDescriptors = canBindDescriptors(bwrap);
+  if (bwrap && !bindDescriptors && (workspaceIdentity || Object.keys(folderIdentities).length)) {
+    throw new ALAError('--expect-dir requires a Bubblewrap with --bind-fd.', EXIT_CODES.execution);
+  }
+  // Each directory is opened once here and bound by descriptor for every process of this service.
+  const pins = [];
+  const pinnedFolders = pinFolderMounts(folders, cwd, folderIdentities);
+  pins.push(...pinnedFolders.map((mount) => mount.fd));
+  const workspacePin = requestedWorkspace && (workspaceIdentity || existsSync(requestedWorkspace))
+    ? pinDirectory(workspaceIdentity ? requestedWorkspace : realpathSync(requestedWorkspace), workspaceIdentity) : null;
+  if (workspacePin) pins.push(workspacePin.fd);
+  const releasePins = () => { for (const fd of pins.splice(0)) closeSync(fd); };
+  // An older Bubblewrap binds by path. That remains open only to a caller that recorded no identity.
+  const folderMounts = bindDescriptors ? pinnedFolders : pinnedFolders.map(({ fd, ...mount }) => mount);
+  if (!bindDescriptors) releasePins();
   const sandboxCapabilities = {
     bwrap,
     privateProc: canMountPrivateProc(bwrap)
   };
-  let workspace = requestedWorkspace;
+  let workspace = workspacePin?.source ?? requestedWorkspace;
   let sandboxWorkspace = workspaceTarget;
   let workspacePrepared = false;
   const configuredMcpServers = parseMcpServers(mcpServers);
@@ -104,6 +121,7 @@ export function createCodingAgentService({
       workspace: sandboxWorkspace,
       sandbox: {
         hostWorkspace: workspace,
+        ...(bindDescriptors && workspacePin ? { workspaceFd: workspacePin.fd } : {}),
         workspaceTarget: sandboxWorkspace,
         backend: selected.name,
         ...(home ? { home } : {}),
@@ -270,6 +288,7 @@ export function createCodingAgentService({
       permissionRequests.setReplyCapability(false);
       continuation = null;
       activeName = null;
+      releasePins();
     }
   };
 }

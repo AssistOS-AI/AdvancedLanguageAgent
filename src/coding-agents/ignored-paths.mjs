@@ -10,19 +10,26 @@ function contains(parent, child) {
 
 // Resolve every exposed source, including aliases that mount an ignored subtree directly.
 export function ignoredMountTargets(ignoredPaths, mounts, workingDirectory) {
-  const targets = new Set();
+  return ignoredMounts(ignoredPaths, mounts, workingDirectory).map(({ target }) => target);
+}
+
+export function ignoredMounts(ignoredPaths, mounts, workingDirectory) {
+  const targets = new Map();
   for (const requested of ignoredPaths) {
-    let source;
+    let source, directory;
     try {
       if (typeof requested !== 'string' || !path.isAbsolute(requested)) throw new Error();
       source = fs.realpathSync(requested);
-      if (!fs.statSync(source).isDirectory()) throw new Error();
+      const metadata = fs.statSync(source);
+      directory = metadata.isDirectory();
+      if (!directory && !metadata.isFile()) throw new Error();
     } catch {
-      throw new ALAError('--ignore requires an existing absolute directory path.', EXIT_CODES.execution);
+      throw new ALAError('--ignore requires an existing absolute directory or file path.', EXIT_CODES.execution);
     }
     let exposed = false;
     for (const mount of mounts) {
-      const mountedSource = fs.realpathSync(mount.source);
+      // A pinned mount shows what it was opened on, so its checked name decides where the mask belongs.
+      const mountedSource = mount.fd !== undefined ? mount.source : fs.realpathSync(mount.source);
       if (mount.expose && contains(source, mountedSource)) {
         if (source === mountedSource || mount.writable) {
           throw new ALAError('--folder expose may export only a read-only strict subdirectory of --ignore.',
@@ -41,17 +48,18 @@ export function ignoredMountTargets(ignoredPaths, mounts, workingDirectory) {
       if (contains(target, workingDirectory)) {
         throw new ALAError('--ignore cannot mask the working directory or its ancestors.', EXIT_CODES.execution);
       }
-      targets.add(target);
+      targets.set(target, directory);
     }
     if (!exposed) {
-      throw new ALAError('--ignore directory is not exposed by a sandbox mount.', EXIT_CODES.execution);
+      throw new ALAError('--ignore path is not exposed by a sandbox mount.', EXIT_CODES.execution);
     }
   }
   for (const mount of mounts.filter(entry => entry.expose)) {
-    if ([...targets].some(target => contains(target, mount.target))) {
+    if ([...targets.keys()].some(target => contains(target, mount.target))) {
       throw new ALAError('--folder expose destination is inside an ignored directory.', EXIT_CODES.execution);
     }
   }
   // An ancestor mask already hides nested mounts; avoid mounting inside a read-only mask.
-  return [...targets].filter(target => ![...targets].some(other => other !== target && contains(other, target)));
+  return [...targets].filter(([target]) => ![...targets.keys()].some(other => other !== target && contains(other, target)))
+    .map(([target, directory]) => ({ target, directory }));
 }

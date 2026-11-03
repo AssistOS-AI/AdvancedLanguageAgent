@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-import { buildSandboxArgs, findBubblewrap } from './sandbox.mjs';
+import { buildSandboxArgs, findBubblewrap, sandboxDescriptors } from './sandbox.mjs';
 import { ALAError, EXIT_CODES } from '../errors.mjs';
 
 const OUTPUT_LIMIT = 4 * 1024 * 1024;
@@ -36,6 +36,7 @@ export function spawnProcess({ binary, args, cwd, env = process.env, stdio, sand
   const bwrap = sandbox.bwrap || findBubblewrap(executionEnv);
   return spawn(bwrap || '/usr/bin/bwrap', buildSandboxArgs({
     workspace: sandbox.hostWorkspace,
+    workspaceFd: sandbox.workspaceFd ?? null,
     workspaceTarget: sandbox.workspaceTarget,
     backend: sandbox.backend,
     binary,
@@ -48,9 +49,10 @@ export function spawnProcess({ binary, args, cwd, env = process.env, stdio, sand
     ignoredPaths: sandbox.ignoredPaths,
     chdir: cwd
   }), {
-    cwd: sandbox.hostWorkspace,
+    // Bubblewrap changes directory inside the sandbox; a pinned workspace's host path is never entered.
+    cwd: sandbox.workspaceFd !== undefined ? '/' : sandbox.hostWorkspace,
     env: executionEnv,
-    stdio
+    stdio: [...stdio, ...sandboxDescriptors(sandbox)]
   });
 }
 

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -18,6 +19,85 @@ import {
 
 const bwrap = findBubblewrap();
 const sandboxSupported = canStartBubblewrap(bwrap);
+
+test('sandbox home is validated at import and backend profiles follow its target', () => {
+  const script = `
+    const { SANDBOX_HOME } = await import('./src/coding-agents/paths.mjs');
+    const { sandboxEnvironment } = await import('./src/coding-agents/sandbox.mjs');
+    const { AGENTS } = await import('./src/coding-agents/registry.mjs');
+    const { resolveFolderMounts } = await import('./src/coding-agents/folders.mjs');
+    const profiles = AGENTS.map(agent => ({ env: sandboxEnvironment(agent.name, [], {}),
+      targets: agent.state({}, '/host').map(entry => entry.target) }));
+    let reserved = false;
+    try { resolveFolderMounts([{source: process.cwd(), target: SANDBOX_HOME + '/child'}]); }
+    catch (error) { reserved = error.exitCode === 2; }
+    console.log(JSON.stringify({ home: SANDBOX_HOME, profiles, reserved }));
+  `;
+  const run = value => spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+    cwd: new URL('..', import.meta.url), encoding: 'utf8', env: { ...process.env, ALA_SANDBOX_HOME: value }
+  });
+  const result = run('/home/abc');
+  assert.equal(result.status, 0, result.stderr);
+  const actual = JSON.parse(result.stdout);
+  assert.equal(actual.home, '/home/abc');
+  assert.equal(actual.reserved, true);
+  for (const { env, targets } of actual.profiles) {
+    assert.equal(env.HOME, '/home/abc');
+    assert.equal(env.USER, 'abc');
+    assert.equal(env.LOGNAME, 'abc');
+    assert.equal(env.XDG_CONFIG_HOME, '/home/abc/.config');
+    assert.ok(targets.length > 0 && targets.every(target => target.startsWith('/home/abc/')));
+    assert.equal(JSON.stringify(env).includes('/home/ala'), false);
+  }
+  for (const value of ['', 'relative', '/', '/home', '/home/..', '/home/abc/', '/home/abc/def', '/etc/abc']) {
+    const invalid = run(value);
+    assert.notEqual(invalid.status, 0, value);
+    assert.match(invalid.stderr, /ALA_SANDBOX_HOME must be a normalized/);
+  }
+});
+
+test('file ignores mask canonical and aliased paths and newSession defaults to true', {
+  skip: process.platform !== 'linux' ? 'Linux sandbox validation' : false
+}, async context => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ala-file-mask-')));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const workspace = join(root, 'workspace');
+  await mkdir(workspace);
+  const secret = join(workspace, '.env');
+  await writeFile(secret, 'private');
+  const input = { workspace, backend: 'pi', binary: process.execPath, bwrap: '/usr/bin/bwrap',
+    privateProc: false, folders: [{ source: workspace, alias: 'copy' }], ignoredPaths: [secret] };
+  const args = buildSandboxArgs(input);
+  assert.equal(args.includes('--new-session'), true);
+  assert.equal(buildSandboxArgs({ ...input, newSession: false }).includes('--new-session'), false);
+  for (const target of [secret, '/workspace/copy/.env']) {
+    assert.equal(args.some((value, i) => value === '--ro-bind'
+      && args[i + 1] === '/dev/null' && args[i + 2] === target), true);
+  }
+  assert.equal(await readFile(secret, 'utf8'), 'private');
+});
+
+test('file ignores hide contents and deny writes inside a live sandbox', {
+  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+}, async context => {
+  const workspace = await realpath(await mkdtemp(join(tmpdir(), 'ala-file-mask-live-')));
+  context.after(() => rm(workspace, { recursive: true, force: true }));
+  const secret = join(workspace, '.env');
+  await writeFile(secret, 'private');
+  const result = await runProcess({
+    binary: process.execPath, cwd: workspace,
+    args: ['-e', `const fs = require('node:fs');
+      for (const target of [${JSON.stringify(secret)}, '/workspace/copy/.env']) {
+        try { if (fs.readFileSync(target, 'utf8') !== '') process.exit(10); }
+        catch (error) { if (error.code !== 'EACCES') throw error; }
+        try { fs.writeFileSync(target, 'leak'); process.exit(11); } catch {}
+      }`],
+    sandbox: { hostWorkspace: workspace, workspaceTarget: workspace, backend: 'pi',
+      folders: [{ source: workspace, alias: 'copy' }], ignoredPaths: [secret] }
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(await readFile(secret, 'utf8'), 'private');
+});
 
 test('Bubblewrap capability probes include the dynamic runtime libraries', () => {
   const calls = [];

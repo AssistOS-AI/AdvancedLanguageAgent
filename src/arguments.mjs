@@ -15,6 +15,7 @@ const valueOptions = new Map([
   ['--ca', 'agent'],
   ['--home', 'home'],
   ['--ignore', 'ignoredPaths'],
+  ['--expect-dir', 'expectedDirectories'],
   ['--session-id', 'sessionId'],
   ['--turn-id', 'turnId'],
   ['--taskFile', 'taskFile'],
@@ -22,7 +23,7 @@ const valueOptions = new Map([
   ['--MCPServers', 'mcpServers']
 ]);
 
-const repeatableOptions = new Set(['ignoredPaths']);
+const repeatableOptions = new Set(['ignoredPaths', 'expectedDirectories']);
 const sourceOptions = new Map([
   ['--text', 'text'],
   ['--file', 'file'],
@@ -44,6 +45,7 @@ function defaultExecutionOptions() {
     sources: [],
     folders: [],
     ignoredPaths: [],
+    expectedDirectories: [],
     interactive: false,
     permissionMode: 'full-access',
     force: false,
@@ -191,7 +193,10 @@ Execution options:
   --cwd <path> [as <alias>]  Writable working directory; omit to use a retained temporary directory
   --folder <path> [write] [as <alias> | at <absolute-path>] [expose]
                            Mount a directory; expose explicitly exports a read-only subtree
-  --ignore <absolute-path>  Mask an existing directory with an empty read-only mount (repeatable)
+  --ignore <absolute-path>  Mask an existing directory or file with an empty read-only mount (repeatable)
+  --expect-dir <dev>:<ino>:<absolute-path>
+                           Refuse to start unless this --cwd or --folder path is still the directory
+                           with this device and inode (repeatable)
   --session-id <uuid>        Persistent conversation identity; requires --home and --cwd.
                              The transcript is appended to $ALA_SESSIONS/sessions/<uuid>.jsonl
                              (default: <cwd>/.ala)

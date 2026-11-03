@@ -1,9 +1,11 @@
+import { constants } from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
-import { readTranscriptRecords, sessionTranscriptPath } from './transcript.mjs';
+import { ALAError, EXIT_CODES } from './errors.mjs';
+import { parseRecords, refusedByOpen, regularFileRefused, sessionTranscriptPath } from './transcript.mjs';
 
 async function processIdentity(pid) {
   const stat = await fs.readFile(`/proc/${pid}/stat`, 'utf8');
@@ -17,10 +19,23 @@ export function resolveSessionsRoot({ env = process.env, cwd }) {
   return configured ? path.resolve(cwd, configured) : path.join(cwd, '.ala');
 }
 
+// A robot that can write above the sessions directory may plant a link or a FIFO in place of a session file.
+export async function openRegularFile(file, flags) {
+  let handle;
+  try { handle = await fs.open(file, flags | constants.O_NOFOLLOW | constants.O_NONBLOCK); }
+  catch (error) { throw refusedByOpen(error) ? regularFileRefused(file) : error; }
+  if ((await handle.stat()).isFile()) return handle;
+  await handle.close();
+  throw regularFileRefused(file);
+}
+
 async function acquireLock(lock) {
   const owner = { host: os.hostname(), pid: process.pid, start: await processIdentity(process.pid), token: randomUUID() };
   try { await fs.writeFile(lock, JSON.stringify(owner), { flag: 'wx', mode: 0o600 }); return; }
   catch (error) { if (error.code !== 'EEXIST') throw error; }
+  // A directory, socket or link in place of the lock is never a lock to recover.
+  const entry = await fs.lstat(lock).catch(() => null);
+  if (entry && !entry.isFile()) throw regularFileRefused(lock);
   const recovery = `${lock}.recovery`;
   // Serialize stale-lock removal. Fresh contenders still compete through wx.
   // A crash during recovery fails closed instead of guessing which lock to remove.
@@ -30,7 +45,8 @@ async function acquireLock(lock) {
     throw claim;
   }
   try {
-    const previous = JSON.parse(await fs.readFile(lock, 'utf8'));
+    const held = await openRegularFile(lock, constants.O_RDONLY);
+    const previous = JSON.parse(await held.readFile('utf8').finally(() => held.close()));
     const pid = previous.pid;
     if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('Invalid ALA session lock.');
     // A process on another host or container cannot be probed through /proc.
@@ -43,30 +59,50 @@ async function acquireLock(lock) {
   } finally { await fs.unlink(recovery); }
 }
 
+// Below the working folder a robot may have planted a link, and mkdir -p would write through it.
+async function createSessionsDirectory(root, anchor) {
+  const relative = anchor ? path.relative(anchor, root) : '..';
+  if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    await fs.mkdir(root, { recursive: true, mode: 0o700 });
+    return;
+  }
+  let current = anchor;
+  for (const name of relative.split(path.sep)) {
+    current = path.join(current, name);
+    await fs.mkdir(current, { mode: 0o700 }).catch((error) => { if (error.code !== 'EEXIST') throw error; });
+    if (!(await fs.lstat(current)).isDirectory()) throw new ALAError(`Session storage must be a real directory: ${current}`, EXIT_CODES.directoryChanged);
+  }
+}
+
 // One append-only JSONL transcript per session. Every line is written once;
 // the native continuation is the last `continuation` record.
-export async function openSessionState({ id, sessionsRoot, resume = false }) {
+export async function openSessionState({ id, sessionsRoot, resume = false, anchor = null }) {
   if (!/^[0-9a-f-]{36}$/u.test(id) || !sessionsRoot) {
     throw new Error('Persistent sessions require a UUID and a sessions directory.');
   }
   const root = path.join(sessionsRoot, 'sessions');
-  await fs.mkdir(root, { recursive: true, mode: 0o700 });
+  await createSessionsDirectory(root, anchor);
   const file = sessionTranscriptPath(sessionsRoot, id);
   const lock = `${file}.lock`;
+  // The lock is reached by path: if the folder was swapped away the original failure must still be reported.
+  const unlock = () => fs.unlink(lock).catch((error) => { if (error.code !== 'ENOENT') throw error; });
   await acquireLock(lock);
+  // The transcript is opened once, so every later read and append reaches this file whatever happens to its path.
+  const openTranscript = () => openRegularFile(file, constants.O_RDWR | constants.O_APPEND);
+  let transcript = null;
   try {
     const record = { id, agent: null, continuation: null };
     let seq = 0;
     if (resume) {
-      const records = await readTranscriptRecords(file);
+      transcript = await openTranscript();
+      const records = parseRecords(await transcript.readFile('utf8'), file);
       if (records[0]?.type !== 'session' || records[0].id !== id) throw new Error('ALA session transcript is invalid.');
       for (const entry of records) if (entry.type === 'continuation') Object.assign(record, { agent: entry.agent, continuation: entry.continuation });
       seq = records.at(-1).seq;
       if (!record.agent || !record.continuation) throw new Error('ALA session cannot be resumed: it has no native continuation.');
     } else {
-      let records = null;
-      try { records = await readTranscriptRecords(file); }
-      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      transcript = await openTranscript().catch((error) => { if (error.code !== 'ENOENT') throw error; return null; });
+      const records = transcript ? parseRecords(await transcript.readFile('utf8'), file) : null;
       if (records) {
         // A transcript without native continuation (the first turn failed before
         // the coding agent started) is continued; one with continuation must be resumed.
@@ -79,13 +115,16 @@ export async function openSessionState({ id, sessionsRoot, resume = false }) {
       } else {
         seq = 1;
         await fs.writeFile(file, `${JSON.stringify({ seq, type: 'session', at: new Date().toISOString(), id })}\n`, { flag: 'wx', mode: 0o600 });
+        transcript = await openTranscript();
       }
     }
     let writes = Promise.resolve();
+    let closed = false;
     const append = (type, fields = {}) => {
+      if (closed) return writes;
       seq += 1;
       const line = `${JSON.stringify({ seq, type, at: new Date().toISOString(), ...fields })}\n`;
-      writes = writes.then(() => fs.appendFile(file, line, { mode: 0o600 }));
+      writes = writes.then(() => transcript.appendFile(line));
       return writes;
     };
     return {
@@ -98,7 +137,7 @@ export async function openSessionState({ id, sessionsRoot, resume = false }) {
         Object.assign(record, next);
         return append('continuation', { agent: record.agent, continuation: record.continuation });
       },
-      async close() { try { await writes; } finally { await fs.unlink(lock); } }
+      async close() { closed = true; try { await writes; } finally { await transcript.close(); await unlock(); } }
     };
-  } catch (error) { await fs.unlink(lock); throw error; }
+  } catch (error) { await transcript?.close(); await unlock(); throw error; }
 }
