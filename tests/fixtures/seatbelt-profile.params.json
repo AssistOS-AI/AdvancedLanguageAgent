@@ -1,0 +1,100 @@
+{
+  "input": {
+    "systemRoots": [
+      "/usr/bin",
+      "/System",
+      "/private/etc",
+      "/opt/homebrew/Cellar",
+      "/opt/homebrew/etc/openssl@3"
+    ],
+    "runtimeRoots": [
+      "/Users/alice/.codex/packages/standalone/releases/1.0/bin"
+    ],
+    "mounts": [
+      {
+        "source": "/Users/alice/work/run",
+        "writable": true
+      },
+      {
+        "source": "/Users/alice/work/repo",
+        "writable": false
+      },
+      {
+        "source": "/Users/alice/work/run/vendor/cache",
+        "writable": true
+      }
+    ],
+    "masks": [
+      {
+        "target": "/Users/alice/work/run/drafts/private",
+        "directory": true
+      },
+      {
+        "target": "/Users/alice/work/repo/.env",
+        "directory": false
+      }
+    ],
+    "home": "/private/var/folders/xy/T/ala-seatbelt-42-AbCdEf/p-GhIjKl/home",
+    "temp": "/private/var/folders/xy/T/ala-seatbelt-42-AbCdEf/p-GhIjKl/tmp",
+    "stateRoots": [
+      "/Users/alice/work/repo/state/codex",
+      "/Users/alice/.codex"
+    ],
+    "supervisor": "/Users/alice/ala/src/coding-agents/seatbelt-supervisor.mjs",
+    "links": [
+      "/Users/alice/.local/bin/codex",
+      "/Users/alice/.codex/packages/standalone/current"
+    ]
+  },
+  "params": [
+    "SYSTEM_0=/usr/bin",
+    "SYSTEM_1=/System",
+    "SYSTEM_2=/private/etc",
+    "SYSTEM_3=/opt/homebrew/Cellar",
+    "SYSTEM_4=/opt/homebrew/etc/openssl@3",
+    "SUPERVISOR=/Users/alice/ala/src/coding-agents/seatbelt-supervisor.mjs",
+    "PARENT_0=/Users",
+    "PARENT_1=/Users/alice",
+    "PARENT_2=/Users/alice/.codex",
+    "PARENT_3=/Users/alice/.codex/packages",
+    "PARENT_4=/Users/alice/.codex/packages/standalone",
+    "PARENT_5=/Users/alice/.codex/packages/standalone/releases",
+    "PARENT_6=/Users/alice/.codex/packages/standalone/releases/1.0",
+    "PARENT_7=/Users/alice/ala",
+    "PARENT_8=/Users/alice/ala/src",
+    "PARENT_9=/Users/alice/ala/src/coding-agents",
+    "PARENT_10=/Users/alice/work",
+    "PARENT_11=/Users/alice/work/repo",
+    "PARENT_12=/Users/alice/work/repo/state",
+    "PARENT_13=/Users/alice/work/run",
+    "PARENT_14=/Users/alice/work/run/vendor",
+    "PARENT_15=/opt",
+    "PARENT_16=/opt/homebrew",
+    "PARENT_17=/opt/homebrew/etc",
+    "PARENT_18=/private",
+    "PARENT_19=/private/var",
+    "PARENT_20=/private/var/folders",
+    "PARENT_21=/private/var/folders/xy",
+    "PARENT_22=/private/var/folders/xy/T",
+    "PARENT_23=/private/var/folders/xy/T/ala-seatbelt-42-AbCdEf",
+    "PARENT_24=/private/var/folders/xy/T/ala-seatbelt-42-AbCdEf/p-GhIjKl",
+    "PARENT_25=/usr",
+    "STATE_0=/Users/alice/.codex",
+    "MOUNT_0=/Users/alice/work/run",
+    "MOUNT_1=/Users/alice/work/repo",
+    "MOUNT_2=/Users/alice/work/run/vendor/cache",
+    "STATE_1=/Users/alice/work/repo/state/codex",
+    "RUNTIME_0=/Users/alice/.codex/packages/standalone/releases/1.0/bin",
+    "TEMP=/private/var/folders/xy/T/ala-seatbelt-42-AbCdEf/p-GhIjKl/tmp",
+    "HOME=/private/var/folders/xy/T/ala-seatbelt-42-AbCdEf/p-GhIjKl/home",
+    "MASK_0=/Users/alice/work/run/drafts/private",
+    "MASK_1=/Users/alice/work/repo/.env",
+    "LINK_0=/Users/alice/.codex/packages/standalone/current",
+    "GUARD_0=/Users/alice/.codex/packages",
+    "GUARD_1=/Users/alice/.codex/packages/standalone",
+    "GUARD_2=/Users/alice/.codex/packages/standalone/releases",
+    "GUARD_3=/Users/alice/.codex/packages/standalone/releases/1.0",
+    "GUARD_4=/Users/alice/work/run/drafts",
+    "GUARD_5=/Users/alice/work/run/vendor"
+  ]
+}

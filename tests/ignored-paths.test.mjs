@@ -8,6 +8,7 @@ import { ignoredMountTargets } from '../src/coding-agents/ignored-paths.mjs';
 import { runProcess } from '../src/coding-agents/process.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
 import { canMountPrivateProc, canStartBubblewrap, findBubblewrap } from '../src/coding-agents/sandbox.mjs';
+import { agentFreeEnvironment, onlyOnLinux } from './helpers.mjs';
 
 async function fixture(t) {
   const root = await mkdtemp(path.join(tmpdir(), 'ala-ignore-'));
@@ -89,7 +90,8 @@ test('continuations and model queries receive the same ignored paths', async t =
 });
 
 test('masked directories are empty and read-only through every mounted alias', {
-  skip: canStartBubblewrap(bwrap) && canMountPrivateProc(bwrap) ? false : 'Bubblewrap unavailable'
+  // Aliases and an empty read-only tmpfs over each mask are Bubblewrap behaviour; Seatbelt masks refuse access.
+  skip: onlyOnLinux(canStartBubblewrap(bwrap) && canMountPrivateProc(bwrap) ? false : 'Bubblewrap unavailable')
 }, async t => {
   const { workspace, secret } = await fixture(t);
   const paths = [secret, '/workspace/copy/.private', '/workspace/history'];
@@ -105,6 +107,7 @@ test('masked directories are empty and read-only through every mounted alias', {
   `;
   const result = await runProcess({
     binary: process.execPath, args: ['-e', script], cwd: workspace,
+    env: await agentFreeEnvironment(path.join(workspace, 'missing-home')),
     sandbox: { hostWorkspace: workspace, workspaceTarget: workspace, backend: 'codex',
       ignoredPaths: [secret], folders: [
         { source: workspace, alias: 'copy' },

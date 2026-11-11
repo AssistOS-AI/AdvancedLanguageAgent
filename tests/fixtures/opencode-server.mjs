@@ -41,6 +41,8 @@ const api = {
   } }
 };
 const config = existsSync('fixture-options.json') ? JSON.parse(readFileSync('fixture-options.json')) : {};
+// The directory ALA names in each request: /workspace under Bubblewrap, the canonical workspace under Seatbelt.
+const directory = config.directory || '/workspace';
 if (config.incompatible) delete api.paths['/session/{sessionID}'].patch;
 const log = (event) => appendFileSync('native-events.jsonl', `${JSON.stringify(event)}\n`);
 const state = existsSync('native-state.json') ? JSON.parse(readFileSync('native-state.json')) : { sessions: {} };
@@ -77,7 +79,7 @@ const start = () => {
   const child = { id: 'ses_child', parentID: active.sessionID };
   state.sessions[child.id] = child;
   pending = { id: 'per_native', sessionID: child.id, permission: 'edit', patterns: ['scratch.txt'],
-    metadata: { filepath: '/workspace/scratch.txt' }, always: ['*.txt'] };
+    metadata: { filepath: `${directory}/scratch.txt` }, always: ['*.txt'] };
   if (active.prompt !== 'missed-event') send('permission.asked', pending);
   if (active.prompt === 'backend-resolved') setTimeout(() => {
     pending = null;
@@ -93,8 +95,8 @@ const server = createServer(async (req, res) => {
   if (req.headers.authorization !== `Basic ${Buffer.from(`opencode:${process.env.OPENCODE_SERVER_PASSWORD}`).toString('base64')}`) {
     json({ error: 'Unauthorized' }, 401); return;
   }
-  if (!config.anyDirectory && (url.searchParams.get('directory') !== '/workspace'
-    || req.headers['x-opencode-directory'] !== '/workspace')) {
+  if (!config.anyDirectory && (url.searchParams.get('directory') !== directory
+    || req.headers['x-opencode-directory'] !== directory)) {
     json({ error: 'Incorrect sandbox directory' }, 400); return;
   }
   let raw = '';

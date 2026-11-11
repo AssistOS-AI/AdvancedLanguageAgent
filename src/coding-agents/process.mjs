@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 
-import { buildSandboxArgs, findBubblewrap, sandboxDescriptors } from './sandbox.mjs';
+import { buildSandboxLaunch, sandboxLabel } from './sandbox-backend.mjs';
 import { ALAError, EXIT_CODES } from '../errors.mjs';
 
 const OUTPUT_LIMIT = 4 * 1024 * 1024;
@@ -8,7 +8,7 @@ const OUTPUT_LIMIT = 4 * 1024 * 1024;
 export function requireSandbox(sandbox) {
   if (!sandbox) {
     throw new ALAError(
-      'Coding-agent processes must run inside the ALA Bubblewrap sandbox.',
+      `Coding-agent processes must run inside the ALA ${sandboxLabel()} sandbox.`,
       EXIT_CODES.execution
     );
   }
@@ -33,27 +33,12 @@ export function spawnProcess({ binary, args, cwd, env = process.env, stdio, sand
   if (!sandbox) {
     return spawn(binary, args, { cwd, env: executionEnv, stdio });
   }
-  const bwrap = sandbox.bwrap || findBubblewrap(executionEnv);
-  return spawn(bwrap || '/usr/bin/bwrap', buildSandboxArgs({
-    workspace: sandbox.hostWorkspace,
-    workspaceFd: sandbox.workspaceFd ?? null,
-    workspaceTarget: sandbox.workspaceTarget,
-    backend: sandbox.backend,
-    binary,
-    args,
-    env: executionEnv,
-    bwrap,
-    privateProc: sandbox.privateProc,
-    home: sandbox.home,
-    folders: sandbox.folders,
-    ignoredPaths: sandbox.ignoredPaths,
-    chdir: cwd
-  }), {
-    // Bubblewrap changes directory inside the sandbox; a pinned workspace's host path is never entered.
-    cwd: sandbox.workspaceFd !== undefined ? '/' : sandbox.hostWorkspace,
-    env: executionEnv,
-    stdio: [...stdio, ...sandboxDescriptors(sandbox)]
-  });
+  const launch = buildSandboxLaunch({ sandbox, binary, args, cwd, env: executionEnv, stdio });
+  let child;
+  try { child = spawn(launch.command, launch.args, launch.options); }
+  catch (error) { launch.release?.(); throw error; }
+  launch.attach(child);
+  return child;
 }
 
 export function runProcess({

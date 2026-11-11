@@ -5,12 +5,8 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
 import { ALAError, EXIT_CODES } from './errors.mjs';
+import { processIdentity } from './process-identity.mjs';
 import { parseRecords, refusedByOpen, regularFileRefused, sessionTranscriptPath } from './transcript.mjs';
-
-async function processIdentity(pid) {
-  const stat = await fs.readFile(`/proc/${pid}/stat`, 'utf8');
-  return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19];
-}
 
 // Resolve the directory that owns ALA session transcripts: ALA_SESSIONS when
 // set, otherwise <cwd>/.ala.
@@ -49,7 +45,7 @@ async function acquireLock(lock) {
     const previous = JSON.parse(await held.readFile('utf8').finally(() => held.close()));
     const pid = previous.pid;
     if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('Invalid ALA session lock.');
-    // A process on another host or container cannot be probed through /proc.
+    // A process on another host or container cannot be probed through /proc or ps.
     if (previous.host && previous.host !== owner.host) throw new Error(`ALA session is locked by host ${previous.host}.`);
     try {
       if (await processIdentity(pid) === previous.start) throw new Error('ALA session is already running.');

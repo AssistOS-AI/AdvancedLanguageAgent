@@ -1,30 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { runOpenCode } from '../src/coding-agents/agents/opencode/runner.mjs';
 import { openCodeEnvironment } from '../src/coding-agents/agents/opencode/server.mjs';
-import { canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
 import { createPermissionRequestManager } from '../src/permission-requests.mjs';
+import { agentFreeEnvironment, liveSandboxSkip } from './helpers.mjs';
 
-const sandboxSupported = canStartBubblewrap();
-const nativeTest = (name, callback) => test(name, {
-  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
-}, callback);
+const liveSkip = await liveSandboxSkip();
+const nativeTest = (name, callback) => test(name, { skip: liveSkip }, callback);
 const fixture = fileURLToPath(new URL('./fixtures/opencode-server.mjs', import.meta.url));
 const configBytes = '{"model":"keep/model","permission":{"external_directory":"deny"}}\n';
 
 async function setup(context, onRequest = null, options = {}) {
-  const root = await mkdtemp(join(tmpdir(), 'ala-opencode-server-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ala-opencode-server-')));
   context.after(() => rm(root, { recursive: true, force: true }));
   const workspace = join(root, 'workspace');
   const home = join(root, 'home');
   await Promise.all([mkdir(workspace), mkdir(home)]);
+  // Bubblewrap mounts the workspace at /workspace; Seatbelt has no mount namespace, so there the server works in
+  // the workspace's own canonical path, which the fixture is told through its options file.
+  const directory = process.platform === 'linux' ? '/workspace' : workspace;
   await writeFile(join(workspace, 'opencode.json'), configBytes);
-  await writeFile(join(workspace, 'fixture-options.json'), JSON.stringify(options));
+  await writeFile(join(workspace, 'fixture-options.json'),
+    JSON.stringify(process.platform === 'linux' ? options : { ...options, directory }));
   const events = [];
   const warnings = [];
   const permissionRequests = createPermissionRequestManager({
@@ -36,10 +38,10 @@ async function setup(context, onRequest = null, options = {}) {
   });
   permissionRequests.setReplyCapability(Boolean(onRequest));
   const input = {
-    binary: fixture, prompt: 'historical-idle', workspace: '/workspace', hostWorkspace: workspace,
-    websearch: false, env: { HOME: home }, permissionMode: 'ask-for-approval', permissionRequests,
-    // The fixture expects the workspace at /workspace, as an explicit cwd target would place it.
-    sandbox: { hostWorkspace: workspace, workspaceTarget: '/workspace', backend: 'opencode', mounts: [], home },
+    binary: fixture, prompt: 'historical-idle', workspace: directory, hostWorkspace: workspace,
+    websearch: false, env: await agentFreeEnvironment(home), permissionMode: 'ask-for-approval', permissionRequests,
+    // On Linux the workspace is at /workspace, as an explicit cwd target would place it.
+    sandbox: { hostWorkspace: workspace, workspaceTarget: directory, backend: 'opencode', mounts: [], home },
     onSession: async ({ sessionId }) => writeFile(join(workspace, 'persisted-before-work'), sessionId)
   };
   const records = async () => (await readFile(join(workspace, 'native-events.jsonl'), 'utf8'))

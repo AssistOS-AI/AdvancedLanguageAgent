@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -16,11 +16,19 @@ import { openCodeEnvironment } from '../src/coding-agents/agents/opencode/server
 import { buildPiArguments, createPiEventParser, parsePiModels, parsePiOutput } from '../src/coding-agents/agents/pi/runner.mjs';
 import { requireSandbox, runProcess } from '../src/coding-agents/process.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
-import { canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
+import { sandboxLabel } from '../src/coding-agents/sandbox-backend.mjs';
 import { createRuntime } from '../src/runtime.mjs';
-import { captureStream } from './helpers.mjs';
+import { agentFreeEnvironment, captureStream, liveSandboxSkip, withTemporaryRoot } from './helpers.mjs';
 
-const sandboxSupported = canStartBubblewrap();
+const liveSkip = await liveSandboxSkip();
+
+// Services without a workspace create one in ALA's temporary root and keep it; these tests point that root at a
+// fixture, which is removed afterwards.
+const inFixtureTemporaryRoot = (fn) => async (context) => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ala-retained-')));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  return withTemporaryRoot(root, () => fn(context));
+};
 
 async function executable(root, name, source = '#!/bin/sh\nexit 0\n') {
   const filePath = join(root, name);
@@ -30,7 +38,8 @@ async function executable(root, name, source = '#!/bin/sh\nexit 0\n') {
 }
 
 test('discovers configured and PATH coding-agent executables in the fixed codex, opencode, pi, omp, claude order', async (context) => {
-  const root = await mkdtemp(join(tmpdir(), 'ala-agent-discovery-'));
+  // Discovery reports canonical paths, so the fixture is canonical too (macOS keeps its temporary folder behind /var).
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ala-agent-discovery-')));
   context.after(() => rm(root, { recursive: true, force: true }));
   const codex = await executable(root, 'codex');
   const opencode = await executable(root, 'custom-opencode');
@@ -44,7 +53,8 @@ test('discovers configured and PATH coding-agent executables in the fixed codex,
   assert.equal(agents[3].available, false);
 });
 
-test('auto selects the configured default agent when installed, otherwise the first available', async () => {
+test('auto selects the configured default agent when installed, otherwise the first available',
+  inFixtureTemporaryRoot(async () => {
   const used = [];
   const runner = (name) => async () => { used.push(name); return { outputText: name, continuation: null }; };
   const agents = [{ name: 'codex', available: true, binary: '/fake/codex' }, { name: 'opencode', available: true, binary: '/fake/opencode' },
@@ -62,7 +72,7 @@ test('auto selects the configured default agent when installed, otherwise the fi
   assert.equal(used.at(-1), 'opencode');
   assert.equal(await service.execute('explicit', { agent: 'codex' }).catch((error) => error.message), 'Coding-agent session is already pinned to opencode.');
   await service.close();
-});
+}));
 
 test('injects streamable MCP servers into the OpenCode in-memory config only', () => {
   const webchatServers = [{ name: 'browser', url: 'http://127.0.0.1:48100/mcp' }];
@@ -170,7 +180,7 @@ test('streams supported Codex and Pi events across chunk boundaries', () => {
 });
 
 
-test('passes configured models and always enables web search', async () => {
+test('passes configured models and always enables web search', inFixtureTemporaryRoot(async () => {
   const calls = [];
   const service = createCodingAgentService({
     agents: [{ name: 'codex', available: true, binary: '/fake/codex' }],
@@ -192,9 +202,9 @@ test('passes configured models and always enables web search', async () => {
   assert.equal(calls[2].model, null);
   assert.deepEqual(calls.map((call) => call.websearch), [true, true, true]);
   await service.close();
-});
+}));
 
-test('forwards live backend text and terminates an incomplete diagnostic line', async () => {
+test('forwards live backend text and terminates an incomplete diagnostic line', inFixtureTemporaryRoot(async () => {
   const visible = [];
   const events = [];
   const service = createCodingAgentService({
@@ -216,10 +226,10 @@ test('forwards live backend text and terminates an incomplete diagnostic line', 
     { type: 'coding-agent-final', agent: 'codex', message: 'done' }
   ]);
   await service.close();
-});
+}));
 
 test('forwards cancellation to an active coding-agent process', async () => {
-  assert.throws(() => requireSandbox(null), /must run inside the ALA Bubblewrap sandbox/);
+  assert.throws(() => requireSandbox(null), new RegExp(`must run inside the ALA ${sandboxLabel()} sandbox`, 'u'));
   const controller = new AbortController();
   const running = runProcess({
     binary: process.execPath,
@@ -231,7 +241,7 @@ test('forwards cancellation to an active coding-agent process', async () => {
   await assert.rejects(running, { name: 'AbortError' });
 });
 
-test('pins continuation to one agent and retains its temporary workspace', async () => {
+test('pins continuation to one agent and retains its temporary workspace', inFixtureTemporaryRoot(async () => {
   const calls = [];
   const runners = {
     codex: async (input) => {
@@ -251,9 +261,9 @@ test('pins continuation to one agent and retains its temporary workspace', async
   await writeFile(join(workspace, 'artifact.txt'), 'retained');
   await service.close();
   assert.equal(await readFile(join(workspace, 'artifact.txt'), 'utf8'), 'retained');
-});
+}));
 
-test('does not switch backends after a delegated process fails', async () => {
+test('does not switch backends after a delegated process fails', inFixtureTemporaryRoot(async () => {
   const service = createCodingAgentService({
     agents: [
       { name: 'codex', available: true, binary: '/fake/codex' },
@@ -267,7 +277,7 @@ test('does not switch backends after a delegated process fails', async () => {
   await assert.rejects(() => service.execute('first', { agent: 'codex' }), /failed after launch/);
   await assert.rejects(() => service.execute('second', { agent: 'opencode' }), /pinned to codex/);
   await service.close();
-});
+}));
 
 test('ask mode rejects selected Pi before workspace creation or native session mutation without fallback', async (t) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-pi-policy-'));
@@ -299,7 +309,7 @@ test('ask mode rejects selected Pi before workspace creation or native session m
 
 test('service cancellation releases pending approval and interrupts the active native operation', {
   timeout: 2000
-}, async (t) => {
+}, inFixtureTemporaryRoot(async (t) => {
   let ready;
   const started = new Promise((resolve) => { ready = resolve; });
   const events = [];
@@ -327,10 +337,10 @@ test('service cancellation releases pending approval and interrupts the active n
   assert.equal(await answer, null);
   assert.equal(events.some((event) => event.type === 'coding-agent-final'), false);
   assert.deepEqual(events.at(-1), { type: 'coding-agent-request-resolved', id: answer.id, reason: 'cancelled' });
-});
+}));
 
 test('executes a task on the selected coding agent', {
-  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+  skip: liveSkip
 }, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-codex-fake-'));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -341,10 +351,13 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"d
   const runtime = await createRuntime({
     codingAgents: [{ name: 'codex', available: true, binary }],
     options: { agent: 'codex' },
+    // A fixture home: the host's own agent state is never linked into a test sandbox.
+    env: await agentFreeEnvironment(join(root, 'home'), { CODEX_HOME: join(root, 'codex-state') }),
     diagnostics: captureStream()
   });
   context.after(() => runtime.close());
-  assert.equal(await runtime.execute('perform task'), 'delegated');
+  // The workspace ALA creates for a run without --cwd lands in the fixture.
+  assert.equal(await withTemporaryRoot(root, () => runtime.execute('perform task')), 'delegated');
 });
 
 test('OMP one-shot arguments carry model, thinking level and the prompt', async () => {

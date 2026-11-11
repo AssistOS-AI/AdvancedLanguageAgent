@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildCodexArguments } from '../src/coding-agents/agents/codex/runner.mjs';
@@ -8,6 +8,15 @@ import { buildPiArguments, piModelDetails } from '../src/coding-agents/agents/pi
 import { openCodeModelDetails } from '../src/coding-agents/agents/opencode/runner.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
 import { loadConfig, saveConfig } from '../src/config.mjs';
+import { withTemporaryRoot } from './helpers.mjs';
+
+// Services without a workspace create one in ALA's temporary root and keep it; these tests point that root at a
+// fixture, which is removed afterwards.
+const inFixtureTemporaryRoot = (fn) => async (context) => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ala-retained-')));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  return withTemporaryRoot(root, () => fn(context));
+};
 
 test('effort uses native command options, including continued executions', () => {
     const codex = buildCodexArguments({ prompt: 'next', model: 'native', effort: 'high', continuation: { threadId: 'same' } });
@@ -48,7 +57,8 @@ test('configuration roundtrips effort next to models and rejects orphaned or inv
 });
 
 for (const backend of ['codex', 'pi', 'opencode']) {
-    test(`${backend} forwards supported effort, rejects unsupported values, and clears it on model reset`, async () => {
+    test(`${backend} forwards supported effort, rejects unsupported values, and clears it on model reset`,
+      inFixtureTemporaryRoot(async () => {
         const calls = [];
         const service = createCodingAgentService({
             agents: [{ name: backend, available: true, binary: '/unused' }],
@@ -66,7 +76,7 @@ for (const backend of ['codex', 'pi', 'opencode']) {
             await service.execute('default');
             assert.equal(calls[1].effort, null);
         } finally { await service.close(); }
-    });
+    }));
 }
 
 test('OpenCode sends effort as a native prompt variant on a resumed session', async () => {

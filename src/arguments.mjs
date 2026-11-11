@@ -193,10 +193,13 @@ Execution options:
   --cwd <path> [as <alias>]  Writable working directory; omit to use a retained temporary directory
   --folder <path> [write] [as <alias> | at <absolute-path>] [expose]
                            Mount a directory; expose explicitly exports a read-only subtree
-  --ignore <absolute-path>  Mask an existing directory or file with an empty read-only mount (repeatable)
+  --ignore <absolute-path>  Mask an existing directory or file: an empty read-only mount on Linux,
+                           a deny rule on macOS (repeatable)
   --expect-dir <dev>:<ino>:<absolute-path>
                            Refuse to start unless this --cwd or --folder path is still the directory
                            with this device and inode (repeatable)
+  macOS:                     as <alias>, at <absolute-path>, expose and a matching --expect-dir are
+                             refused with exit code 5: Seatbelt has no mount namespace or descriptor binds
   --session-id <uuid>        Persistent conversation identity; requires --home and --cwd.
                              The transcript is appended to $ALA_SESSIONS/sessions/<uuid>.jsonl
                              (default: <cwd>/.ala)

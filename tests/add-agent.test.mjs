@@ -7,7 +7,9 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
-import { canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
+import { liveSandboxSkip } from './helpers.mjs';
+
+const liveSkip = await liveSandboxSkip();
 
 const run = promisify(execFile);
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -37,7 +39,7 @@ export async function listModels() { return [{ id: 'fake-1', efforts: [] }]; }
 // The proof of the registry: a new agent is one folder and one line in registry.mjs, on a copy of the
 // sources, and every CLI surface then works without any other source change.
 test('a new agent needs only its folder and a registry line', {
-  skip: canStartBubblewrap() ? false : 'Bubblewrap cannot start in this test process'
+  skip: liveSkip
 }, async (context) => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'ala-add-agent-')));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -66,8 +68,10 @@ test('a new agent needs only its folder and a registry line', {
   const status = JSON.parse((await ala(['status', '--json'])).stdout);
   assert.deepEqual(status.agents.find((agent) => agent.name === 'fake').login.env, ['FAKE_API_KEY']);
   assert.deepEqual(JSON.parse((await ala(['agent', 'models', 'fake', '--json'])).stdout)[0].id, 'fake-1');
-  assert.equal((await ala(['--ca', 'fake', '--cwd', workspace, 'hello'])).stdout.trim(),
-    'fake:hello:/home/ala/.fake:key');
+  // Bubblewrap mounts the agent state at the sandbox home; Seatbelt links it from a private home folder.
+  const answer = (await ala(['--ca', 'fake', '--cwd', workspace, 'hello'])).stdout.trim();
+  if (process.platform === 'linux') assert.equal(answer, 'fake:hello:/home/ala/.fake:key');
+  else assert.match(answer, /^fake:hello:\/\S+\/ala-seatbelt-\d+-\w{6}\/p-\w{6}\/home\/\.fake:key$/u);
   const child = execFile(process.execPath, [join(copy, 'bin/ala.mjs'), '-i', '--cwd', workspace], { env });
   child.stdin.end('/agent use fake\n/quit\n');
   await new Promise((done) => child.on('close', done));

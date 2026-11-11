@@ -5,10 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { runCli } from '../src/cli.mjs';
-import { canStartBubblewrap } from '../src/coding-agents/sandbox.mjs';
-import { captureStream, inputStream } from './helpers.mjs';
+import {
+  agentFreeEnvironment, captureStream, inputStream, liveSandboxSkip, withTemporaryRoot
+} from './helpers.mjs';
 
-const sandboxSupported = canStartBubblewrap();
+const liveSkip = await liveSandboxSkip();
 
 test('keeps help output separate from diagnostics', async () => {
   const stdout = captureStream();
@@ -71,7 +72,7 @@ test('lists detected coding agents', async (context) => {
 });
 
 test('lists one agent\'s native models with their efforts and removes its temporary workspace', {
-  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+  skip: liveSkip
 }, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-cli-models-'));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -85,12 +86,14 @@ while IFS= read -r request; do
 done
 `);
   await chmod(binary, 0o700);
-  const env = { ...process.env, PATH: `${root}:/usr/bin`, HOME: join(root, 'home'), CODEX_BIN: binary,
-    CODEX_HOME: join(root, 'codex-state'), TMPDIR: root };
+  const env = await agentFreeEnvironment(join(root, 'home'), { PATH: `${root}:/usr/bin`, CODEX_BIN: binary,
+    CODEX_HOME: join(root, 'codex-state'), TMPDIR: root });
   await mkdir(env.CODEX_HOME);
   const run = async (argv) => {
     const stdout = captureStream(), stderr = captureStream();
-    const code = await runCli({ argv, env, stdin: inputStream(), stdout, stderr, cwd: root });
+    // ALA creates the catalog folder in its own temporary root, so that root is the fixture here.
+    const code = await withTemporaryRoot(root,
+      () => runCli({ argv, env, stdin: inputStream(), stdout, stderr, cwd: root }));
     return { code, stdout: stdout.read(), stderr: stderr.read() };
   };
   const json = await run(['agent', 'models', 'codex', '--json']);
@@ -119,7 +122,7 @@ test('fails without running anything when no coding agent is installed', async (
 });
 
 test('delegates explicitly to a detected coding agent with clean stdout', {
-  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+  skip: liveSkip
 }, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-cli-delegate-'));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -135,16 +138,15 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"a
   await chmod(binary, 0o700);
   const stdout = captureStream();
   const stderr = captureStream();
-  const code = await runCli({
+  // Without --cwd ALA creates the workspace in its temporary root, which is the fixture here.
+  const code = await withTemporaryRoot(root, async () => runCli({
     argv: ['--agent', 'codex', '--config', join(root, 'missing.json'), 'complete', 'task'],
-    env: {
-      HOME: join(root, 'home'), PATH: root, CODEX_HOME: authRoot
-    },
+    env: await agentFreeEnvironment(join(root, 'home'), { PATH: root, CODEX_HOME: authRoot }),
     stdin: inputStream(),
     stdout,
     stderr,
     cwd: root
-  });
+  }));
   assert.equal(code, 0, stderr.read());
   assert.equal(stdout.read(), 'agent result\n');
   assert.equal(stderr.read(), '');
@@ -153,7 +155,7 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"a
 });
 
 test('handles slash agent commands locally in interactive mode', {
-  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+  skip: liveSkip
 }, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-cli-interactive-agent-'));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -176,11 +178,9 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"s
   await chmod(binary, 0o700);
   const stdout = captureStream();
   const stderr = captureStream();
-  const code = await runCli({
+  const code = await withTemporaryRoot(root, async () => runCli({
     argv: ['--interactive', '--config', join(root, 'missing.json')],
-    env: {
-      ...process.env,
-      HOME: join(root, 'home'),
+    env: await agentFreeEnvironment(join(root, 'home'), {
       PATH: root,
       CODEX_BIN: binary,
       OPENCODE_BIN: join(root, 'absent-opencode'),
@@ -188,7 +188,7 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"s
       OMP_BIN: join(root, 'absent-omp'),
       CLAUDE_BIN: join(root, 'absent-claude'),
       CODEX_HOME: authRoot
-    },
+    }),
     stdin: inputStream([
       '/help',
       '/permissions',
@@ -211,7 +211,7 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"s
     stdout,
     stderr,
     cwd: root
-  });
+  }));
   assert.equal(code, 0, stderr.read());
   const outputLines = stdout.read().trim().split('\n');
   // /status prints one padded line per agent; the session's configured codex is its default.
@@ -241,7 +241,7 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"s
 });
 
 test('uses explicit home and cwd while injecting model and MCP overrides into Codex', {
-  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+  skip: liveSkip
 }, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-cli-embedded-'));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -260,7 +260,7 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"e
   const stderr = captureStream();
   const code = await runCli({
     argv: ['--home', home, '--cwd', workspace, '--task', 'operate desktop', '--ca', 'codex', '--model', 'gpt-test', '--MCPServers', 'desktop=http://127.0.0.1:48100/mcp'],
-    env: { ...process.env, HOME: join(root, 'host-home'), PATH: `${root}:/usr/bin`, CODEX_BIN: binary },
+    env: await agentFreeEnvironment(join(root, 'host-home'), { PATH: `${root}:/usr/bin`, CODEX_BIN: binary }),
     stdin: inputStream(), stdout, stderr, cwd: root
   });
   assert.equal(code, 0, stderr.read());

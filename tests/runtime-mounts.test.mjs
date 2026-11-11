@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { buildSandboxArgs, canStartBubblewrap, findBubblewrap,
-  sandboxRuntimeMounts } from '../src/coding-agents/sandbox.mjs';
+import { buildSandboxArgs, sandboxRuntimeMounts } from '../src/coding-agents/sandbox.mjs';
 import { runProcess } from '../src/coding-agents/process.mjs';
+import { agentFreeEnvironment, liveSandboxSkip, onlyOnLinux } from './helpers.mjs';
+
+const liveSkip = await liveSandboxSkip();
 
 async function fixture(context) {
-  const root = await mkdtemp(join(tmpdir(), 'ala-runtime-mounts-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ala-runtime-mounts-')));
   context.after(() => rm(root, { recursive: true, force: true }));
   const prefix = join(root, 'host-workspace', '.data', 'tools', 'generation');
   const packageRoot = join(prefix, 'lib/node_modules/native-agent');
@@ -47,7 +49,7 @@ test('relocates only prefixes hidden by the workspace bind and preserves node_mo
 });
 
 test('keeps noncolliding package paths read-only without widening the exposed installation', {
-  skip: process.platform !== 'linux'
+  skip: onlyOnLinux()
 }, async (context) => {
   const f = await fixture(context);
   const args = buildSandboxArgs({ workspace: f.workspace, workspaceTarget: f.workspace, backend: 'codex',
@@ -70,10 +72,11 @@ test('keeps noncolliding package paths read-only without widening the exposed in
 });
 
 test('runtime stays read-only across processes with the same home, cwd and native state', {
-  skip: canStartBubblewrap(findBubblewrap()) ? false : 'Bubblewrap cannot start in this test process'
+  skip: liveSkip
 }, async (context) => {
   const f = await fixture(context);
   const input = { binary: f.binary, args: ['unchanged argument'], cwd: f.workspace,
+    env: await agentFreeEnvironment(f.home),
     sandbox: { backend: 'pi', hostWorkspace: f.workspace, workspaceTarget: f.workspace, home: f.home } };
   const results = [];
   for (let index = 0; index < 2; index += 1) {
@@ -83,7 +86,8 @@ test('runtime stays read-only across processes with the same home, cwd and nativ
   }
   for (const result of results) {
     assert.equal(result.cwd, f.workspace);
-    assert.equal(result.home, '/home/ala');
+    // Bubblewrap mounts the home at the sandbox home; Seatbelt keeps its real path.
+    assert.equal(result.home, process.platform === 'linux' ? '/home/ala' : f.home);
     assert.equal(result.runtime, `file://${f.prefix}/lib/node_modules/native-agent/agent.mjs`);
     assert.equal(result.runtimeWritable, false);
     assert.equal(result.thread, 'native-thread-1');
@@ -96,17 +100,20 @@ test('runtime stays read-only across processes with the same home, cwd and nativ
 });
 
 test('preserves absolute in-prefix interpreters and helper symlinks outside the workspace overlay', {
-  skip: canStartBubblewrap(findBubblewrap()) ? false : 'Bubblewrap cannot start in this test process'
+  skip: liveSkip
 }, async (context) => {
   const f = await fixture(context);
   const interpreter = join(f.prefix, 'bin/interpreter');
   const helper = join(f.prefix, 'bin/helper');
   const binary = join(f.prefix, 'bin/absolute-agent');
-  await writeFile(interpreter, '#!/bin/sh\nexec /bin/sh "$@"\n', { mode: 0o755 });
+  // macOS execve refuses a script as an interpreter (ENOEXEC) even unsandboxed, and kills copied system binaries,
+  // so there the in-prefix interpreter is a link to /bin/sh; Linux keeps the nested script interpreter.
+  if (process.platform === 'darwin') await symlink('/bin/sh', interpreter);
+  else await writeFile(interpreter, '#!/bin/sh\nexec /bin/sh "$@"\n', { mode: 0o755 });
   await writeFile(join(f.prefix, 'bin/value'), 'absolute-helper-preserved');
   await symlink(join(f.prefix, 'bin/value'), helper);
   await writeFile(binary, `#!${interpreter}\ncat '${helper}'\n`, { mode: 0o755 });
-  const result = await runProcess({ binary, args: [], cwd: f.workspace,
+  const result = await runProcess({ binary, args: [], cwd: f.workspace, env: await agentFreeEnvironment(f.home),
     sandbox: { backend: 'pi', hostWorkspace: f.workspace, workspaceTarget: f.workspace, home: f.home } });
   assert.equal(result.code, 0, result.stderr);
   assert.equal(result.stdout, 'absolute-helper-preserved');

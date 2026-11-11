@@ -1,4 +1,4 @@
-import { closeSync, existsSync, realpathSync } from 'node:fs';
+import { closeSync, existsSync, fstatSync, realpathSync } from 'node:fs';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { ALAError, EXIT_CODES } from '../errors.mjs';
 import { createPermissionRequestManager, validatePermissionMode } from '../permission-requests.mjs';
 import { pinDirectory, pinFolderMounts } from './folders.mjs';
-import { canBindDescriptors, canMountPrivateProc, findBubblewrap } from './sandbox.mjs';
+import { sandboxCapabilities as detectSandboxCapabilities } from './sandbox-backend.mjs';
+import { createPrivateFolders, UNSUPPORTED_MOUNTS_MESSAGE, usesMountNamespace } from './seatbelt.mjs';
 import { parseMcpServers } from './mcp-servers.mjs';
 import { AGENTS, AGENT_NAMES, approvalAgentLabels, enumerate, getAgent } from './registry.mjs';
 
@@ -54,8 +55,18 @@ export function createCodingAgentService({
   permissionRequests ??= createPermissionRequestManager({ eventSink, logger });
   let activeController = null;
   const available = agents.filter((record) => record.available);
-  const bwrap = findBubblewrap(env);
-  const bindDescriptors = canBindDescriptors(bwrap);
+  const capabilities = detectSandboxCapabilities(env);
+  const seatbelt = capabilities.backend === 'seatbelt';
+  const bwrap = seatbelt ? null : capabilities.launcher;
+  const bindDescriptors = capabilities.bindDescriptors;
+  // Seatbelt rules follow paths: it can neither bind a recorded descriptor nor place a folder elsewhere.
+  if (seatbelt && (workspaceIdentity || Object.keys(folderIdentities).length)) {
+    throw new ALAError('--expect-dir requires descriptor binds, which the macOS Seatbelt sandbox cannot provide.',
+      EXIT_CODES.execution);
+  }
+  if (seatbelt && usesMountNamespace({ workspace: requestedWorkspace, workspaceTarget, folders })) {
+    throw new ALAError(UNSUPPORTED_MOUNTS_MESSAGE, EXIT_CODES.execution);
+  }
   if (bwrap && !bindDescriptors && (workspaceIdentity || Object.keys(folderIdentities).length)) {
     throw new ALAError('--expect-dir requires a Bubblewrap with --bind-fd.', EXIT_CODES.execution);
   }
@@ -67,12 +78,23 @@ export function createCodingAgentService({
     ? pinDirectory(workspaceIdentity ? requestedWorkspace : realpathSync(requestedWorkspace), workspaceIdentity) : null;
   if (workspacePin) pins.push(workspacePin.fd);
   const releasePins = () => { for (const fd of pins.splice(0)) closeSync(fd); };
+  // Seatbelt re-checks each granted directory against the identity it had when it was opened here.
+  const identities = seatbelt ? [
+    ...(workspacePin ? [{ source: workspacePin.source, identity: workspacePin.identity }] : []),
+    ...pinnedFolders.map(({ source, fd }) => {
+      const stat = fstatSync(fd, { bigint: true });
+      return { source, identity: `${stat.dev}:${stat.ino}` };
+    })
+  ] : [];
+  const privateFolders = seatbelt ? createPrivateFolders() : null;
+  // Directories that only exist at spawn time (an auto-created workspace, --home, state folders) are recorded there.
+  const recorded = seatbelt ? new Map() : null;
   // An older Bubblewrap binds by path. That remains open only to a caller that recorded no identity.
   const folderMounts = bindDescriptors ? pinnedFolders : pinnedFolders.map(({ fd, ...mount }) => mount);
   if (!bindDescriptors) releasePins();
   const sandboxCapabilities = {
     bwrap,
-    privateProc: canMountPrivateProc(bwrap)
+    privateProc: capabilities.privateProc
   };
   let workspace = workspacePin?.source ?? requestedWorkspace;
   let sandboxWorkspace = workspaceTarget;
@@ -128,7 +150,8 @@ export function createCodingAgentService({
         folders: folderMounts,
         ignoredPaths,
         bwrap: sandboxCapabilities.bwrap,
-        ...(sandboxCapabilities.privateProc ? { privateProc: true } : {})
+        ...(sandboxCapabilities.privateProc ? { privateProc: true } : {}),
+        ...(seatbelt ? { capabilities, identities, privateFolders, recorded } : {})
       }
     };
   }
@@ -289,6 +312,7 @@ export function createCodingAgentService({
       continuation = null;
       activeName = null;
       releasePins();
+      privateFolders?.close();
     }
   };
 }

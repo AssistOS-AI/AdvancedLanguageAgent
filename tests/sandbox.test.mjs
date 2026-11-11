@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { runProcess } from '../src/coding-agents/process.mjs';
+import { agentFreeEnvironment, liveSandboxSkip, onlyOnLinux } from './helpers.mjs';
 import {
   buildSandboxArgs,
   bubblewrapProbeDiagnostic,
@@ -19,6 +20,7 @@ import {
 
 const bwrap = findBubblewrap();
 const sandboxSupported = canStartBubblewrap(bwrap);
+const liveSkip = await liveSandboxSkip();
 
 test('sandbox home is validated at import and backend profiles follow its target', () => {
   const script = `
@@ -57,7 +59,7 @@ test('sandbox home is validated at import and backend profiles follow its target
 });
 
 test('file ignores mask canonical and aliased paths and newSession defaults to true', {
-  skip: process.platform !== 'linux' ? 'Linux sandbox validation' : false
+  skip: onlyOnLinux()
 }, async context => {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'ala-file-mask-')));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -78,7 +80,7 @@ test('file ignores mask canonical and aliased paths and newSession defaults to t
 });
 
 test('file ignores hide contents and deny writes inside a live sandbox', {
-  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+  skip: onlyOnLinux(sandboxSupported ? false : 'Bubblewrap cannot start in this test process')
 }, async context => {
   const workspace = await realpath(await mkdtemp(join(tmpdir(), 'ala-file-mask-live-')));
   context.after(() => rm(workspace, { recursive: true, force: true }));
@@ -92,10 +94,39 @@ test('file ignores hide contents and deny writes inside a live sandbox', {
         catch (error) { if (error.code !== 'EACCES') throw error; }
         try { fs.writeFileSync(target, 'leak'); process.exit(11); } catch {}
       }`],
+    env: await agentFreeEnvironment(join(workspace, 'missing-home')),
     sandbox: { hostWorkspace: workspace, workspaceTarget: workspace, backend: 'pi',
       folders: [{ source: workspace, alias: 'copy' }], ignoredPaths: [secret] }
   });
   assert.equal(result.code, 0, result.stderr);
+  assert.equal(await readFile(secret, 'utf8'), 'private');
+});
+
+// The canonical-path half of the file mask, which both backends promise: Bubblewrap binds /dev/null over the file
+// (empty read), Seatbelt refuses it (EPERM); a write is refused by both. The alias half above is Bubblewrap only.
+test('a masked file can be neither read nor written at its canonical path', { skip: liveSkip }, async context => {
+  const workspace = await realpath(await mkdtemp(join(tmpdir(), 'ala-file-mask-canonical-')));
+  context.after(() => rm(workspace, { recursive: true, force: true }));
+  const secret = join(workspace, '.env');
+  await writeFile(secret, 'private');
+  await writeFile(join(workspace, 'plain.txt'), 'plain');
+  const result = await runProcess({
+    binary: process.execPath, cwd: workspace,
+    args: ['-e', `const fs = require('node:fs');
+      const attempt = (fn) => { try { return fn(); } catch (error) { return 'ERR ' + error.code; } };
+      console.log(JSON.stringify({ read: attempt(() => fs.readFileSync(${JSON.stringify(secret)}, 'utf8')),
+        write: attempt(() => { fs.writeFileSync(${JSON.stringify(secret)}, 'leak'); return 'WROTE'; }),
+        plain: attempt(() => fs.readFileSync('plain.txt', 'utf8')) }));`],
+    env: await agentFreeEnvironment(join(workspace, 'missing-home')),
+    sandbox: { hostWorkspace: workspace, workspaceTarget: workspace, backend: 'pi', ignoredPaths: [secret] }
+  });
+  assert.equal(result.code, 0, result.stderr);
+  const out = JSON.parse(result.stdout);
+  // The Bubblewrap test above accepts an empty read or EACCES there; Seatbelt always refuses.
+  if (process.platform === 'linux') assert.ok(['', 'ERR EACCES'].includes(out.read), out.read);
+  else assert.equal(out.read, 'ERR EPERM');
+  assert.match(out.write, /^ERR E(ROFS|PERM|ACCES)$/u);
+  assert.equal(out.plain, 'plain', 'positive control: an unmasked file beside it is readable');
   assert.equal(await readFile(secret, 'utf8'), 'private');
 });
 
@@ -133,7 +164,9 @@ test('Bubblewrap capability probes recover from one transient failure', () => {
   assert.equal(attempts, 2);
 });
 
-test('uses an outer capability only to construct private procfs in a nested container', async (context) => {
+test('uses an outer capability only to construct private procfs in a nested container', {
+  skip: onlyOnLinux()
+}, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-sandbox-nested-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const workspace = join(root, 'workspace');
@@ -169,7 +202,9 @@ test('uses an outer capability only to construct private procfs in a nested cont
   assert.equal(args.some((value, index) => value === '--proc' && args[index + 1] === '/proc'), true);
 });
 
-test('builds a fail-closed Bubblewrap namespace with explicit mount access', async (context) => {
+test('builds a fail-closed Bubblewrap namespace with explicit mount access', {
+  skip: onlyOnLinux()
+}, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-sandbox-args-'));
   context.after(() => rm(root, { recursive: true, force: true }));
   const workspace = join(root, 'workspace');
@@ -257,9 +292,9 @@ test('uses backend-specific state and environment profiles', async (context) => 
 });
 
 test('enforces read-only and writable folder mounts at their canonical paths', {
-  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+  skip: liveSkip
 }, async (context) => {
-  const root = await mkdtemp(join(tmpdir(), 'ala-sandbox-live-'));
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'ala-sandbox-live-')));
   context.after(() => rm(root, { recursive: true, force: true }));
   const workspace = join(root, 'workspace');
   const readOnly = join(root, 'read-only');
@@ -285,7 +320,7 @@ process.stdout.write(JSON.stringify(result));
     binary: process.execPath,
     args: ['-e', script],
     cwd: workspace,
-    env: { HOME: join(root, 'missing-home') },
+    env: await agentFreeEnvironment(join(root, 'missing-home')),
     sandbox: {
       hostWorkspace: workspace,
       workspaceTarget: workspace,
@@ -304,8 +339,8 @@ process.stdout.write(JSON.stringify(result));
   assert.equal(await readFile(join(workspace, 'artifact.txt'), 'utf8'), 'workspace');
 });
 
-test('cancels the Bubblewrap process tree through the active child handle', {
-  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+test('cancels the sandboxed process tree through the active child handle', {
+  skip: liveSkip
 }, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-sandbox-cancel-'));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -316,7 +351,7 @@ test('cancels the Bubblewrap process tree through the active child handle', {
     binary: process.execPath,
     args: ['-e', 'setInterval(() => {}, 1000)'],
     cwd: workspace,
-    env: { HOME: join(root, 'missing-home') },
+    env: await agentFreeEnvironment(join(root, 'missing-home')),
     signal: controller.signal,
     sandbox: { hostWorkspace: workspace, workspaceTarget: workspace, backend: 'codex' }
   });
@@ -325,7 +360,7 @@ test('cancels the Bubblewrap process tree through the active child handle', {
 });
 
 test('runs a prefix-installed ESM backend with sibling dependencies and the Node runtime', {
-  skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process'
+  skip: liveSkip
 }, async (context) => {
   const root = await mkdtemp(join(tmpdir(), 'ala-prefix-runtime-'));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -348,7 +383,7 @@ test('runs a prefix-installed ESM backend with sibling dependencies and the Node
     + 'console.log(JSON.stringify({value,node:process.versions.node}));\n', { mode: 0o755 });
   const result = await runProcess({
     binary, args: [], cwd: workspace,
-    env: { HOME: join(root, 'missing-home') },
+    env: await agentFreeEnvironment(join(root, 'missing-home')),
     sandbox: { hostWorkspace: workspace, workspaceTarget: workspace, backend: 'pi' }
   });
   assert.equal(result.code, 0, result.stderr);
@@ -357,7 +392,7 @@ test('runs a prefix-installed ESM backend with sibling dependencies and the Node
   });
 });
 
-test('mounts a writable cwd and a read-only parent at their canonical paths', async t => {
+test('mounts a writable cwd and a read-only parent at their canonical paths', { skip: onlyOnLinux() }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'ala-canonical-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const workspace = join(root, 'robot');

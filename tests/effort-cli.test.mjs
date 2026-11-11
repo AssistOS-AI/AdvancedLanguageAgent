@@ -6,7 +6,9 @@ import { join } from 'node:path';
 import { runCli } from '../src/cli.mjs';
 import { applyCodingAgentOverrides } from '../src/config.mjs';
 import { canStartBubblewrap, canMountPrivateProc } from '../src/coding-agents/sandbox.mjs';
-import { captureStream, inputStream } from './helpers.mjs';
+import { agentFreeEnvironment, captureStream, inputStream, liveSandboxSkip } from './helpers.mjs';
+
+const liveSkip = await liveSandboxSkip();
 
 test('invocation settings preserve home defaults and isolate overrides to the selected backend', () => {
   const config = { models: { codex: 'robot', claude: 'other' }, efforts: { codex: 'low', claude: 'max' } };
@@ -21,7 +23,9 @@ test('invocation settings preserve home defaults and isolate overrides to the se
 });
 
 test('CLI arguments override home model and effort without rewriting home configuration', {
-  skip: canStartBubblewrap() && canMountPrivateProc() ? false : 'Bubblewrap unavailable',
+  // Codex needs a private /proc inside Bubblewrap; Seatbelt has no /proc to provide.
+  skip: process.platform !== 'linux' ? liveSkip
+    : canStartBubblewrap() && canMountPrivateProc() ? false : 'Bubblewrap unavailable',
 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'ala-effort-cli-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -47,7 +51,7 @@ if (process.argv.includes('app-server')) {
     text: JSON.stringify(process.argv.slice(2)) } }) + '\\n');
 }
 `, { mode: 0o700 });
-  const env = { ...process.env, CODEX_BIN: binary, HOME: join(root, 'unrelated'), ALA_CONFIG_PATH: '' };
+  const env = await agentFreeEnvironment(join(root, 'unrelated'), { PATH: process.env.PATH, CODEX_BIN: binary });
   const cases = [
     { options: ['--ca', 'auto'], model: 'robot', effort: 'low' },
     { options: ['--model', 'chat', '--effort', 'high'], model: 'chat', effort: 'high' },

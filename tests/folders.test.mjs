@@ -14,14 +14,15 @@ import { buildSandboxArgs, canStartBubblewrap } from '../src/coding-agents/sandb
 import { pinFolderMounts, resolveFolderMounts } from '../src/coding-agents/folders.mjs';
 import { openSessionState } from '../src/session-state.mjs';
 import { createCodingAgentService } from '../src/coding-agents/service.mjs';
-import { captureStream, inputStream } from './helpers.mjs';
+import { agentFreeEnvironment, captureStream, inputStream, onlyOnLinux } from './helpers.mjs';
 
 const sandboxModule = await import('../src/coding-agents/sandbox.mjs');
 // Read through the namespace so a missing export fails only the tests that need it.
 const sandboxDescriptors = (...args) => sandboxModule.sandboxDescriptors(...args);
 const canBindDescriptors = (...args) => sandboxModule.canBindDescriptors?.(...args) ?? false;
 const sandboxSupported = canStartBubblewrap();
-const liveSandbox = { skip: sandboxSupported ? false : 'Bubblewrap cannot start in this test process' };
+// The alias destination needs a mount namespace, so this live test is Bubblewrap only.
+const liveSandbox = { skip: onlyOnLinux(sandboxSupported ? false : 'Bubblewrap cannot start in this test process') };
 
 async function fixture(context) {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'ala-bridge-')));
@@ -99,7 +100,7 @@ test('folder mounts are visible at their canonical path and alias with caller-se
     `;
     const result = await runProcess({
       binary: process.execPath, args: ['-e', script], cwd: workspace,
-      env: { HOME: join(root, 'missing-home') },
+      env: await agentFreeEnvironment(join(root, 'missing-home')),
       sandbox: { hostWorkspace: workspace, workspaceTarget: workspace, backend: 'pi',
         home, folders: [{ source: bridge, alias: 'runtime' }, { source: writable, writable: true }] }
     });
@@ -111,7 +112,7 @@ test('folder mounts are visible at their canonical path and alias with caller-se
   });
 
 test('buildSandboxArgs rejects a mounted folder duplicating the working directory', {
-  skip: process.platform !== 'linux' ? 'Linux sandbox validation' : false
+  skip: onlyOnLinux()
 }, async context => {
   const { workspace, bridge } = await fixture(context);
   assert.throws(() => buildSandboxArgs({
@@ -324,10 +325,17 @@ test('transcript readers refuse a FIFO, a link and a socket without blocking', a
   assert.equal(JSON.parse(ok.stdout)[0][0].id, id);
 });
 
-test('a socket or a directory in place of a session lock exits 78 and is left alone', {
-  skip: process.platform === 'linux' ? false : 'Session locks read /proc'
-}, async context => {
-  const f = await swapFixture(context);
+// A unix socket path holds at most 104 bytes on macOS, where the temporary folder alone takes about 50, so the
+// socket case there uses a short folder under /tmp. Linux keeps the ordinary fixture.
+async function shortWorkspace(context) {
+  const root = await realpath(await mkdtemp('/tmp/ala-'));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'w'));
+  return { workspace: join(root, 'w') };
+}
+
+test('a socket or a directory in place of a session lock exits 78 and is left alone', async context => {
+  const f = process.platform === 'darwin' ? await shortWorkspace(context) : await swapFixture(context);
   const id = '11111111-1111-4111-8111-111111111111';
   const root = join(f.workspace, '.ala', 'sessions');
   await mkdir(root, { recursive: true });
@@ -342,9 +350,7 @@ test('a socket or a directory in place of a session lock exits 78 and is left al
   }
 });
 
-test('resuming through a planted transcript or lock link leaves the outside file untouched', {
-  skip: process.platform === 'linux' ? false : 'Session locks read /proc'
-}, async context => {
+test('resuming through a planted transcript or lock link leaves the outside file untouched', async context => {
   const f = await swapFixture(context);
   const id = '11111111-1111-4111-8111-111111111111';
   const root = join(f.workspace, '.ala', 'sessions');
@@ -362,9 +368,7 @@ test('resuming through a planted transcript or lock link leaves the outside file
   await lstat(join(root, `${id}.jsonl.lock`));
 });
 
-test('closing a session whose folder was swapped away reports the original failure, not its lock', {
-  skip: process.platform === 'linux' ? false : 'Session locks read /proc'
-}, async context => {
+test('closing a session whose folder was swapped away reports the original failure, not its lock', async context => {
   const f = await swapFixture(context);
   const state = await openSessionState({ id: '11111111-1111-4111-8111-111111111111', sessionsRoot: join(f.workspace, '.ala'), anchor: f.workspace });
   await rename(f.workspace, `${f.workspace}-moved`);
@@ -376,7 +380,9 @@ test('closing a session whose folder was swapped away reports the original failu
   await assert.rejects(lstat(join(f.sibling, '.ala')), { code: 'ENOENT' });
 });
 
-test('the service binds pinned descriptors, so a later swap changes neither mounts nor masks', async context => {
+test('the service binds pinned descriptors, so a later swap changes neither mounts nor masks', {
+  skip: onlyOnLinux()
+}, async context => {
   const f = await swapFixture(context);
   const bwrap = await fakeBubblewrap(f.root);
   const mask = join(f.workspace, '.roboteam');
@@ -409,7 +415,9 @@ test('the service binds pinned descriptors, so a later swap changes neither moun
   assert.equal(args.some((value, index) => value === '--tmpfs' && args[index + 1] === mask), true);
 });
 
-test('a spawned sandbox process inherits each pinned directory at the descriptor its arguments name', async context => {
+test('a spawned sandbox process inherits each pinned directory at the descriptor its arguments name', {
+  skip: onlyOnLinux()
+}, async context => {
   const f = await swapFixture(context);
   const report = join(f.root, 'descriptors.json');
   // Stands in for Bubblewrap on the descriptors only: it stats what it inherited, as Bubblewrap does before its bind.
@@ -448,7 +456,9 @@ fs.writeFileSync(${JSON.stringify(report)}, JSON.stringify(out));
   });
 });
 
-test('a swapped working directory never moves its mask: the sandbox refuses instead', async context => {
+test('a swapped working directory never moves its mask: the sandbox refuses instead', {
+  skip: onlyOnLinux()
+}, async context => {
   const f = await swapFixture(context);
   const bwrap = await fakeBubblewrap(f.root);
   const mask = join(f.workspace, '.roboteam');
@@ -469,7 +479,9 @@ test('a swapped working directory never moves its mask: the sandbox refuses inst
     ignoredPaths: contexts[0].ignoredPaths, binary: process.execPath, backend: 'pi', bwrap, privateProc: true, env: {} }), /--ignore/u);
 });
 
-test('a Bubblewrap without descriptor binds keeps path binds for plain callers and refuses recorded identities', async context => {
+test('a Bubblewrap without descriptor binds keeps path binds for plain callers and refuses recorded identities', {
+  skip: onlyOnLinux()
+}, async context => {
   const f = await swapFixture(context);
   const bwrap = await fakeBubblewrap(f.root, 'no such option here');
   const agents = [{ name: 'pi', available: true, binary: process.execPath }];
@@ -485,7 +497,7 @@ test('a Bubblewrap without descriptor binds keeps path binds for plain callers a
 });
 
 test('a live sandbox shows the pinned folder after a swap and inherits no descriptor', {
-  skip: sandboxSupported && canBindDescriptors() ? false : 'Requires a Bubblewrap with --bind-fd on Linux'
+  skip: onlyOnLinux(sandboxSupported && canBindDescriptors() ? false : 'Requires a Bubblewrap with --bind-fd on Linux')
 }, async context => {
   const f = await swapFixture(context);
   const home = join(f.root, 'home');
@@ -510,7 +522,9 @@ test('a live sandbox shows the pinned folder after a swap and inherits no descri
     try { fs.writeFileSync('/workspace/runtime/new', 'x'); out.write = 'allowed'; } catch { out.write = 'denied'; }
     fs.writeFileSync(${JSON.stringify(f.workspace)} + '/artifact', 'x');
     console.log(JSON.stringify(out));`;
-  const result = await runProcess({ binary: process.execPath, args: ['-e', script], cwd: f.workspace, sandbox: input.sandbox });
+  const isolated = await agentFreeEnvironment(home);
+  const result = await runProcess({ binary: process.execPath, args: ['-e', script], cwd: f.workspace, env: isolated,
+    sandbox: input.sandbox });
   assert.equal(result.code, 0, result.stderr);
   const out = JSON.parse(result.stdout);
   assert.deepEqual(out.files, ['granted.txt']);
@@ -518,7 +532,8 @@ test('a live sandbox shows the pinned folder after a swap and inherits no descri
   assert.equal(out.write, 'denied');
   assert.equal(await readFile(join(f.workspace, 'artifact'), 'utf8'), 'x');
   // A shell holds only what it inherited: the standard streams and ls's own listing, never a pinned directory.
-  const listed = await runProcess({ binary: '/bin/sh', args: ['-c', 'ls -l /proc/self/fd'], cwd: f.workspace, sandbox: input.sandbox });
+  const listed = await runProcess({ binary: '/bin/sh', args: ['-c', 'ls -l /proc/self/fd'], cwd: f.workspace,
+    env: isolated, sandbox: input.sandbox });
   assert.equal(listed.code, 0, listed.stderr);
   const links = listed.stdout.split('\n').flatMap((line) => /\s(\d+) -> (.+)$/u.exec(line)?.slice(1) ? [/\s(\d+) -> (.+)$/u.exec(line).slice(1)] : []);
   assert.equal(links.length >= 3, true, listed.stdout);
