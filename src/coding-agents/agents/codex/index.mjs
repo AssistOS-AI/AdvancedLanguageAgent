@@ -29,5 +29,6 @@ export default defineAgent({
         .some(([key, value]) => !['last_refresh', 'auth_mode'].includes(key) && filled(value));
     }
   },
-  adapter: () => import('./adapter.mjs')
+  adapter: () => import('./adapter.mjs'),
+  sessions: () => import('./sessions.mjs')
 });

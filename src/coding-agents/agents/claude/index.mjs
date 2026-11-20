@@ -40,5 +40,6 @@ export default defineAgent({
       return isRecord(config) && filled(config.primaryApiKey);
     }
   },
-  adapter: () => import('./adapter.mjs')
+  adapter: () => import('./adapter.mjs'),
+  sessions: () => import('./sessions.mjs')
 });

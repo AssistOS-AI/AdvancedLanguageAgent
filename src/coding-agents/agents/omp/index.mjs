@@ -27,5 +27,6 @@ export default defineAgent({
         && Boolean(database.prepare('SELECT 1 FROM auth_credentials WHERE disabled_cause IS NULL LIMIT 1').get())
     ))
   },
-  adapter: () => import('./adapter.mjs')
+  adapter: () => import('./adapter.mjs'),
+  sessions: () => import('./sessions.mjs')
 });

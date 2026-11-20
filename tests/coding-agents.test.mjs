@@ -360,6 +360,28 @@ printf '%s\n' '{"type":"item.completed","item":{"type":"agent_message","text":"d
   assert.equal(await withTemporaryRoot(root, () => runtime.execute('perform task')), 'delegated');
 });
 
+
+test('omp lists its chat catalog through omp models --json, whatever its size', async () => {
+  const { ompModelDetails, parseOmpModels } = await import('../src/coding-agents/agents/omp/runner.mjs');
+  const catalog = { models: [
+    { provider: 'mistral', kind: 'chat', id: 'devstral-latest', selector: 'mistral/devstral-latest', name: 'Devstral', reasoning: false, thinking: ['low'] },
+    { provider: 'zai', kind: 'chat', id: 'glm-5', selector: 'zai/glm-5', name: 'GLM-5', reasoning: true, thinking: ['low', 'high', 'max', 'bad level'] },
+    { provider: 'zai', kind: 'embedding', id: 'embed', selector: 'zai/embed', name: 'Embed' },
+    { provider: 'x', id: 'no-selector', reasoning: true }
+  ] };
+  assert.deepEqual(parseOmpModels(JSON.stringify(catalog)), [
+    { id: 'mistral/devstral-latest', label: 'Devstral', efforts: [] },
+    { id: 'zai/glm-5', label: 'GLM-5', efforts: ['low', 'high', 'max'] },
+    { id: 'x/no-selector', label: 'no-selector', efforts: [] }
+  ]);
+  assert.deepEqual(ompModelDetails({ provider: 'p', id: 'm' }), { id: 'p/m', label: 'm', efforts: [] });
+  const large = { models: Array.from({ length: 6000 }, (_, index) => ({ provider: 'p', kind: 'chat', id: `m${index}`, name: 'x'.repeat(300) })) };
+  assert.ok(JSON.stringify(large).length > 1024 * 1024, 'larger than one OMP RPC frame');
+  assert.equal(parseOmpModels(JSON.stringify(large)).length, 6000);
+  assert.throws(() => parseOmpModels('not json'), /invalid model catalog/u);
+  assert.throws(() => parseOmpModels('{"models":7}'), /invalid model catalog/u);
+});
+
 test('OMP one-shot arguments carry model, thinking level and the prompt', async () => {
   const { buildOmpArguments } = await import('../src/coding-agents/agents/omp/runner.mjs');
   assert.deepEqual(buildOmpArguments({ prompt: 'work', sessionDir: '/s' }),

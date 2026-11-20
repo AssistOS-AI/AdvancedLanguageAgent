@@ -69,7 +69,7 @@ All model interactions run through the selected coding agent's native CLI; ALA c
 - `src/coding-agents/seatbelt.mjs`, `seatbelt-profile.mjs`, `seatbelt-roots.mjs`, `seatbelt-supervisor.mjs` — the macOS backend: launch and cleanup, profile text, read roots, and the in-sandbox supervisor. [DS006](docs/specs/DS006-macos-seatbelt-sandbox.md) defines it.
 - `src/process-identity.mjs` — process start identity for session locks on Linux and macOS.
 - `src/coding-agents/registry.mjs` — the single ordered list of coding agents; modules outside `agents/` read every per-agent fact from it and name no agent.
-- `src/coding-agents/agents/<name>/` — one coding agent: `index.mjs` (descriptor), `adapter.mjs` (entry point), and its protocol modules. Add a coding agent as described in [DS001](docs/specs/DS001-coding-style.md).
+- `src/coding-agents/agents/<name>/` — one coding agent: `index.mjs` (descriptor), `adapter.mjs` (entry point), the optional `sessions.mjs` interactive session catalog defined in [DS004](docs/specs/DS004-workspaces-sessions-and-feedback.md), and its protocol modules. Add a coding agent as described in [DS001](docs/specs/DS001-coding-style.md).
 - `tests/` — deterministic unit, contract, and CLI integration tests.
 - `README.md` — user-facing overview, configuration, and usage.
 - `docs/index.html` — technical documentation entry point.
