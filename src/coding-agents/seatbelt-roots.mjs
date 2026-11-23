@@ -45,8 +45,11 @@ export function seatbeltSystemRoots({ fsImpl = fs } = {}) {
 
 // The agent's and Node's runtime folders, minus anything inside a software prefix: an npm-global agent would
 // otherwise expose a whole prefix, while the curated prefix folders already cover Homebrew's own software.
-export function seatbeltRuntimeRoots(binary, { fsImpl = fs, prefixes = existingSoftwarePrefixes({ fsImpl }) } = {}) {
-  const roots = [...collectAgentRuntimeMounts(binary), ...collectAgentRuntimeMounts(process.execPath)];
+export function seatbeltRuntimeRoots(binary, {
+  fsImpl = fs, prefixes = existingSoftwarePrefixes({ fsImpl }), runtimeBinaries = []
+} = {}) {
+  const roots = [...collectAgentRuntimeMounts(binary), ...runtimeBinaries.flatMap((program) => collectAgentRuntimeMounts(program)),
+    ...collectAgentRuntimeMounts(process.execPath)];
   return outermost(roots.filter((root) => !prefixes.some((prefix) => inside(root, prefix) || inside(prefix, root))));
 }
 

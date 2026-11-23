@@ -324,7 +324,7 @@ export function buildSeatbeltLaunch({ sandbox, binary, args = [], cwd = null, en
   }
   const explicitHome = sandbox.home ? realOrNull(sandbox.home) : null;
   if (sandbox.home && !explicitHome) throw new ALAError('Coding-agent home is unavailable.', EXIT_CODES.execution);
-  const runtimeRoots = seatbeltRuntimeRoots(command);
+  const runtimeRoots = seatbeltRuntimeRoots(command, { runtimeBinaries: sandbox.runtimeBinaries || [] });
   const stateMounts = explicitHome ? [] : collectAgentStateMounts(sandbox.backend, env);
   recordOrCheck(sandbox.recorded, 'workspace', hostWorkspace);
   if (explicitHome) recordOrCheck(sandbox.recorded, 'home', explicitHome);

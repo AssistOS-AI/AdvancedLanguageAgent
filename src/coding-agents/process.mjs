@@ -49,15 +49,21 @@ export function runProcess({
   signal,
   sandbox = null,
   onStdout = null,
-  onStderr = null
+  onStderr = null,
+  input = null
 }) {
   return new Promise((resolve, reject) => {
     let child;
     try {
-      child = spawnProcess({ binary, args, cwd, env, sandbox, stdio: ['ignore', 'pipe', 'pipe'] });
+      // `input` is written to stdin and then closed; without it stdin stays closed.
+      child = spawnProcess({ binary, args, cwd, env, sandbox, stdio: [input === null ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
     } catch (error) {
       reject(error);
       return;
+    }
+    if (input !== null) {
+      child.stdin.on('error', () => {});
+      child.stdin.end(input);
     }
     let stdout = '';
     let stderr = '';

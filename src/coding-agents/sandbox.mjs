@@ -130,6 +130,26 @@ function systemPath(value) {
   ));
 }
 
+// A program installed in a Python virtual environment (`<venv>/bin/<program>`, beside `<venv>/pyvenv.cfg`) needs
+// the environment and the interpreter installation it was created from, which `pyvenv.cfg` names as `home`.
+function pythonEnvironmentRoots(resolved) {
+  const root = path.dirname(path.dirname(resolved));
+  let text;
+  try {
+    const config = path.join(root, 'pyvenv.cfg');
+    const metadata = fs.lstatSync(config);
+    if (!metadata.isFile() || metadata.size > 64 * 1024) return null;
+    text = fs.readFileSync(config, 'utf8');
+  } catch {
+    return null;
+  }
+  const roots = [root];
+  const home = /^home\s*=\s*(.+?)\s*$/mu.exec(text)?.[1];
+  const interpreter = home && path.isAbsolute(home) ? resolveExisting(path.dirname(home)) : null;
+  if (interpreter && !systemPath(interpreter) && interpreter !== root) roots.push(interpreter);
+  return roots;
+}
+
 export function collectAgentRuntimeMounts(binary) {
   const resolved = resolveExisting(binary);
   if (!resolved || systemPath(resolved)) return [];
@@ -144,6 +164,8 @@ export function collectAgentRuntimeMounts(binary) {
   if (path.basename(resolved) === 'node' && path.basename(path.dirname(resolved)) === 'bin') {
     return [path.dirname(path.dirname(resolved))];
   }
+  const python = pythonEnvironmentRoots(resolved);
+  if (python) return python;
   // An agent that installs under its own marked directory needs that whole directory.
   for (const { sandbox: { installMarker } } of AGENTS) {
     const marker = `${path.sep}${installMarker}${path.sep}`;
@@ -267,6 +289,8 @@ export function buildSandboxArgs({
   home = null,
   folders = [],
   ignoredPaths = [],
+  // Further programs the command starts by path, whose installations are mounted read-only like the command's.
+  runtimeBinaries = [],
   chdir = null,
   newSession = true
 }) {
@@ -320,6 +344,7 @@ export function buildSandboxArgs({
 
   const runtimeSources = new Set([
     ...collectAgentRuntimeMounts(command),
+    ...runtimeBinaries.flatMap((program) => collectAgentRuntimeMounts(program)),
     ...collectAgentRuntimeMounts(process.execPath)
   ]);
   const runtimeMounts = sandboxRuntimeMounts(runtimeSources, target);

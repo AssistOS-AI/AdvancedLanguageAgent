@@ -17,10 +17,10 @@ const OFFERED = [
   'GROQ_API_KEY', 'HTTP_PROXY', 'LANG', 'MISTRAL_API_KEY', 'NODE_EXTRA_CA_CERTS', 'OMP_DIR', 'OPENAI_API_KEY',
   'OPENAI_BASE_URL', 'OPENAI_ORGANIZATION', 'OPENAI_PROJECT', 'OPENCODE_CONFIG_CONTENT', 'OPENCODE_ENABLE_EXA',
   'OPENCODE_SERVER_PASSWORD', 'OPENCODE_SERVER_USERNAME', 'OPENROUTER_API_KEY', 'PI_OFFLINE', 'TOGETHER_API_KEY',
-  'UNRELATED_SECRET', 'XAI_API_KEY'
+  'UNRELATED_SECRET', 'VIBE_HOME', 'VIBE_MCP_SERVERS', 'XAI_API_KEY'
 ];
 const STATE_DIRECTORIES = ['.codex', '.claude', '.omp', '.pi/agent', '.config/opencode', '.local/share/opencode',
-  '.cache/opencode', '.local/state/opencode'];
+  '.cache/opencode', '.local/state/opencode', '.vibe'];
 
 for (const backend of AGENT_NAMES) {
   test(`${backend} sandbox profile stays pinned`, async (context) => {
@@ -29,7 +29,7 @@ for (const backend of AGENT_NAMES) {
     await Promise.all(STATE_DIRECTORIES.map((directory) => mkdir(join(home, directory), { recursive: true })));
     const canonical = await realpath(home);
     const offered = Object.fromEntries(OFFERED.map((name) => [name, 'offered']));
-    const { CODEX_HOME, OMP_DIR, ...env } = offered;
+    const { CODEX_HOME, OMP_DIR, VIBE_HOME, ...env } = offered;
     const { PATH, SHELL, ...values } = sandboxEnvironment(backend, [], { ...env, HOME: home });
     const mounts = collectAgentStateMounts(backend, { HOME: home })
       .map((mount) => ({ ...mount, source: mount.source.replace(canonical, '<home>') }));
@@ -41,7 +41,7 @@ for (const backend of AGENT_NAMES) {
 
 test('only OpenCode receives the OpenCode server credentials', () => {
   const env = { OPENCODE_SERVER_USERNAME: 'user', OPENCODE_SERVER_PASSWORD: 'secret' };
-  for (const backend of ['codex', 'pi', 'omp', 'claude']) {
+  for (const backend of ['codex', 'pi', 'omp', 'claude', 'vibe']) {
     const values = sandboxEnvironment(backend, [], env);
     assert.equal(values.OPENCODE_SERVER_USERNAME, undefined, backend);
     assert.equal(values.OPENCODE_SERVER_PASSWORD, undefined, backend);

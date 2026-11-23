@@ -3,9 +3,10 @@ import opencode from './agents/opencode/index.mjs';
 import pi from './agents/pi/index.mjs';
 import omp from './agents/omp/index.mjs';
 import claude from './agents/claude/index.mjs';
+import vibe from './agents/vibe/index.mjs';
 
 // The single list of coding agents. Its order is the fixed report and `auto` fallback order.
-export const AGENTS = Object.freeze([codex, opencode, pi, omp, claude]);
+export const AGENTS = Object.freeze([codex, opencode, pi, omp, claude, vibe]);
 export const AGENT_NAMES = Object.freeze(AGENTS.map((agent) => agent.name));
 
 const byName = new Map(AGENTS.map((agent) => [agent.name, agent]));

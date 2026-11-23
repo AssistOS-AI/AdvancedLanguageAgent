@@ -216,5 +216,35 @@
         "purpose": "agent-state"
       }
     ]
+  },
+  "vibe": {
+    "environment": {
+      "HOME": "/home/ala",
+      "HTTP_PROXY": "offered",
+      "LANG": "offered",
+      "LOGNAME": "ala",
+      "MISTRAL_API_KEY": "offered",
+      "NODE_EXTRA_CA_CERTS": "offered",
+      "PYTHON_KEYRING_BACKEND": "keyring.backends.fail.Keyring",
+      "TMPDIR": "/tmp",
+      "USER": "ala",
+      "VIBE_ENABLE_TELEMETRY": "false",
+      "VIBE_ENABLE_UPDATE_CHECKS": "false",
+      "VIBE_EXPERIMENTAL_ENABLE_MODEL_CATALOG": "true",
+      "VIBE_HOME": "/home/ala/.vibe",
+      "VIBE_MCP_SERVERS": "offered",
+      "XDG_CACHE_HOME": "/home/ala/.cache",
+      "XDG_CONFIG_HOME": "/home/ala/.config",
+      "XDG_DATA_HOME": "/home/ala/.local/share",
+      "XDG_STATE_HOME": "/home/ala/.local/state"
+    },
+    "mounts": [
+      {
+        "source": "<home>/.vibe",
+        "target": "/home/ala/.vibe",
+        "writable": true,
+        "purpose": "agent-state"
+      }
+    ]
   }
 }

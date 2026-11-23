@@ -37,7 +37,7 @@ async function executable(root, name, source = '#!/bin/sh\nexit 0\n') {
   return filePath;
 }
 
-test('discovers configured and PATH coding-agent executables in the fixed codex, opencode, pi, omp, claude order', async (context) => {
+test('discovers configured and PATH coding-agent executables in the fixed codex, opencode, pi, omp, claude, vibe order', async (context) => {
   // Discovery reports canonical paths, so the fixture is canonical too (macOS keeps its temporary folder behind /var).
   const root = await realpath(await mkdtemp(join(tmpdir(), 'ala-agent-discovery-')));
   context.after(() => rm(root, { recursive: true, force: true }));
@@ -46,7 +46,7 @@ test('discovers configured and PATH coding-agent executables in the fixed codex,
   const agents = await discoverCodingAgents({
     env: { HOME: join(root, 'home'), PATH: root, OPENCODE_BIN: opencode, ALA_CODING_AGENT_PRIORITY: 'pi,opencode' }
   });
-  assert.deepEqual(agents.map((agent) => agent.name), ['codex', 'opencode', 'pi', 'omp', 'claude']);
+  assert.deepEqual(agents.map((agent) => agent.name), ['codex', 'opencode', 'pi', 'omp', 'claude', 'vibe']);
   assert.equal(agents[0].binary, codex);
   assert.equal(agents[1].binary, opencode);
   assert.equal(agents[2].available, false);
@@ -297,14 +297,14 @@ test('ask mode rejects selected Pi before workspace creation or native session m
   });
   t.after(() => service.close());
   await assert.rejects(service.execute('task'), {
-    message: 'Pi and OMP support full-access only; select full-access or use Codex, OpenCode or Claude Code.', exitCode: 2
+    message: 'Pi, OMP and Mistral Vibe support full-access only; select full-access or use Codex, OpenCode or Claude Code.', exitCode: 2
   });
   assert.equal(calls, 0);
   await assert.rejects(access(join(root, '.agents')));
   service.setPermissionMode('full-access');
   assert.equal(await service.execute('task'), 'Pi ran');
   service.setPermissionMode('ask-for-approval');
-  await assert.rejects(service.execute('next'), /Pi and OMP support full-access only/);
+  await assert.rejects(service.execute('next'), /Pi, OMP and Mistral Vibe support full-access only/);
 });
 
 test('service cancellation releases pending approval and interrupts the active native operation', {

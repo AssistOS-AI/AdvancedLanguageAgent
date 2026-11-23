@@ -18,6 +18,29 @@ export async function readJson(file) {
   }
 }
 
+// The value of one variable in a dotenv file (`NAME=value`, optionally `export NAME=value` and quoted), or ''.
+// The same bounds as readJson apply: only a bounded regular file is read, and a link is not followed.
+export async function readDotenvValue(file, name) {
+  let text;
+  try {
+    const metadata = await fs.lstat(file);
+    if (!metadata.isFile() || metadata.size > FILE_LIMIT) return '';
+    text = await fs.readFile(file, 'utf8');
+  } catch {
+    return '';
+  }
+  let value = '';
+  for (const line of text.split(/\r?\n/u)) {
+    const match = /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/u.exec(line);
+    if (!match || match[1] !== name) continue;
+    const raw = match[2];
+    const quoted = /^(['"])(.*)\1$/u.exec(raw);
+    // A later assignment wins, as in python-dotenv.
+    value = quoted ? quoted[2] : raw.replace(/\s+#.*$/u, '');
+  }
+  return value.trim();
+}
+
 async function openSqlite() {
   const emit = process.emitWarning;
   process.emitWarning = () => {};
