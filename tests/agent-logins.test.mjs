@@ -23,7 +23,7 @@ async function write(root, file, content) {
 }
 
 const loggedIn = (logins) => Object.fromEntries(Object.entries(logins).map(([name, login]) => [name, login.loggedIn]));
-const NONE = { codex: false, opencode: false, pi: false, omp: false, claude: false, vibe: false };
+const NONE = { codex: false, opencode: false, pi: false, omp: false, claude: false, vibe: false, agy: false };
 
 test('an empty home holds no coding-agent login', async (context) => {
   const home = await tempRoot(context);
@@ -37,7 +37,7 @@ test('each agent counts as logged in only when its own credential store holds so
   await write(home, '.pi/agent/auth.json', { anthropic: { type: 'oauth', access: 'a', refresh: 'r', expires: 1 } });
   await write(home, '.claude/.credentials.json', { claudeAiOauth: { accessToken: 'a', refreshToken: 'r' } });
   const logins = await detectCodingAgentLogins({ env: { HOME: home } });
-  assert.deepEqual(loggedIn(logins), { codex: true, opencode: true, pi: true, omp: false, claude: true, vibe: false });
+  assert.deepEqual(loggedIn(logins), { codex: true, opencode: true, pi: true, omp: false, claude: true, vibe: false, agy: false });
   assert.deepEqual(logins.codex, { loggedIn: true, file: true, env: [] });
 });
 
@@ -82,7 +82,7 @@ test('state directories follow the agent variables, and an explicit home replace
   await write(root, 'data/opencode/auth.json', { openai: { type: 'oauth' } });
   await write(root, 'pi/auth.json', { openai: { type: 'api_key', env: 'OPENAI_API_KEY' } });
   await write(root, 'claude/.credentials.json', { claudeAiOauth: { refreshToken: 'r' } });
-  assert.deepEqual(loggedIn(await detectCodingAgentLogins({ env })), { codex: true, opencode: true, pi: true, omp: false, claude: true, vibe: false });
+  assert.deepEqual(loggedIn(await detectCodingAgentLogins({ env })), { codex: true, opencode: true, pi: true, omp: false, claude: true, vibe: false, agy: false });
   assert.deepEqual(codingAgentLoginFiles('claude', { env }),
     [join(root, 'claude/.credentials.json'), join(root, 'claude/.claude.json')]);
   const robot = join(root, 'robot');
@@ -131,7 +131,8 @@ test('ala status reports installation, logins and the default agent without prin
     ['pi', false, true, { file: false, env: ['OPENAI_API_KEY'] }],
     ['omp', false, true, { file: false, env: ['OPENAI_API_KEY'] }],
     ['claude', true, true, { file: true, env: [] }],
-    ['vibe', false, false, { file: false, env: [] }]
+    ['vibe', false, false, { file: false, env: [] }],
+    ['agy', false, false, { file: false, env: [] }]
   ]);
   const text = await run(['status']);
   assert.equal(text.code, 0);
@@ -142,13 +143,14 @@ test('ala status reports installation, logins and the default agent without prin
     'omp       not installed  logged in (OPENAI_API_KEY)',
     'claude    available      logged in (credentials file)  default',
     'vibe      not installed  not logged in',
+    'agy       not installed  not logged in',
     ''
   ].join('\n'));
   const robot = join(root, 'robot');
   await write(robot, '.codex/auth.json', { tokens: { access_token: 'a' } });
   const explicit = JSON.parse((await run(['status', '--json', '--home', robot])).stdout);
   assert.equal(explicit.configuredAgent, null);
-  assert.deepEqual(explicit.agents.map((agent) => agent.login.file), [true, false, false, false, false, false]);
+  assert.deepEqual(explicit.agents.map((agent) => agent.login.file), [true, false, false, false, false, false, false]);
   const invalid = await run(['status', '--model', 'x']);
   assert.equal(invalid.code, 2);
   assert.match(invalid.stderr, /Unknown status option: --model/);

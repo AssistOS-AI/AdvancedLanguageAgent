@@ -291,6 +291,8 @@ export function buildSandboxArgs({
   ignoredPaths = [],
   // Further programs the command starts by path, whose installations are mounted read-only like the command's.
   runtimeBinaries = [],
+  // Single files a runner generates for one execution, bound read-only at `target` over whatever is there.
+  fileMounts = [],
   chdir = null,
   newSession = true
 }) {
@@ -372,6 +374,14 @@ export function buildSandboxArgs({
     if (mount.fd !== undefined) {
       sandboxArgs.push(mount.writable ? '--bind-fd' : '--ro-bind-fd', String(FIRST_INHERITED_FD + inherited.indexOf(mount.fd)), mount.target);
     } else sandboxArgs.push(mount.writable ? '--bind' : '--ro-bind', mount.source, mount.target);
+  }
+  // Bound last, so neither the home nor the working directory bind hides them.
+  for (const mount of fileMounts) {
+    const source = resolveExisting(mount.source);
+    if (!source || !fs.statSync(source).isFile() || !path.isAbsolute(mount.target || '')) {
+      throw new ALAError('A generated sandbox file is unavailable.', EXIT_CODES.execution);
+    }
+    sandboxArgs.push('--ro-bind', source, path.resolve(mount.target));
   }
   const exposedMounts = [...runtimeMounts, ...stateMounts, ...orderedMounts,
     ...(explicitHome ? [{ source: explicitHome, target: SANDBOX_HOME }] : [])];

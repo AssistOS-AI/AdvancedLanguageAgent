@@ -66,6 +66,7 @@ export function buildSandboxLaunch({ sandbox, binary, args, cwd, env, stdio }, {
       folders: sandbox.folders,
       ignoredPaths: sandbox.ignoredPaths,
       ...(sandbox.runtimeBinaries?.length ? { runtimeBinaries: sandbox.runtimeBinaries } : {}),
+      ...(sandbox.fileMounts?.length ? { fileMounts: sandbox.fileMounts } : {}),
       chdir: cwd
     }),
     options: {

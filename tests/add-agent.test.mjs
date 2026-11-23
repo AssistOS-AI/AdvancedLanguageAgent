@@ -77,5 +77,5 @@ test('a new agent needs only its folder and a registry line', {
   await new Promise((done) => child.on('close', done));
   assert.equal(JSON.parse(await readFile(join(root, '.ala/config.json'), 'utf8')).codingAgent, 'fake');
   await assert.rejects(ala(['--ca', 'fake', '--permissions', 'ask-for-approval', '--cwd', workspace, 'hello']),
-    /Fake, Pi, OMP and Mistral Vibe support full-access only/u);
+    /Fake, Pi, OMP, Mistral Vibe and Antigravity CLI support full-access only/u);
 });

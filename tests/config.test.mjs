@@ -73,7 +73,7 @@ test('validates the default coding agent and per-agent models', async (context) 
   context.after(() => rm(root, { recursive: true, force: true }));
   const configPath = join(root, 'config.json');
   await writeFile(configPath, JSON.stringify({ codingAgent: 'gemini' }));
-  await assert.rejects(() => loadConfig(configPath), /codingAgent must be codex, opencode, pi, omp, claude, or vibe/);
+  await assert.rejects(() => loadConfig(configPath), /codingAgent must be codex, opencode, pi, omp, claude, vibe, or agy/);
   await writeFile(configPath, JSON.stringify({ models: { unknown: 'model' } }));
   await assert.rejects(() => loadConfig(configPath), /models must map/);
 });

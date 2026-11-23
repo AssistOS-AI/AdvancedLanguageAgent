@@ -5,7 +5,7 @@ import { defineAgent } from '../src/coding-agents/define-agent.mjs';
 import { AGENT_NAMES, AGENTS, enumerate, getAgent } from '../src/coding-agents/registry.mjs';
 
 test('registry keeps the fixed agent order and resolves names', () => {
-  assert.deepEqual(AGENT_NAMES, ['codex', 'opencode', 'pi', 'omp', 'claude', 'vibe']);
+  assert.deepEqual(AGENT_NAMES, ['codex', 'opencode', 'pi', 'omp', 'claude', 'vibe', 'agy']);
   assert.equal(getAgent('pi').label, 'Pi');
   assert.equal(getAgent('unknown'), null);
 });

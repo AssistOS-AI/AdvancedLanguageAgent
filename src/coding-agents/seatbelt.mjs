@@ -324,6 +324,10 @@ export function buildSeatbeltLaunch({ sandbox, binary, args = [], cwd = null, en
   }
   const explicitHome = sandbox.home ? realOrNull(sandbox.home) : null;
   if (sandbox.home && !explicitHome) throw new ALAError('Coding-agent home is unavailable.', EXIT_CODES.execution);
+  // Seatbelt rules follow paths and cannot place a file at another path.
+  if (sandbox.fileMounts?.length) {
+    throw new ALAError('The macOS Seatbelt sandbox cannot place a generated file at another path.', EXIT_CODES.execution);
+  }
   const runtimeRoots = seatbeltRuntimeRoots(command, { runtimeBinaries: sandbox.runtimeBinaries || [] });
   const stateMounts = explicitHome ? [] : collectAgentStateMounts(sandbox.backend, env);
   recordOrCheck(sandbox.recorded, 'workspace', hostWorkspace);

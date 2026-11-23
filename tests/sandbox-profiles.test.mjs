@@ -20,7 +20,7 @@ const OFFERED = [
   'UNRELATED_SECRET', 'VIBE_HOME', 'VIBE_MCP_SERVERS', 'XAI_API_KEY'
 ];
 const STATE_DIRECTORIES = ['.codex', '.claude', '.omp', '.pi/agent', '.config/opencode', '.local/share/opencode',
-  '.cache/opencode', '.local/state/opencode', '.vibe'];
+  '.cache/opencode', '.local/state/opencode', '.vibe', '.gemini/antigravity-cli', '.gemini/config'];
 
 for (const backend of AGENT_NAMES) {
   test(`${backend} sandbox profile stays pinned`, async (context) => {
@@ -41,7 +41,7 @@ for (const backend of AGENT_NAMES) {
 
 test('only OpenCode receives the OpenCode server credentials', () => {
   const env = { OPENCODE_SERVER_USERNAME: 'user', OPENCODE_SERVER_PASSWORD: 'secret' };
-  for (const backend of ['codex', 'pi', 'omp', 'claude', 'vibe']) {
+  for (const backend of ['codex', 'pi', 'omp', 'claude', 'vibe', 'agy']) {
     const values = sandboxEnvironment(backend, [], env);
     assert.equal(values.OPENCODE_SERVER_USERNAME, undefined, backend);
     assert.equal(values.OPENCODE_SERVER_PASSWORD, undefined, backend);

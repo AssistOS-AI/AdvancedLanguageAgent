@@ -246,5 +246,36 @@
         "purpose": "agent-state"
       }
     ]
+  },
+  "agy": {
+    "environment": {
+      "AGY_CLI_DISABLE_AUTO_UPDATE": "1",
+      "HOME": "/home/ala",
+      "HTTP_PROXY": "offered",
+      "LANG": "offered",
+      "LOGNAME": "ala",
+      "NODE_EXTRA_CA_CERTS": "offered",
+      "SSH_TTY": "ala-agy-file-auth",
+      "TMPDIR": "/tmp",
+      "USER": "ala",
+      "XDG_CACHE_HOME": "/home/ala/.cache",
+      "XDG_CONFIG_HOME": "/home/ala/.config",
+      "XDG_DATA_HOME": "/home/ala/.local/share",
+      "XDG_STATE_HOME": "/home/ala/.local/state"
+    },
+    "mounts": [
+      {
+        "source": "<home>/.gemini/antigravity-cli",
+        "target": "/home/ala/.gemini/antigravity-cli",
+        "writable": true,
+        "purpose": "agent-state"
+      },
+      {
+        "source": "<home>/.gemini/config",
+        "target": "/home/ala/.gemini/config",
+        "writable": true,
+        "purpose": "agent-state"
+      }
+    ]
   }
 }

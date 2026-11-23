@@ -25,7 +25,7 @@ test('parses coding-agent discovery and explicit delegation options', () => {
   assert.deepEqual(parseArguments(['agent', 'models', 'claude', '--json', '--home', '/robot']), {
     command: 'agent', action: 'models', agent: 'claude', json: true, help: false, home: '/robot'
   });
-  assert.throws(() => parseArguments(['agent', 'models']), /ala agent models <codex\|opencode\|pi\|omp\|claude\|vibe>/);
+  assert.throws(() => parseArguments(['agent', 'models']), /ala agent models <codex\|opencode\|pi\|omp\|claude\|vibe\|agy>/);
   assert.throws(() => parseArguments(['agent', 'models', 'unknown']), /Usage: ala agent/);
   assert.throws(() => parseArguments(['agent', 'list', '--home', '/robot']), /Unknown agent option: --home/);
   assert.deepEqual(parseArguments(['status', '--json', '--home', '/robot', '--config', 'ala.json']), {
