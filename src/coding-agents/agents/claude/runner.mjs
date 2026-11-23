@@ -3,6 +3,8 @@ import { EventEmitter } from 'node:events';
 import { StringDecoder } from 'node:string_decoder';
 
 import { checkAbort, requireSandbox, runProcess, spawnProcess } from '../../process.mjs';
+import { failureError } from '../../failure-reason.mjs';
+import { createClaudeFailureTracker } from './failure.mjs';
 
 // Claude Code runs headless with stream-json on stdin and stdout. Prompts are
 // `user` records; permission prompts, interrupts and the model list use the
@@ -210,6 +212,7 @@ export async function runClaude(input) {
   const channel = openClaudeChannel(input, buildClaudeArguments({ sessionId, resume: Boolean(previous),
     model: input.model, effort: input.effort, permissionMode: input.permissionMode, mcpServers: input.mcpServers || [] }));
   const parser = createClaudeOutputParser({ onText: input.onVisibleText });
+  const failures = createClaudeFailureTracker();
   let interruptTimer;
   const interrupt = () => {
     void channel.control({ subtype: 'interrupt' }, 5000).catch(() => {});
@@ -226,6 +229,7 @@ export async function runClaude(input) {
     channel.events.on('failure', reject);
     channel.events.on('record', (record) => {
       parser.push(record);
+      failures.push(record);
       if (record.type === 'system' && record.subtype === 'init' && !sessionReported) {
         if (record.session_id !== sessionId) { reject(new Error('Claude Code did not open the requested session.')); return; }
         sessionReported = true;
@@ -234,7 +238,8 @@ export async function runClaude(input) {
       if (record.type !== 'result') return;
       results += 1;
       if (record.is_error || record.subtype !== 'success') {
-        resultError = new Error(`Claude Code turn failed: ${record.result || (record.errors || []).join('; ') || record.subtype}`);
+        resultError = failureError(`Claude Code turn failed: ${record.result || (record.errors || []).join('; ') || record.subtype}`,
+          failures.failure());
       } else finalText = typeof record.result === 'string' ? record.result : '';
       if (results >= expectedResults) {
         input.setMessageHandler?.(null);

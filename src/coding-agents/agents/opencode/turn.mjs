@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto';
 
 import { createPermissionRequestManager, validatePermissionMode } from '../../../permission-requests.mjs';
 import { consumeOpenCodeEvents } from './server.mjs';
+import { failureError } from '../../failure-reason.mjs';
+import { openCodeFailure } from './failure.mjs';
 
 export function openCodePermissionRules(mode, websearch) {
   validatePermissionMode(mode);
@@ -118,7 +120,7 @@ export async function executeOpenCodeTurn(server, input) {
     const matching = messages.filter(({ info }) => info?.role === 'assistant' && info.parentID === messageID);
     const last = matching.at(-1);
     if (!last?.info?.time?.completed) return;
-    if (last.info.error) throw new Error(`OpenCode execution failed: ${nativeErrorMessage(last.info.error)}`);
+    if (last.info.error) throw failureError(`OpenCode execution failed: ${nativeErrorMessage(last.info.error)}`, openCodeFailure(last.info.error));
     if (!last.info.finish || ['tool-calls', 'unknown'].includes(last.info.finish)) return;
     const outputText = (last.parts ?? [])
       .filter((part) => part.type === 'text' && typeof part.text === 'string').map((part) => part.text).join('').trim();
@@ -138,7 +140,7 @@ export async function executeOpenCodeTurn(server, input) {
       throw new Error('OpenCode requested unsupported native question input; execution cancelled.');
     }
     if (!submitted || (p.sessionID ?? p.info?.sessionID ?? p.part?.sessionID) !== sessionID) return;
-    if (event.type === 'session.error') throw new Error(`OpenCode session failed: ${nativeErrorMessage(p.error)}`);
+    if (event.type === 'session.error') throw failureError(`OpenCode session failed: ${nativeErrorMessage(p.error)}`, openCodeFailure(p.error));
     if (event.type === 'message.updated') {
       const info = p.info;
       if (info?.id === messageID || (info?.role === 'assistant' && info.parentID === messageID)) {

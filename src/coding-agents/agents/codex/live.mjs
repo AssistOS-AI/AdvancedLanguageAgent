@@ -2,6 +2,8 @@ import { checkAbort } from '../../process.mjs';
 import { openJsonChannel } from '../../json-channel.mjs';
 import { attachCodexApprovals, codexThreadPolicy, verifyCodexPolicy } from './approvals.mjs';
 import { codexMcpOverrides } from './mcp.mjs';
+import { failureError } from '../../failure-reason.mjs';
+import { codexFailure } from './failure.mjs';
 
 export async function runCodexLive(input) {
   checkAbort(input.signal);
@@ -89,7 +91,10 @@ export async function runCodexLive(input) {
     checkAbort(input.signal);
     if (nativeError) throw nativeError;
     if (interrupted) throw Object.assign(new Error('Coding-agent execution was interrupted.'), { name: 'AbortError' });
-    if (ended.params.turn.status !== 'completed') throw new Error(ended.params.turn.error?.message || 'Codex turn failed.');
+    if (ended.params.turn.status !== 'completed') {
+      const turnError = ended.params.turn.error;
+      throw failureError(turnError?.message || 'Codex turn failed.', codexFailure(turnError));
+    }
     if (!finalText) throw new Error('Codex completed without a final assistant message.');
     return { outputText: finalText, continuation: { threadId } };
   } catch (error) {
