@@ -13,6 +13,7 @@
 //   sandbox: { envAllow, envSet, credentialEnv, installMarker? }
 //   login: { files, detect(directory) }
 //   adapter()                         resolves to { run, runLive?, listModels }
+//   fullAccess: { args, env }         optional native permission policy, shared by terminal and one-shot launches
 //   sessions()                        optional; resolves to the interactive session catalog of native-sessions.mjs
 const fail = (name, field) => {
   throw new TypeError(`Coding-agent descriptor ${name || '(unnamed)'} is missing ${field}.`);
@@ -37,5 +38,14 @@ export function defineAgent(descriptor) {
   if (!isFunction(login?.detect)) fail(name, 'login.detect');
   if (!isFunction(adapter)) fail(name, 'adapter');
   if (descriptor.sessions !== undefined && !isFunction(descriptor.sessions)) fail(name, 'a sessions loader');
+  if (descriptor.fullAccess !== undefined) {
+    const { args, env } = descriptor.fullAccess;
+    if (!Array.isArray(args) || !args.every(isText)) fail(name, 'fullAccess.args');
+    if (!env || typeof env !== 'object' || Array.isArray(env)
+        || !Object.entries(env).every(([key, value]) => /^[A-Z][A-Z0-9_]*$/u.test(key) && isText(value))) {
+      fail(name, 'fullAccess.env');
+    }
+    Object.freeze(args); Object.freeze(env); Object.freeze(descriptor.fullAccess);
+  }
   return Object.freeze({ homeEnvironment: () => ({}), ...descriptor });
 }

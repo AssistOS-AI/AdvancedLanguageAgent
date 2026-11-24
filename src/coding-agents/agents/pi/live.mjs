@@ -1,3 +1,4 @@
+import { fullAccessPolicy } from '../../native-interactive.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -6,7 +7,7 @@ import { createPiFamilyLiveRunner } from './rpc-live.mjs';
 export const runPiLive = createPiFamilyLiveRunner({
   label: 'Pi',
   sessionLabel: 'pi',
-  rpcArguments: ({ sessionDir, previous, model, effort }) => ['--mode', 'rpc', '--session-dir', sessionDir, '--approve',
+  rpcArguments: ({ sessionDir, previous, model, effort }) => ['--mode', 'rpc', '--session-dir', sessionDir, ...fullAccessPolicy('pi').args,
     ...(previous ? ['--session', previous] : []), ...(model ? ['--model', model] : []),
     ...(effort ? ['--thinking', effort] : [])],
   nativeContinuation: {

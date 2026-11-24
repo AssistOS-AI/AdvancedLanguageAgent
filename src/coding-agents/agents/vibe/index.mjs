@@ -42,6 +42,7 @@ export default defineAgent({
     files: ['.env'],
     detect: async (directory) => Boolean(await readDotenvValue(path.join(directory, '.env'), 'MISTRAL_API_KEY'))
   },
+  fullAccess: { args: ['--auto-approve', '--trust'], env: {} },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')
 });

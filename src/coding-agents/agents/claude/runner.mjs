@@ -1,3 +1,4 @@
+import { fullAccessPolicy } from '../../native-interactive.mjs';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { StringDecoder } from 'node:string_decoder';
@@ -34,7 +35,7 @@ export function buildClaudeArguments({ sessionId, resume = false, model = null, 
   if (effort) args.push('--effort', effort);
   // Full access inside the ALA sandbox; otherwise every permission prompt is
   // answered by the host through the stdio control channel.
-  if (permissionMode === 'full-access') args.push('--permission-mode', 'bypassPermissions');
+  if (permissionMode === 'full-access') args.push(...fullAccessPolicy('claude').args);
   else args.push('--permission-mode', 'default', '--permission-prompt-tool', 'stdio');
   if (mcpServers.length) {
     const servers = Object.fromEntries(mcpServers.map(({ name, url }) => [name, { type: 'http', url }]));

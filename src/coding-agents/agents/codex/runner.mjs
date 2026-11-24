@@ -1,3 +1,4 @@
+import { fullAccessPolicy } from '../../native-interactive.mjs';
 import { executionError, requireSandbox, runProcess, spawnProcess } from '../../process.mjs';
 import { appendBoundedTail, createLineDecoder } from '../../streaming.mjs';
 import { codexMcpOverrides } from './mcp.mjs';
@@ -17,7 +18,7 @@ export function buildCodexArguments({
   // workspace sandbox would require another user namespace and fails in nested
   // container deployments. "danger-full-access" therefore applies only inside
   // ALA's already restricted filesystem and capability boundary.
-  common.push('--sandbox', 'danger-full-access', '--ask-for-approval', 'never', 'exec');
+  common.push(...fullAccessPolicy('codex').args, 'exec');
   if (continuation?.threadId) {
     return [...common, 'resume', '--json', '--skip-git-repo-check', continuation.threadId, prompt];
   }

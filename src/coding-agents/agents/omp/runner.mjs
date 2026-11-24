@@ -1,3 +1,4 @@
+import { fullAccessPolicy } from '../../native-interactive.mjs';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
@@ -12,7 +13,7 @@ export function buildOmpArguments({ prompt, sessionDir, model = null, effort = n
   const args = ['--mode', 'json', '--session-dir', sessionDir];
   if (model) args.push('--model', model);
   if (effort) args.push('--thinking', effort);
-  args.push('--auto-approve', '-p', prompt);
+  args.push(...fullAccessPolicy('omp').args, '-p', prompt);
   return args;
 }
 

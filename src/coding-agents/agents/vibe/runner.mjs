@@ -1,3 +1,4 @@
+import { fullAccessPolicy } from '../../native-interactive.mjs';
 import { mkdir, realpath } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
@@ -31,7 +32,7 @@ export async function requireVibeVersion({ binary, workspace, env, signal, sandb
 
 export function buildVibeArguments({ resume = null, model = null, effort = null } = {}) {
   // --trust accepts the working folder for this run, which ALA has already granted.
-  const args = ['-p', '--output', 'streaming', '--auto-approve', '--trust'];
+  const args = ['-p', '--output', 'streaming', ...fullAccessPolicy('vibe').args];
   if (resume) args.push('--resume', resume);
   else {
     if (model) args.push('--model', model);

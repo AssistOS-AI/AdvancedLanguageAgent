@@ -1,3 +1,4 @@
+import { fullAccessPolicy } from '../../native-interactive.mjs';
 import { randomUUID } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -87,7 +88,7 @@ export function buildPiArguments({ prompt, sessionId, sessionDir, model = null, 
   ];
   if (model) args.push('--model', model);
   if (effort) args.push('--thinking', effort);
-  args.push('--approve', prompt);
+  args.push(...fullAccessPolicy('pi').args, prompt);
   return args;
 }
 

@@ -40,6 +40,7 @@ export default defineAgent({
       return isRecord(token) && (filled(token.refresh_token) || filled(token.access_token));
     }
   },
+  fullAccess: { args: ['--dangerously-skip-permissions'], env: {} },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')
 });

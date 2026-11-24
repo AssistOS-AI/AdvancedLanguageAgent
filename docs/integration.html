@@ -34,6 +34,7 @@
 
     <h2>Distribution-owned contracts</h2>
     <p>The standalone distribution defines exit code <code>0</code> for success, <code>2</code> for usage or configuration errors, <code>3</code> for input and output errors, <code>5</code> for execution and sandbox errors, including a missing or unavailable coding agent, and <code>130</code> for interruption. Remote-agent protocols, retained <a href="wiki.html#definition-task-workspace">task-workspace</a> values, and retry limits remain deployment contracts governed by the design specifications.</p>
+    <p>Embedding terminals use <code>buildInteractiveCommand({ agent, binary, args })</code> from <code>src/coding-agents/sandbox.mjs</code> inside their existing sandbox. The helper returns a command array that applies the selected agent's full-access environment after login profiles and starts its absolute binary with the same permission flags used by one-shot adapters, followed by native session arguments. It supports new and resumed conversations for all seven agents and fails when the policy is unavailable. Claude Code receives <code>IS_SANDBOX=1</code>; OpenCode receives wildcard and external-directory allows through <code>OPENCODE_PERMISSION</code>. The caller retains terminal streams, sandbox mounts and process cleanup. ALA's <code>--interactive</code> prompt loop and one-shot execution already default to <code>--permissions full-access</code> within the common sandbox.</p>
   </article></main>
   <div data-include="partials/footer.html"></div>
   <script src="partials-loader.js"></script>

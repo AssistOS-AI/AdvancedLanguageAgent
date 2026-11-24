@@ -1,3 +1,4 @@
+import { fullAccessPolicy } from '../../native-interactive.mjs';
 import { randomBytes } from 'node:crypto';
 
 import { createPermissionRequestManager, validatePermissionMode } from '../../../permission-requests.mjs';
@@ -8,9 +9,10 @@ import { openCodeFailure } from './failure.mjs';
 export function openCodePermissionRules(mode, websearch) {
   validatePermissionMode(mode);
   return [
-    { permission: '*', pattern: '*', action: mode === 'full-access' ? 'allow' : 'ask' },
-    // OpenCode subagents inherit explicit external_directory rules, but not wildcard allows.
-    ...(mode === 'full-access' ? [{ permission: 'external_directory', pattern: '*', action: 'allow' }] : []),
+    ...(mode === 'full-access'
+      ? Object.entries(JSON.parse(fullAccessPolicy('opencode').env.OPENCODE_PERMISSION))
+        .map(([permission, action]) => ({ permission, pattern: '*', action }))
+      : [{ permission: '*', pattern: '*', action: 'ask' }]),
     ...(!websearch ? ['websearch', 'webfetch'] : []).map((permission) => ({ permission, pattern: '*', action: 'deny' })),
     ...['question', 'plan_enter', 'plan_exit'].map((permission) => ({ permission, pattern: '*', action: 'deny' }))
   ];

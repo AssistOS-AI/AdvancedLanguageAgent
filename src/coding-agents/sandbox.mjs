@@ -10,6 +10,7 @@ import { SANDBOX_HOME } from './paths.mjs';
 import { AGENTS, getAgent } from './registry.mjs';
 
 export { pinDirectory };
+export { buildInteractiveCommand } from './native-interactive.mjs';
 
 const PROBE_CACHE_TTL_MS = 30_000;
 const privateProcSupport = new Map();

@@ -40,6 +40,7 @@ export default defineAgent({
       return isRecord(config) && filled(config.primaryApiKey);
     }
   },
+  fullAccess: { args: ['--permission-mode', 'bypassPermissions'], env: { IS_SANDBOX: '1', DISABLE_AUTOUPDATER: '1' } },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')
 });

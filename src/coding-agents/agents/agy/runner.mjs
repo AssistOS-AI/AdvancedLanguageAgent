@@ -1,3 +1,4 @@
+import { fullAccessPolicy } from '../../native-interactive.mjs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -17,7 +18,7 @@ const CONVERSATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-
 const TOOL_SUMMARY_LIMIT = 300;
 
 export function buildAgyArguments({ resume = null, model = null, effort = null } = {}) {
-  const args = ['--input-format', 'stream-json', '--output-format', 'stream-json', '--dangerously-skip-permissions'];
+  const args = ['--input-format', 'stream-json', '--output-format', 'stream-json', ...fullAccessPolicy('agy').args];
   if (model) args.push('--model', model);
   if (effort) args.push('--effort', effort);
   if (resume) args.push('--conversation', resume);

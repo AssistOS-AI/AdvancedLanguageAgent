@@ -1,9 +1,10 @@
+import { fullAccessPolicy } from '../../native-interactive.mjs';
 import { createPiFamilyLiveRunner } from '../pi/rpc-live.mjs';
 
 export const runOmpLive = createPiFamilyLiveRunner({
   label: 'OMP',
   sessionLabel: 'omp',
-  rpcArguments: ({ sessionDir, previous, model, effort }) => ['--mode', 'rpc', '--session-dir', sessionDir, '--auto-approve',
+  rpcArguments: ({ sessionDir, previous, model, effort }) => ['--mode', 'rpc', '--session-dir', sessionDir, ...fullAccessPolicy('omp').args,
     ...(previous ? ['--resume', previous] : []), ...(model ? ['--model', model] : []),
     ...(effort ? ['--thinking', effort] : [])],
   nativeContinuation: {

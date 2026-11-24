@@ -31,6 +31,7 @@ export default defineAgent({
           || (entry.type === 'oauth' && filled(entry.access))));
     }
   },
+  fullAccess: { args: ['--approve'], env: {} },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')
 });
