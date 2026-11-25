@@ -28,7 +28,8 @@ export async function listInteractiveSessions(options = {}, { open = openDatabas
     throw error;
   }
   try {
-    const rows = database.prepare(QUERY).all(cwd, limit);
+    const v2 = database.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_v2'").get();
+    const rows = database.prepare(v2 ? QUERY.replace('from session', 'from session_v2') : QUERY).all(cwd, limit);
     return newestFirst(rows.filter((row) => typeof row.id === 'string' && row.id.startsWith('ses')).map((row) => ({
       id: row.id,
       title: sessionTitle(row.title) || row.id,

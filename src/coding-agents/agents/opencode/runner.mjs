@@ -1,11 +1,13 @@
 import { executionError, requireSandbox, runProcess } from '../../process.mjs';
 import { startOpenCodeServer } from './server.mjs';
 import { executeOpenCodeTurn } from './turn.mjs';
+import { executeOpenCodeV2Turn } from './v2-turn.mjs';
+import { openCodeV2Models } from './v2-contract.mjs';
 
 export async function runOpenCode(input) {
   requireSandbox(input.sandbox);
   const server = await startOpenCodeServer(input);
-  try { return await executeOpenCodeTurn(server, input); }
+  try { return await (!server.version.startsWith('1.') ? executeOpenCodeV2Turn : executeOpenCodeTurn)(server, input); }
   finally { await server.stop(); }
 }
 
@@ -17,7 +19,14 @@ export function parseOpenCodeModels(stdout) {
 export async function listOpenCodeModels({ binary, cwd, env, signal, sandbox, details = false }) {
   if (details) {
     const server = await startOpenCodeServer({ binary, workspace: cwd, env, signal, sandbox });
-    try { return openCodeModelDetails(await server.request('/provider')); }
+    try {
+      if (server.version.startsWith('1.')) return openCodeModelDetails(await server.request('/provider'));
+      const plugins = await server.request('/api/plugin');
+      if (plugins.data?.some(plugin => plugin.state?.status === 'failed')) {
+        throw new Error('OpenCode plugin initialization failed; model catalog is unavailable.');
+      }
+      return openCodeV2Models(await server.request('/api/model'));
+    }
     finally { await server.stop(); }
   }
   requireSandbox(sandbox);

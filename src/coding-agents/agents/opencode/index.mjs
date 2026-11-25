@@ -47,7 +47,7 @@ export default defineAgent({
       });
     }
   },
-  fullAccess: { args: [], env: { OPENCODE_PERMISSION: JSON.stringify({ '*': 'allow', external_directory: 'allow' }),
+  fullAccess: { args: ['--standalone', '--auto'], env: { OPENCODE_PERMISSION: JSON.stringify({ '*': 'allow', external_directory: 'allow' }),
     OPENCODE_ENABLE_EXA: '1' } },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')

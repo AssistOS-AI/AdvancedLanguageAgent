@@ -4,8 +4,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { createOpenCodeHttpClient } from './http.mjs';
 import { executionError, runProcess, spawnProcess } from '../../process.mjs';
 import { createLineDecoder } from '../../streaming.mjs';
+import { openCodeV2Environment, requireOpenCodeV2Api } from './v2-contract.mjs';
 
-const PREREQUISITE = 'OpenCode requires version 1.15.10 or a compatible later unprefixed session/permission API; '
+const PREREQUISITE = 'OpenCode requires V2 or version 1.15.10 with a compatible session/permission API; '
   + 'install a supported version or configure OPENCODE_BIN.';
 
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -16,7 +17,7 @@ const STARTUP_TIMEOUT_MIN_MS = REQUEST_TIMEOUT_MS;
 const STARTUP_TIMEOUT_MAX_MS = 300_000;
 const STARTUP_TIMEOUT_VARIABLE = 'ALA_OPENCODE_STARTUP_TIMEOUT_MS';
 // Probes that may run before the instance exists; only a successful response to another path proves readiness.
-const STARTUP_PROBES = new Set(['/global/health', '/doc']);
+const STARTUP_PROBES = new Set(['/global/health', '/doc', '/api/info', '/openapi.json']);
 
 export function resolveOpenCodeStartupTimeout(env) {
   const raw = env?.[STARTUP_TIMEOUT_VARIABLE];
@@ -30,7 +31,8 @@ export function resolveOpenCodeStartupTimeout(env) {
 }
 
 export function requireOpenCodeVersion(value) {
-  const match = String(value).trim().match(/^(?:opencode\s+)?(\d+)\.(\d+)\.(\d+)(?:\s|$)/u);
+  const match = String(value).trim().match(/^(?:opencode\s+)?v?(\d+)\.(\d+)\.(\d+)(?:\s|$)/u);
+  if (match && Number(match[1]) >= 2) return match.slice(1, 4).join('.');
   if (!match || Number(match[1]) !== 1 || Number(match[2]) < 15
     || (Number(match[2]) === 15 && Number(match[3]) < 10)) throw new Error(PREREQUISITE);
   return match.slice(1, 4).join('.');
@@ -109,18 +111,20 @@ export function openCodeEnvironment(env, websearch, mcpServers = []) {
 export async function startOpenCodeServer(input) {
   const { binary, workspace, sandbox, signal, websearch } = input;
   const startupTimeout = resolveOpenCodeStartupTimeout(input.env);
-  const env = openCodeEnvironment(input.env, websearch, input.mcpServers);
+  let env = input.env;
   const versionResult = await runProcess({
     binary, args: ['--version'], cwd: workspace, env, sandbox,
     signal: AbortSignal.any([...(signal ? [signal] : []), AbortSignal.timeout(30_000)])
   });
   if (versionResult.code !== 0) throw executionError('OpenCode version check', versionResult);
   const version = requireOpenCodeVersion(versionResult.stdout);
+  const v2 = !version.startsWith('1.');
+  env = (v2 ? openCodeV2Environment : openCodeEnvironment)(input.env, websearch, input.mcpServers);
   const password = randomBytes(32).toString('base64url');
   const authorization = `Basic ${Buffer.from(`opencode:${password}`).toString('base64')}`;
   const child = spawnProcess({
     binary, args: ['serve', '--hostname', '127.0.0.1', '--port', '0'], cwd: workspace, sandbox,
-    env: { ...env, OPENCODE_SERVER_PASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe']
+    env: { ...env, OPENCODE_PASSWORD: password, OPENCODE_SERVER_PASSWORD: password }, stdio: ['ignore', 'pipe', 'pipe']
   });
   let stopping = false;
   let base;
@@ -163,7 +167,7 @@ export async function startOpenCodeServer(input) {
   const httpClient = createOpenCodeHttpClient();
   const request = async (path, { method = 'GET', body, signal: requestSignal = lifetime, stream = false } = {}) => {
     const url = new URL(path, base);
-    url.searchParams.set('directory', workspace);
+    if (!v2) url.searchParams.set('directory', workspace);
     const timeout = new AbortController();
     const timer = setTimeout(() => timeout.abort(new Error('OpenCode HTTP request timed out.')),
       instanceReady ? REQUEST_TIMEOUT_MS : startupTimeout);
@@ -197,12 +201,22 @@ export async function startOpenCodeServer(input) {
         signal: AbortSignal.any([lifetime, startup.signal])
       }).then(() => { throw new Error('OpenCode server did not announce a bound loopback URL.'); })]);
     } finally { startup.abort(); }
-    const health = await request('/global/health');
-    if (health?.healthy !== true || requireOpenCodeVersion(health.version) !== version) {
+    const health = await request(v2 ? '/api/info' : '/global/health');
+    if ((!v2 && health?.healthy !== true) || requireOpenCodeVersion(health.version) !== version) {
       throw new Error('OpenCode authenticated server version does not match the selected executable.');
     }
-    requireOpenCodeApi(await request('/doc'));
-    return { request, stop, failure, signal: lifetime };
+    (v2 ? requireOpenCodeV2Api : requireOpenCodeApi)(await request(v2 ? '/openapi.json' : '/doc'));
+    if (v2) {
+      const deadline = Date.now() + 120_000;
+      for (;;) {
+        const migration = await request('/api/experimental/migration/v1');
+        if (migration.status === 'completed') break;
+        if (!['required', 'running'].includes(migration.status)) throw new Error('OpenCode native history migration failed.');
+        if (Date.now() >= deadline) throw new Error('OpenCode native history migration timed out.');
+        await delay(100, null, { signal: lifetime });
+      }
+    }
+    return { request, stop, failure, signal: lifetime, version, workspace };
   } catch (error) { await stop(); throw error; }
 }
 
