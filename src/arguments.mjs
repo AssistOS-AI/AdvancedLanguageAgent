@@ -3,6 +3,9 @@ import { validatePermissionMode } from './permission-requests.mjs';
 import { AGENT_NAMES, agentChoices, enumerate } from './coding-agents/registry.mjs';
 
 const valueOptions = new Map([
+  ['--native-arg', 'nativeArgs'],
+  ['--login-shell', 'loginShell'],
+  ['--runtime-binary', 'runtimeBinaries'],
   ['--text', 'text'],
   ['--file', 'file'],
   ['--url', 'url'],
@@ -23,7 +26,7 @@ const valueOptions = new Map([
   ['--MCPServers', 'mcpServers']
 ]);
 
-const repeatableOptions = new Set(['ignoredPaths', 'expectedDirectories']);
+const repeatableOptions = new Set(['ignoredPaths', 'expectedDirectories', 'nativeArgs', 'runtimeBinaries']);
 const sourceOptions = new Map([
   ['--text', 'text'],
   ['--file', 'file'],
@@ -47,6 +50,9 @@ function defaultExecutionOptions() {
     ignoredPaths: [],
     expectedDirectories: [],
     interactive: false,
+    nativeInteractive: false,
+    nativeArgs: [],
+    runtimeBinaries: [],
     permissionMode: 'full-access',
     force: false,
     help: false,
@@ -108,6 +114,7 @@ export function parseArguments(argv) {
     if (token === '--help' || token === '-h') options.help = true;
     else if (token === '--version' || token === '-v') options.version = true;
     else if (token === '--interactive' || token === '-i') options.interactive = true;
+    else if (token === '--native-interactive') options.nativeInteractive = true;
     else if (token === '--force') options.force = true;
     else if (token === '--resume-session') options.resumeSession = true;
     else if (token === '--control-stdin') options.controlStdin = true;
@@ -168,6 +175,20 @@ export function parseArguments(argv) {
   if (options.agent && !['auto', ...AGENT_NAMES].includes(options.agent)) {
     throw new ALAError(`--agent must be auto, ${enumerate(AGENT_NAMES)}.`, EXIT_CODES.usage);
   }
+  if (!options.nativeInteractive && (options.nativeArgs.length || options.loginShell || options.runtimeBinaries.length)) {
+    throw new ALAError('--native-arg, --login-shell and --runtime-binary require --native-interactive.', EXIT_CODES.usage);
+  }
+  if (options.nativeInteractive) {
+    const reject = (condition, message) => { if (condition) throw new ALAError(message, EXIT_CODES.usage); };
+    reject(options.interactive, '--native-interactive cannot combine with the ALA prompt loop (-i).');
+    reject(options.instructionParts.length || options.taskFile, 'A native session accepts no task prompt.');
+    reject(options.controlStdin, 'A native session must not read --control-stdin.');
+    reject(options.sessionId || options.resumeSession || options.turnId, 'A native session keeps no transcript.');
+    reject(options.sources.length, 'A native session accepts no --text, --file, --url or --stdin payload.');
+    reject(options.output || options.force, 'A native session writes no result file.');
+    reject(options.model || options.effort, 'A native session leaves model and effort selection to the agent.');
+    reject(options.mcpServers, 'A native session does not configure MCP servers.');
+  }
   return options;
 }
 
@@ -217,7 +238,12 @@ Execution options:
   --stdin                    Add standard input as payload
   --output <path>            Write the result to a file
   --force                    Permit overwriting the output file
-  --interactive, -i          Start or retain an interactive session
+  --interactive, -i          Start or retain the ALA prompt loop
+  --native-interactive       Hand the terminal to the coding agent inside Linux Bubblewrap;
+                             defaults to the caller's cwd and preserves the agent's exit status
+  --native-arg <token>       Native CLI argument, repeatable; requires --native-interactive
+  --login-shell <path>       Absolute login shell before the native agent
+  --runtime-binary <path>    Read-only runtime executable, repeatable; native sessions only
   --model <value>            Override the selected coding agent's model for this execution
   --effort <value|default>   Override the selected coding agent's effort for this execution;
                              default clears the configured effort

@@ -208,3 +208,7 @@ npm run docs:verify
 ## License
 
 See [LICENSE](LICENSE).
+
+## Native terminal
+
+ALA also exposes native Linux terminals through `ala --native-interactive --ca <name> [--cwd <folder>] [--home <folder>]`. This mode hands stdin, stdout and stderr to the native coding agent, defaults to the caller’s current directory, preserves the native exit status and writes no ALA transcript. It uses the shared Bubblewrap launcher with a private procfs and retains the terminal process group. `--native-arg <token>` and `--runtime-binary <absolute-path>` are repeatable; `--login-shell <absolute-path>` loads an explicitly selected login shell before exec. These options require native mode. Native mode refuses task prompts, payloads, controlled stdin, ALA session identifiers, result files, MCP configuration, model and effort overrides, and the ALA prompt loop with exit code 2; unavailable agents or sandbox support fail with exit code 5. `-i` and `--interactive` retain the existing ALA prompt loop. RoboWork supplies robot homes, explicit mounts and masks to ALA’s native launch builder and runner; ALA constructs and starts the coding-agent Bubblewrap process.

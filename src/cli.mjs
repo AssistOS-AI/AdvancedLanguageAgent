@@ -1,3 +1,5 @@
+import { workspaceAliasTarget } from './coding-agents/paths.mjs';
+import { runNativeSession } from './native-terminal.mjs';
 import { closeSync } from 'node:fs';
 import { mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -13,7 +15,6 @@ import { createInteractiveCompleter } from './interactive-completion.mjs';
 import { createPermissionCommand } from './interactive-permissions.mjs';
 import { createThinkingIndicator } from './interactive-status.mjs';
 import { writeResult } from './output.mjs';
-import { SANDBOX_WORKSPACE } from './coding-agents/paths.mjs';
 import { parseExpectedDirectories, pinDirectory } from './coding-agents/folders.mjs';
 import { createDiagnosticLogger, createRuntime } from './runtime.mjs';
 import { createCodingAgentService } from './coding-agents/service.mjs';
@@ -96,13 +97,6 @@ async function listAgentModels(options, io, env) {
   }
 }
 
-function workspaceAliasTarget(alias) {
-  if (alias === undefined) return null;
-  if (typeof alias !== 'string' || !alias.trim() || ['.', '..'].includes(alias) || /[/\\\0]/u.test(alias)) {
-    throw new ALAError('--cwd alias must be a single nonempty folder name.', EXIT_CODES.usage);
-  }
-  return `${SANDBOX_WORKSPACE}/${alias}`;
-}
 
 async function interactiveLoop(runtime, initialPrompt, initialInstruction, options, io, env, signal) {
   const permissionCommand = createPermissionCommand(runtime, options.permissionMode);
@@ -262,6 +256,7 @@ async function runExecution(options, io, env) {
     io.stdout.write(`${await packageVersion()}\n`);
     return EXIT_CODES.success;
   }
+  if (options.nativeInteractive) return runNativeSession(options, io, env);
   // A recorded identity is checked before ALA reads or writes anything a robot can reach, including its home.
   const expected = parseExpectedDirectories(options.expectedDirectories);
   const requestedCwd = options.cwd ? resolve(io.cwd, options.cwd) : null;

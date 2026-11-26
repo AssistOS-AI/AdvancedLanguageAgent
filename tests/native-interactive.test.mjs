@@ -12,7 +12,7 @@ import { onlyOnLinux } from './helpers.mjs';
 
 const expected = {
   codex: ['--sandbox', 'danger-full-access', '--ask-for-approval', 'never'],
-  opencode: [], pi: ['--approve'], omp: ['--auto-approve'],
+  opencode: ['--standalone', '--auto'], pi: ['--approve'], omp: ['--auto-approve'],
   claude: ['--permission-mode', 'bypassPermissions'], vibe: ['--auto-approve', '--trust'],
   agy: ['--dangerously-skip-permissions']
 };

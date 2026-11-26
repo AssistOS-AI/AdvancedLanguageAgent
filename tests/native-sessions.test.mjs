@@ -89,7 +89,7 @@ test('opencode lists root conversations without an explicit permission set, from
   ];
   const calls = [];
   const open = async (file) => ({
-    prepare: (sql) => ({ all: (...args) => { calls.push({ file, sql, args }); return rows; } }),
+    prepare: (sql) => ({ get: () => undefined, all: (...args) => { calls.push({ file, sql, args }); return rows; } }),
     close: () => calls.push('closed')
   });
   const listed = await sessions.listInteractiveSessions({ home, cwd: CWD, limit: 3 }, { open });

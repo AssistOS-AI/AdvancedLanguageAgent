@@ -62,6 +62,7 @@ export function buildSandboxLaunch({ sandbox, binary, args, cwd, env, stdio }, {
       env,
       bwrap,
       privateProc: sandbox.privateProc,
+      ...(sandbox.newSession === false ? { newSession: false } : {}),
       home: sandbox.home,
       folders: sandbox.folders,
       ignoredPaths: sandbox.ignoredPaths,
