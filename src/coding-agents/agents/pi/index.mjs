@@ -31,6 +31,8 @@ export default defineAgent({
           || (entry.type === 'oauth' && filled(entry.access))));
     }
   },
+  nativeInstructions: ({ text, promptPath }) => ({ args: ['--append-system-prompt', promptPath],
+    files: [{ target: promptPath, content: text }] }),
   fullAccess: { args: ['--approve'], env: {} },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')

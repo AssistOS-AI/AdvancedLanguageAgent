@@ -42,6 +42,10 @@ export default defineAgent({
     files: ['.env'],
     detect: async (directory) => Boolean(await readDotenvValue(path.join(directory, '.env'), 'MISTRAL_API_KEY'))
   },
+  nativeInstructions: ({ text, name }) => ({ args: ['--agent', name],
+    env: { VIBE_AGENT_PATHS: JSON.stringify([`/tmp/${name}`]) },
+    files: [{ target: `/tmp/${name}/${name}.toml`,
+      content: `agent_type = "agent"\ninstructions = ${JSON.stringify(text)}\n` }] }),
   fullAccess: { args: ['--auto-approve', '--trust'], env: {} },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')

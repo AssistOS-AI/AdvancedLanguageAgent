@@ -27,6 +27,8 @@ export default defineAgent({
         && Boolean(database.prepare('SELECT 1 FROM auth_credentials WHERE disabled_cause IS NULL LIMIT 1').get())
     ))
   },
+  nativeInstructions: ({ text, promptPath }) => ({ args: ['--append-system-prompt', promptPath],
+    files: [{ target: promptPath, content: text }] }),
   fullAccess: { args: ['--auto-approve'], env: {} },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')

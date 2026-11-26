@@ -84,6 +84,7 @@ export async function runNativeSession(options, io, env) {
       agent: selected.name,
       binary: selected.binary,
       nativeArgs: options.nativeArgs,
+      systemPrompt: options.systemPrompt,
       permissions: options.permissionMode,
       loginShell: options.loginShell ?? null,
       home: executionHome,
@@ -114,6 +115,7 @@ export function runNativeLaunch(launch, io = { stdin: process.stdin, stdout: pro
     const forwardTerm = () => child?.kill('SIGTERM');
     process.on('SIGTERM', forwardTerm);
     const detach = () => {
+      launch.cleanup?.();
       for (const signal of TERMINAL_SIGNALS) process.removeListener(signal, ignore);
       process.removeListener('SIGTERM', forwardTerm);
       if (!inherited && child?.stdin) io.stdin.unpipe(child.stdin);

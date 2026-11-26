@@ -1,3 +1,4 @@
+import { validateSystemPrompt } from './coding-agents/native-instructions.mjs';
 import { ALAError, EXIT_CODES } from './errors.mjs';
 import { validatePermissionMode } from './permission-requests.mjs';
 import { AGENT_NAMES, agentChoices, enumerate } from './coding-agents/registry.mjs';
@@ -114,6 +115,7 @@ export function parseArguments(argv) {
     if (token === '--help' || token === '-h') options.help = true;
     else if (token === '--version' || token === '-v') options.version = true;
     else if (token === '--interactive' || token === '-i') options.interactive = true;
+    else if (token === '--system-prompt') { options.systemPrompt = optionValue(argv, index, token); index += 1; }
     else if (token === '--native-interactive') options.nativeInteractive = true;
     else if (token === '--force') options.force = true;
     else if (token === '--resume-session') options.resumeSession = true;
@@ -174,6 +176,11 @@ export function parseArguments(argv) {
 
   if (options.agent && !['auto', ...AGENT_NAMES].includes(options.agent)) {
     throw new ALAError(`--agent must be auto, ${enumerate(AGENT_NAMES)}.`, EXIT_CODES.usage);
+  }
+  try { validateSystemPrompt(options.systemPrompt); }
+  catch (error) { throw new ALAError(error.message, EXIT_CODES.usage); }
+  if (!options.nativeInteractive && options.systemPrompt !== undefined) {
+    throw new ALAError('--system-prompt requires --native-interactive.', EXIT_CODES.usage);
   }
   if (!options.nativeInteractive && (options.nativeArgs.length || options.loginShell || options.runtimeBinaries.length)) {
     throw new ALAError('--native-arg, --login-shell and --runtime-binary require --native-interactive.', EXIT_CODES.usage);
@@ -241,6 +248,7 @@ Execution options:
   --interactive, -i          Start or retain the ALA prompt loop
   --native-interactive       Hand the terminal to the coding agent inside Linux Bubblewrap;
                              defaults to the caller's cwd and preserves the agent's exit status
+  --system-prompt <text>     Additional native session instructions; no initial turn is submitted
   --native-arg <token>       Native CLI argument, repeatable; requires --native-interactive
   --login-shell <path>       Absolute login shell before the native agent
   --runtime-binary <path>    Read-only runtime executable, repeatable; native sessions only

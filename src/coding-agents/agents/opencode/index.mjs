@@ -47,6 +47,15 @@ export default defineAgent({
       });
     }
   },
+  nativeInstructions: ({ text, promptPath, env }) => {
+    const config = JSON.parse(env.OPENCODE_CONFIG_CONTENT || '{}');
+    if (!isRecord(config) || (config.instructions !== undefined && !Array.isArray(config.instructions))) {
+      throw new TypeError('Invalid OPENCODE_CONFIG_CONTENT instructions.');
+    }
+    return { env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...config,
+      instructions: [...(config.instructions || []), promptPath] }) },
+      files: [{ target: promptPath, content: text }] };
+  },
   fullAccess: { args: ['--standalone', '--auto'], env: { OPENCODE_PERMISSION: JSON.stringify({ '*': 'allow', external_directory: 'allow' }),
     OPENCODE_ENABLE_EXA: '1' } },
   adapter: () => import('./adapter.mjs'),

@@ -40,6 +40,9 @@ export default defineAgent({
       return isRecord(token) && (filled(token.refresh_token) || filled(token.access_token));
     }
   },
+  nativeInstructions: ({ text, name }) => ({ args: ['--add-dir', `/tmp/${name}`, '--agent', name],
+    files: [{ target: `/tmp/${name}/.agents/agents/${name}/agent.md`,
+      content: `---\nname: ${name}\ndescription: Session instructions supplied by the caller.\n---\n${text}\n` }] }),
   fullAccess: { args: ['--dangerously-skip-permissions'], env: {} },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')

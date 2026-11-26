@@ -14,6 +14,7 @@
 //   login: { files, detect(directory) }
 //   adapter()                         resolves to { run, runLive?, listModels }
 //   fullAccess: { args, env }         optional native permission policy, shared by terminal and one-shot launches
+//   nativeInstructions(input)         optional pure native instruction args/env/generated-file description
 //   sessions()                        optional; resolves to the interactive session catalog of native-sessions.mjs
 const fail = (name, field) => {
   throw new TypeError(`Coding-agent descriptor ${name || '(unnamed)'} is missing ${field}.`);
@@ -37,6 +38,9 @@ export function defineAgent(descriptor) {
   if (!Array.isArray(login?.files) || login.files.length === 0) fail(name, 'login.files');
   if (!isFunction(login?.detect)) fail(name, 'login.detect');
   if (!isFunction(adapter)) fail(name, 'adapter');
+  if (descriptor.nativeInstructions !== undefined && !isFunction(descriptor.nativeInstructions)) {
+    fail(name, 'a nativeInstructions function');
+  }
   if (descriptor.sessions !== undefined && !isFunction(descriptor.sessions)) fail(name, 'a sessions loader');
   if (descriptor.fullAccess !== undefined) {
     const { args, env } = descriptor.fullAccess;

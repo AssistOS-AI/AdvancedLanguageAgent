@@ -40,6 +40,8 @@ export default defineAgent({
       return isRecord(config) && filled(config.primaryApiKey);
     }
   },
+  nativeInstructions: ({ text, promptPath }) => ({ args: ['--append-system-prompt-file', promptPath],
+    files: [{ target: promptPath, content: text }] }),
   fullAccess: { args: ['--permission-mode', 'bypassPermissions'], env: { IS_SANDBOX: '1', DISABLE_AUTOUPDATER: '1' } },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')

@@ -29,6 +29,7 @@ export default defineAgent({
         .some(([key, value]) => !['last_refresh', 'auth_mode'].includes(key) && filled(value));
     }
   },
+  nativeInstructions: ({ text }) => ({ args: ['-c', `developer_instructions=${JSON.stringify(text)}`] }),
   fullAccess: { args: ['--sandbox', 'danger-full-access', '--ask-for-approval', 'never'], env: {} },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')

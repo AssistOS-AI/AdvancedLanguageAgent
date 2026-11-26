@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import { ALAError, EXIT_CODES } from '../errors.mjs';
 import { buildInteractiveCommand } from './native-interactive.mjs';
+import { prepareNativeInstructions } from './native-instructions.mjs';
 import { getAgent } from './registry.mjs';
 import { buildSandboxLaunch } from './sandbox-backend.mjs';
 import { canMountPrivateProc, findBubblewrap } from './sandbox.mjs';
@@ -59,6 +60,7 @@ export function buildNativeSessionLaunch({
   agent,
   binary,
   nativeArgs = [],
+  systemPrompt = null,
   permissions = 'full-access',
   loginShell = null,
   home = null,
@@ -94,32 +96,41 @@ export function buildNativeSessionLaunch({
     nativeArgs: requireTokens(nativeArgs),
     permissions
   });
-  // A caller-supplied login shell starts first so the agent inherits the caller's prepared profile. It is the
-  // only program the sandbox starts before the agent, and it is replaced by the agent.
-  const shell = loginShell === null ? null : requireAbsolute('--login-shell', loginShell);
-  const command = shell || argv[0];
-  const commandArgs = shell
-    ? [shell.endsWith('/bash') ? '--login' : '-l', '-c', 'exec "$0" "$@"', ...argv]
-    : argv.slice(1);
-  return launch({
-    sandbox: {
-      hostWorkspace: workspace,
-      ...(workspaceFd !== null ? { workspaceFd } : {}),
-      workspaceTarget,
-      backend: agent,
-      ...(home ? { home } : {}),
-      folders,
-      ignoredPaths,
-      bwrap: launcher,
-      privateProc: true,
-      runtimeBinaries: sessionRuntimeBinaries({ runtimeBinaries, binary, argv }),
-      // A terminal keeps the process group it was started in.
-      newSession: false
-    },
-    binary: command,
-    args: commandArgs,
-    cwd: chdir,
-    env,
-    stdio
-  });
+  const instructions = prepareNativeInstructions(agent, systemPrompt, env);
+  argv.push(...instructions.args);
+  if (Object.keys(instructions.env).length) {
+    argv.unshift('/usr/bin/env', ...Object.entries(instructions.env).map(([key, value]) => `${key}=${value}`));
+  }
+  try {
+    // A caller-supplied login shell starts first so the agent inherits the caller's prepared profile. It is the
+    // only program the sandbox starts before the agent, and it is replaced by the agent.
+    const shell = loginShell === null ? null : requireAbsolute('--login-shell', loginShell);
+    const command = shell || argv[0];
+    const commandArgs = shell
+      ? [shell.endsWith('/bash') ? '--login' : '-l', '-c', 'exec "$0" "$@"', ...argv]
+      : argv.slice(1);
+    const result = launch({
+      sandbox: {
+        hostWorkspace: workspace,
+        ...(workspaceFd !== null ? { workspaceFd } : {}),
+        workspaceTarget,
+        backend: agent,
+        ...(home ? { home } : {}),
+        folders,
+        fileMounts: instructions.fileMounts,
+        ignoredPaths,
+        bwrap: launcher,
+        privateProc: true,
+        runtimeBinaries: sessionRuntimeBinaries({ runtimeBinaries, binary, argv }),
+        // A terminal keeps the process group it was started in.
+        newSession: false
+      },
+      binary: command,
+      args: commandArgs,
+      cwd: chdir,
+      env,
+      stdio
+    });
+    return { ...result, cleanup: instructions.cleanup };
+  } catch (error) { instructions.cleanup(); throw error; }
 }
