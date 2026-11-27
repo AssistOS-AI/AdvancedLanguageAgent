@@ -62,7 +62,8 @@
 
     <h2>Configuration discipline</h2>
     <p>ALA calls no model provider itself; every model interaction runs through the selected coding agent's native CLI. A backend's persisted model is changed with <code>/agent &lt;name&gt; model &lt;model-name&gt;</code>, and <code>--model</code> replaces the selected backend's configured model for one execution, dropping its configured effort when the model differs. The effort of a configured model is persisted with <code>/agent &lt;name&gt; effort &lt;effort|default&gt;</code> and replaced for one execution with <code>--effort</code>. DS002 contains the <a href="specsLoader.html?spec=DS002-execution-and-model-strategy.md">authoritative execution strategy</a>.</p>
-  </article></main>
+  </article><p>Native interactive catalog imports can use <code>all: true</code> to read beyond recent-menu scan and result limits, including untitled native records that identify an interactive conversation and its folder. Default menu queries remain bounded. Hosts resume the returned native conversation ID, independently of whether its terminal process still runs.</p>
+</main>
   <div data-include="partials/footer.html"></div>
   <script src="partials-loader.js"></script>
 </body>

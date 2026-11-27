@@ -165,3 +165,17 @@ test('vibe identifies concurrent conversations by persisted launch binding, incl
   await write(path.join(directory, 'CURRENT'), JSON.stringify({ generation: '../../outside' }));
   assert.deepEqual((await sessions.listInteractiveSessions({ home, cwd: CWD })).map(row => row.id), ['conversation-1']);
 });
+
+test('full index import includes untitled OMP sessions beyond menu scan and row limits', async t => {
+  const home = await fixture(t);
+  const sessions = await catalog('omp');
+  const root = path.join(home, '.omp', 'agent', 'sessions', 'project');
+  for (let i = 0; i < 405; i++) await write(path.join(root, `${i}.jsonl`), lines(
+    { type: 'session', id: `session-${i}`, cwd: CWD, timestamp: '2026-01-01T00:00:00Z' }
+  ));
+  assert.equal((await sessions.listInteractiveSessions({ home, cwd: CWD })).length, 0);
+  const all = await sessions.listInteractiveSessions({ home, cwd: CWD, all: true });
+  assert.equal(all.length, 405);
+  assert.equal(all.every(row => row.title === 'Untitled conversation'), true);
+  assert.deepEqual(sessions.interactiveArguments({ resume: all[0].id }), ['--resume', all[0].id]);
+});

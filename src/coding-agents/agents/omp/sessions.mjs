@@ -14,7 +14,7 @@ import {
 const SCAN_LIMIT = 400;
 const HEADER_BYTES = 8 * 1024;
 
-async function sessionFiles(root) {
+async function sessionFiles(root, all = false) {
   let directories;
   try {
     directories = (await fs.readdir(root, { withFileTypes: true })).filter((entry) => entry.isDirectory());
@@ -26,7 +26,7 @@ async function sessionFiles(root) {
   for (const directory of directories) {
     files.push(...await filesByRecency(path.join(root, directory.name), (name) => name.endsWith('.jsonl')));
   }
-  return files.sort((left, right) => right.mtimeMs - left.mtimeMs).slice(0, SCAN_LIMIT);
+  return files.sort((left, right) => right.mtimeMs - left.mtimeMs).slice(0, all ? undefined : SCAN_LIMIT);
 }
 
 function firstUserText(records) {
@@ -38,16 +38,16 @@ function firstUserText(records) {
   return '';
 }
 
-async function readSession(entry, cwd) {
+async function readSession(entry, cwd, includeEmpty = false) {
   const header = jsonRecords(await readSlice(entry.file, HEADER_BYTES)).find((record) => record.type === 'session');
   if (typeof header?.id !== 'string' || header.cwd !== cwd) return null;
   const head = jsonRecords(await readSlice(entry.file, HEAD_BYTES));
   const named = head.find((record) => record.type === 'title' && typeof record.title === 'string')?.title.trim();
   const firstText = firstUserText(head);
-  if (!named && !firstText) return null;
+  if (!named && !firstText && !includeEmpty) return null;
   return {
     id: header.id,
-    title: sessionTitle(named || firstText),
+    title: sessionTitle(named || firstText) || 'Untitled conversation',
     createdAt: timestampOf(header.timestamp, entry.birthtimeMs || entry.mtimeMs),
     updatedAt: Math.trunc(entry.mtimeMs)
   };
@@ -56,11 +56,11 @@ async function readSession(entry, cwd) {
 export async function listInteractiveSessions(options = {}) {
   const { home, cwd } = requireSessionContext(options);
   const sessions = [];
-  for (const entry of await sessionFiles(path.join(home, '.omp', 'agent', 'sessions'))) {
-    const session = await readSession(entry, cwd).catch(() => null);
+  for (const entry of await sessionFiles(path.join(home, '.omp', 'agent', 'sessions'), options.all === true)) {
+    const session = await readSession(entry, cwd, options.all === true).catch(() => null);
     if (session) sessions.push(session);
   }
-  return newestFirst(sessions, sessionLimit(options.limit));
+  return newestFirst(sessions, (options.all === true ? Number.MAX_SAFE_INTEGER : sessionLimit(options.limit)));
 }
 
 export function interactiveArguments({ resume = null } = {}) {

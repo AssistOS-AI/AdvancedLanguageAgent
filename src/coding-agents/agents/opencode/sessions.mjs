@@ -19,7 +19,7 @@ async function openDatabase(file) {
 
 export async function listInteractiveSessions(options = {}, { open = openDatabase } = {}) {
   const { home, cwd } = requireSessionContext(options);
-  const limit = sessionLimit(options.limit);
+  const limit = (options.all === true ? Number.MAX_SAFE_INTEGER : sessionLimit(options.limit));
   let database;
   try {
     database = await open(path.join(home, '.local', 'share', 'opencode', 'opencode.db'));

@@ -82,3 +82,5 @@ ALA also builds native interactive commands through `buildInteractiveCommand({ a
 ## Conclusion
 
 ALA exposes explicit working directories, configuration homes, and resumable conversations with ALA-owned session transcripts while preserving fail-closed isolation and retained-workspace behavior for callers that rely on ALA's temporary directory.
+
+Native interactive catalogs accept `all: true` for persistent index imports. This mode bypasses recent-menu file scan and result limits and includes untitled conversations with valid native identifiers and interactive folder metadata. The default menu query stays bounded and keeps its existing title filters. Native conversation storage, folder matching and headless-session exclusion are unchanged. A host must use the returned native identifier for resume; a terminal process identifier is not a conversation identifier.

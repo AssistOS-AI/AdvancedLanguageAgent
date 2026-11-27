@@ -75,11 +75,11 @@ export async function listInteractiveSessions(options = {}, { open = openDatabas
       if (!history.has(id) && !String(row.title || '').trim()) continue;
       if (!workspaceFolders(row.workspace_uris).includes(cwd) && !history.get(id)?.has(cwd)) continue;
       const title = sessionTitle(row.title || row.preview);
-      if (!title) continue;
+      if (!title && options.all !== true) continue;
       const updatedAt = modifiedAt(row.last_modified_time);
-      sessions.push({ id, title, createdAt: updatedAt, updatedAt });
+      sessions.push({ id, title: title || 'Untitled conversation', createdAt: updatedAt, updatedAt });
     }
-    return newestFirst(sessions, sessionLimit(options.limit));
+    return newestFirst(sessions, (options.all === true ? Number.MAX_SAFE_INTEGER : sessionLimit(options.limit)));
   } finally {
     database.close();
   }

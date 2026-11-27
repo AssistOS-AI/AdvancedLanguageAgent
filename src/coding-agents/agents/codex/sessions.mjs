@@ -24,8 +24,8 @@ async function directories(directory) {
   }
 }
 
-// The rollouts, newest day first, bounded so that a long history is never read completely.
-async function rollouts(root) {
+// Ordinary menus read recent rollouts; persistent index imports request the complete catalog.
+async function rollouts(root, all = false) {
   const files = [];
   for (const year of await directories(root)) {
     for (const month of await directories(path.join(root, year))) {
@@ -35,7 +35,7 @@ async function rollouts(root) {
           .filter((name) => name.startsWith('rollout-') && name.endsWith('.jsonl')).sort().reverse();
         for (const name of names) {
           files.push(path.join(directory, name));
-          if (files.length >= SCAN_LIMIT) return files;
+          if (!all && files.length >= SCAN_LIMIT) return files;
         }
       }
     }
@@ -62,7 +62,7 @@ function firstUserText(records) {
   return '';
 }
 
-async function readSession(file, cwd, names) {
+async function readSession(file, cwd, names, includeEmpty = false) {
   const head = await readSlice(file, META_BYTES);
   const newline = head.indexOf('\n');
   const [meta] = jsonRecords(newline === -1 ? head : head.slice(0, newline));
@@ -73,11 +73,11 @@ async function readSession(file, cwd, names) {
   if (!id) return null;
   const firstText = firstUserText(jsonRecords(head.slice(0, HEAD_BYTES)));
   const name = names.get(id);
-  if (!name && !firstText) return null;
+  if (!name && !firstText && !includeEmpty) return null;
   const stat = await fs.stat(file);
   return {
     id,
-    title: sessionTitle(name || firstText),
+    title: sessionTitle(name || firstText) || 'Untitled conversation',
     createdAt: timestampOf(payload.timestamp, stat.birthtimeMs || stat.mtimeMs),
     updatedAt: Math.trunc(stat.mtimeMs)
   };
@@ -87,11 +87,11 @@ export async function listInteractiveSessions(options = {}) {
   const { home, cwd } = requireSessionContext(options);
   const names = await threadNames(home);
   const sessions = [];
-  for (const file of await rollouts(path.join(home, '.codex', 'sessions'))) {
-    const session = await readSession(file, cwd, names).catch(() => null);
+  for (const file of await rollouts(path.join(home, '.codex', 'sessions'), options.all === true)) {
+    const session = await readSession(file, cwd, names, options.all === true).catch(() => null);
     if (session) sessions.push(session);
   }
-  return newestFirst(sessions, sessionLimit(options.limit));
+  return newestFirst(sessions, (options.all === true ? Number.MAX_SAFE_INTEGER : sessionLimit(options.limit)));
 }
 
 export function interactiveArguments({ resume = null } = {}) {

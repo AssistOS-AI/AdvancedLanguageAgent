@@ -15,7 +15,7 @@ const SCAN_LIMIT = 400;
 const CHUNK_LIMIT = 64;
 const META_BYTES = 64 * 1024;
 
-async function sessionDirectories(root) {
+async function sessionDirectories(root, all = false) {
   let entries;
   try {
     entries = await fs.readdir(root, { withFileTypes: true });
@@ -30,7 +30,7 @@ async function sessionDirectories(root) {
     const stat = await fs.stat(path.join(directory, 'meta.json')).catch(() => null);
     if (stat?.isFile()) directories.push({ id: entry.name, directory, mtimeMs: stat.mtimeMs, birthtimeMs: stat.birthtimeMs });
   }
-  return directories.sort((left, right) => right.mtimeMs - left.mtimeMs).slice(0, SCAN_LIMIT);
+  return directories.sort((left, right) => right.mtimeMs - left.mtimeMs).slice(0, all ? undefined : SCAN_LIMIT);
 }
 
 // The earliest user message among the session's history chunks.
@@ -71,14 +71,14 @@ async function sessionBinding(directory) {
 
 export const sessionBindingSupported = true;
 
-async function readSession(entry, cwd) {
+async function readSession(entry, cwd, includeEmpty = false) {
   const meta = JSON.parse(await readSlice(path.join(entry.directory, 'meta.json'), META_BYTES));
   const folder = meta?.environment?.working_directory || meta?.origin_directory;
   if (meta?.session_id !== entry.id || folder !== cwd || meta.parent_session_id || meta.archived_at) return null;
   const named = typeof meta.title === 'string' ? meta.title.trim() : '';
   const text = named || await firstUserText(entry.directory);
   const binding = await sessionBinding(entry.directory);
-  if (!text && !binding) return null;
+  if (!text && !binding && !includeEmpty) return null;
   return {
     id: entry.id,
     title: sessionTitle(text) || entry.id,
@@ -91,11 +91,11 @@ async function readSession(entry, cwd) {
 export async function listInteractiveSessions(options = {}) {
   const { home, cwd } = requireSessionContext(options);
   const sessions = [];
-  for (const entry of await sessionDirectories(path.join(home, '.vibe', 'logs', 'session', 'unified'))) {
-    const session = await readSession(entry, cwd).catch(() => null);
+  for (const entry of await sessionDirectories(path.join(home, '.vibe', 'logs', 'session', 'unified'), options.all === true)) {
+    const session = await readSession(entry, cwd, options.all === true).catch(() => null);
     if (session) sessions.push(session);
   }
-  return newestFirst(sessions, sessionLimit(options.limit));
+  return newestFirst(sessions, (options.all === true ? Number.MAX_SAFE_INTEGER : sessionLimit(options.limit)));
 }
 
 export function interactiveArguments({ resume = null } = {}) {

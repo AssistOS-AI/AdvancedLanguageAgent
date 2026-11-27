@@ -1,9 +1,11 @@
 // Read-only helpers for the native session catalogs of interactive coding agents. A coding agent's `sessions`
 // module lists the conversations a person started interactively in one folder, so a caller can offer them for
 // resumption, and returns the native arguments that open a new or resumed conversation.
+// Persistent index imports use all:true to include untitled native records and bypass
+// recent-menu scan and result limits. Default menu behavior remains bounded.
 //
 // Every session module exports:
-//   listInteractiveSessions({ home, cwd, limit })  [{ id, title, createdAt, updatedAt }], newest first
+//   listInteractiveSessions({ home, cwd, limit, all })  [{ id, title, createdAt, updatedAt }], newest first
 //   interactiveArguments({ resume, sessionId })      native arguments for the interactive binary
 //
 // `home` is the home directory the agent runs with, `cwd` the absolute folder of the conversation. Only

@@ -34,19 +34,19 @@ function lastTitle(records) {
   return custom || generated;
 }
 
-async function readSession(entry, cwd) {
+async function readSession(entry, cwd, includeEmpty = false) {
   const id = entry.name.slice(0, -'.jsonl'.length);
   if (!UUID.test(id)) return null;
   const head = jsonRecords(await readSlice(entry.file, HEAD_BYTES));
   const origin = head.find((record) => typeof record.entrypoint === 'string');
   if (origin?.entrypoint !== 'cli' || origin.cwd !== cwd) return null;
   const firstText = firstUserText(head);
-  if (!firstText) return null;
+  if (!firstText && !includeEmpty) return null;
   const tail = jsonRecords(await readSlice(entry.file, HEAD_BYTES, { fromEnd: true }));
   const title = lastTitle(tail) || lastTitle(head) || firstText;
   return {
     id,
-    title: sessionTitle(title),
+    title: sessionTitle(title) || 'Untitled conversation',
     createdAt: timestampOf(origin.timestamp, entry.birthtimeMs || entry.mtimeMs),
     updatedAt: Math.trunc(entry.mtimeMs)
   };
@@ -55,13 +55,13 @@ async function readSession(entry, cwd) {
 export async function listInteractiveSessions(options = {}) {
   const { home, cwd } = requireSessionContext(options);
   const directory = path.join(home, '.claude', 'projects', projectDirectoryName(cwd));
-  const files = (await filesByRecency(directory, (name) => name.endsWith('.jsonl'))).slice(0, SCAN_LIMIT);
+  const files = (await filesByRecency(directory, (name) => name.endsWith('.jsonl'))).slice(0, options.all === true ? undefined : SCAN_LIMIT);
   const sessions = [];
   for (const entry of files) {
-    const session = await readSession(entry, cwd);
+    const session = await readSession(entry, cwd, options.all === true);
     if (session) sessions.push(session);
   }
-  return newestFirst(sessions, sessionLimit(options.limit));
+  return newestFirst(sessions, (options.all === true ? Number.MAX_SAFE_INTEGER : sessionLimit(options.limit)));
 }
 
 // A new conversation may be opened under an identifier chosen in advance, so a caller knows it from the start.
