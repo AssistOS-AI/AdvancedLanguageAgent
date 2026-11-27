@@ -43,6 +43,9 @@ export default defineAgent({
   nativeInstructions: ({ text, name }) => ({ args: ['--add-dir', `/tmp/${name}`, '--agent', name],
     files: [{ target: `/tmp/${name}/.agents/agents/${name}/agent.md`,
       content: `---\nname: ${name}\ndescription: Session instructions supplied by the caller.\n---\n${text}\n` }] }),
+  nativeInterrupt: '\u001b',
+  nativeMcp: ({ name, command, args, directory }) => ({ args: ['--add-dir', directory],
+    files: [{ target: `${directory}/.agents/mcp_config.json`, content: JSON.stringify({ mcpServers: { [name]: { command, args } } }) }] }),
   fullAccess: { args: ['--dangerously-skip-permissions'], env: {} },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')

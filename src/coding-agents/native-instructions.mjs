@@ -16,14 +16,24 @@ export function validateSystemPrompt(value) {
 
 // Generated configuration is private to this launch and mounted only in its sandbox. It never changes
 // the caller's project or shared agent home. Adapters describe native instruction channels, not user turns.
-export function prepareNativeInstructions(agent, value, env = {}) {
+export function prepareNativeInstructions(agent, value, env = {}, mcp = null) {
   const text = validateSystemPrompt(value);
   const empty = { args: [], env: {}, fileMounts: [], cleanup() {} };
-  if (text === null) return empty;
+  if (text === null && !mcp) return empty;
+  if (mcp && (!/^[a-z][a-z0-9_]{0,63}$/u.test(mcp.name || '') || !path.isAbsolute(mcp.command || '')
+      || !Array.isArray(mcp.args) || mcp.args.some(arg => typeof arg !== 'string' || arg.includes('\0'))
+      || (mcp.extension && !path.isAbsolute(mcp.extension)))) throw new TypeError('Invalid native MCP configuration.');
   const configure = getAgent(agent)?.nativeInstructions;
-  if (!configure) throw new TypeError(`Native systemPrompt is not supported by coding agent: ${agent}`);
-  const name = `ala-${createHash('sha256').update(text).digest('hex').slice(0, 32)}`;
-  const config = configure({ text, name, env, promptPath: `/tmp/${name}.md` });
+  if (text !== null && !configure) throw new TypeError(`Native systemPrompt is not supported by coding agent: ${agent}`);
+  const name = `ala-${createHash('sha256').update(JSON.stringify([text, mcp])).digest('hex').slice(0, 32)}`;
+  let config = text === null ? {} : configure({ text, name, env, promptPath: `/tmp/${name}.md` });
+  if (mcp) {
+    const configureMcp = getAgent(agent)?.nativeMcp;
+    if (!configureMcp) throw new TypeError(`Native MCP is not supported by coding agent: ${agent}`);
+    const added = configureMcp({ ...mcp, env: { ...env, ...config.env }, directory: `/tmp/${name}-mcp` });
+    config = { args: [...(config.args || []), ...(added.args || [])], env: { ...config.env, ...added.env },
+      files: [...(config.files || []), ...(added.files || [])] };
+  }
   if (!config.files?.length) return { ...empty, ...config };
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ala-instructions-'));
   const cleanup = () => fs.rmSync(directory, { recursive: true, force: true });

@@ -42,6 +42,8 @@ export default defineAgent({
   },
   nativeInstructions: ({ text, promptPath }) => ({ args: ['--append-system-prompt-file', promptPath],
     files: [{ target: promptPath, content: text }] }),
+  nativeInterrupt: '\u001b',
+  nativeMcp: ({ name, command, args }) => ({ args: ['--mcp-config', JSON.stringify({ mcpServers: { [name]: { command, args } } })] }),
   fullAccess: { args: ['--permission-mode', 'bypassPermissions'], env: { IS_SANDBOX: '1', DISABLE_AUTOUPDATER: '1' } },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')

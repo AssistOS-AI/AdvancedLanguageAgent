@@ -46,6 +46,8 @@ export default defineAgent({
     env: { VIBE_AGENT_PATHS: JSON.stringify([`/tmp/${name}`]) },
     files: [{ target: `/tmp/${name}/${name}.toml`,
       content: `agent_type = "agent"\ninstructions = ${JSON.stringify(text)}\n` }] }),
+  nativeInterrupt: '\u001b',
+  nativeMcp: ({ name, command, args }) => ({ env: { VIBE_MCP_SERVERS: JSON.stringify([{ name, transport: 'stdio', command, args }]) } }),
   fullAccess: { args: ['--auto-approve', '--trust'], env: {} },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')

@@ -115,3 +115,28 @@ exit 11
     } finally { launch.cleanup(); }
   }
 });
+
+const nativeMcp = { name: 'robowork_worker', command: '/usr/bin/node', args: ['/run/robowork-worker/mcp.mjs'], extension: '/run/robowork-worker/mcp.mjs' };
+for (const agent of AGENT_NAMES) test(`${agent}: native worker tools coexist with system instructions without changing shared files`, () => {
+  const result = prepareNativeInstructions(agent, 'Supervise work', {}, nativeMcp);
+  try {
+    const config = JSON.stringify({ args: result.args, env: result.env, files: result.fileMounts.map(f => fs.readFileSync(f.source, 'utf8')) });
+    assert.ok(config.includes('/run/robowork-worker/mcp.mjs'));
+    if (agent === 'opencode') {
+      const inline = JSON.parse(result.env.OPENCODE_CONFIG_CONTENT);
+      assert.equal(inline.instructions.length, 1);
+      assert.deepEqual(inline.mcp.servers.robowork_worker.command, [nativeMcp.command, ...nativeMcp.args]);
+    }
+    assert.ok(result.fileMounts.every(f => f.target.startsWith('/tmp/')));
+  } finally { result.cleanup(); }
+});
+test('invalid native MCP configuration is rejected before launch', () => {
+  for (const change of [{ name: 'bad.name' }, { command: 'node' }, { args: ['a\0b'] }, { extension: 'relative.mjs' }]) {
+    assert.throws(() => prepareNativeInstructions('codex', null, {}, { ...nativeMcp, ...change }), /Invalid native MCP/u);
+  }
+});
+
+test('native argument flags are forwarded as values, including explicit session resume', () => {
+  assert.deepEqual(parseArguments(['--native-interactive', '--native-arg', '--session', '--native-arg', 'ses_test']).nativeArgs, ['--session', 'ses_test']);
+  assert.throws(() => parseArguments(['--native-interactive', '--native-arg']), /requires a value/u);
+});

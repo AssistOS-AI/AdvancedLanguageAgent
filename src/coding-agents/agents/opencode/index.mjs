@@ -56,6 +56,12 @@ export default defineAgent({
       instructions: [...(config.instructions || []), promptPath] }) },
       files: [{ target: promptPath, content: text }] };
   },
+  nativeInterrupt: '\u001b',
+  nativeMcp: ({ name, command, args, env }) => {
+    const config = JSON.parse(env.OPENCODE_CONFIG_CONTENT || '{}');
+    return { env: { OPENCODE_CONFIG_CONTENT: JSON.stringify({ ...config,
+      mcp: { ...config.mcp, servers: { ...config.mcp?.servers, [name]: { type: 'local', command: [command, ...args], enabled: true } } } }) } };
+  },
   fullAccess: { args: ['--standalone', '--auto'], env: { OPENCODE_PERMISSION: JSON.stringify({ '*': 'allow', external_directory: 'allow' }),
     OPENCODE_ENABLE_EXA: '1' } },
   adapter: () => import('./adapter.mjs'),

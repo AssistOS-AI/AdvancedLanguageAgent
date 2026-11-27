@@ -33,6 +33,11 @@ export default defineAgent({
   },
   nativeInstructions: ({ text, promptPath }) => ({ args: ['--append-system-prompt', promptPath],
     files: [{ target: promptPath, content: text }] }),
+  nativeInterrupt: '\u001b',
+  nativeMcp: ({ extension }) => {
+    if (!extension) throw new TypeError('This native MCP adapter requires an extension bridge.');
+    return { args: ['--extension', extension] };
+  },
   fullAccess: { args: ['--approve'], env: {} },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')

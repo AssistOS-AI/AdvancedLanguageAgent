@@ -157,7 +157,9 @@ export function parseArguments(argv) {
     else if (token === '--stdin') options.sources.push({ type: 'stdin' });
     else if (valueOptions.has(token)) {
       const key = valueOptions.get(token);
-      const value = optionValue(argv, index, token);
+      const value = token === '--native-arg' && typeof argv[index + 1] === 'string'
+        && /^[A-Za-z0-9_-]{1,128}$/u.test(argv[index + 1])
+        ? argv[index + 1] : optionValue(argv, index, token);
       if (sourceOptions.has(token)) options.sources.push({ type: sourceOptions.get(token), value });
       else if (repeatableOptions.has(key)) options[key].push(value);
       else options[key] = value;

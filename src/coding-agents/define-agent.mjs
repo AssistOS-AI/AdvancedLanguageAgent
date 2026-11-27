@@ -38,6 +38,8 @@ export function defineAgent(descriptor) {
   if (!Array.isArray(login?.files) || login.files.length === 0) fail(name, 'login.files');
   if (!isFunction(login?.detect)) fail(name, 'login.detect');
   if (!isFunction(adapter)) fail(name, 'adapter');
+  if (descriptor.nativeMcp !== undefined && !isFunction(descriptor.nativeMcp)) fail(name, 'a nativeMcp function');
+  if (descriptor.nativeInterrupt !== undefined && (typeof descriptor.nativeInterrupt !== 'string' || !descriptor.nativeInterrupt.length || descriptor.nativeInterrupt.length > 8)) fail(name, 'a bounded nativeInterrupt string');
   if (descriptor.nativeInstructions !== undefined && !isFunction(descriptor.nativeInstructions)) {
     fail(name, 'a nativeInstructions function');
   }

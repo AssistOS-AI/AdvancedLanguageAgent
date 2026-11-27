@@ -30,6 +30,9 @@ export default defineAgent({
     }
   },
   nativeInstructions: ({ text }) => ({ args: ['-c', `developer_instructions=${JSON.stringify(text)}`] }),
+  nativeInterrupt: '\u001b',
+  nativeMcp: ({ name, command, args }) => ({ args: ['-c', `mcp_servers.${name}.command=${JSON.stringify(command)}`,
+    '-c', `mcp_servers.${name}.args=${JSON.stringify(args)}`] }),
   fullAccess: { args: ['--sandbox', 'danger-full-access', '--ask-for-approval', 'never'], env: {} },
   adapter: () => import('./adapter.mjs'),
   sessions: () => import('./sessions.mjs')

@@ -33,6 +33,8 @@ Persistent documentation, specifications, and comments must be written in Englis
 
 The runtime supports Node.js 20 or newer and uses the built-in Node.js test runner. No formatter or linter contract is imposed beyond the module, file-size, line-length, and documentation rules in this specification.
 
+Native interactive MCP configuration and cancellation key mappings belong to each coding-agent descriptor (`nativeMcp` and `nativeInterrupt`). Generic launch code validates and applies them without backend-name branches.
+
 ## Conclusion
 
 ALA code must remain modular, portable, testable without credentials, and free of runtime npm dependencies.

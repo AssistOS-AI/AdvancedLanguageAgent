@@ -61,6 +61,7 @@ export function buildNativeSessionLaunch({
   binary,
   nativeArgs = [],
   systemPrompt = null,
+  nativeMcp = null,
   permissions = 'full-access',
   loginShell = null,
   home = null,
@@ -96,7 +97,7 @@ export function buildNativeSessionLaunch({
     nativeArgs: requireTokens(nativeArgs),
     permissions
   });
-  const instructions = prepareNativeInstructions(agent, systemPrompt, env);
+  const instructions = prepareNativeInstructions(agent, systemPrompt, env, nativeMcp);
   argv.push(...instructions.args);
   if (Object.keys(instructions.env).length) {
     argv.unshift('/usr/bin/env', ...Object.entries(instructions.env).map(([key, value]) => `${key}=${value}`));
@@ -121,7 +122,7 @@ export function buildNativeSessionLaunch({
         ignoredPaths,
         bwrap: launcher,
         privateProc: true,
-        runtimeBinaries: sessionRuntimeBinaries({ runtimeBinaries, binary, argv }),
+        runtimeBinaries: sessionRuntimeBinaries({ runtimeBinaries: [...runtimeBinaries, ...(nativeMcp ? [nativeMcp.command] : [])], binary, argv }),
         // A terminal keeps the process group it was started in.
         newSession: false
       },

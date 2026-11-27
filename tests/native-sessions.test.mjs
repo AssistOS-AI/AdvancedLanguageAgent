@@ -144,3 +144,24 @@ test('session catalogs refuse relative locations and unsafe identifiers', async 
     assert.throws(() => sessions.interactiveArguments({ resume: '../escape' }), /Invalid session/u);
   }
 });
+
+test('vibe identifies concurrent conversations by persisted launch binding, including an untitled session', async t => {
+  const home = await fixture(t);
+  const sessions = await catalog('vibe');
+  assert.equal(sessions.sessionBindingSupported, true);
+  const keys = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222'];
+  for (let i = 0; i < keys.length; i++) {
+    const directory = path.join(home, '.vibe/logs/session/unified', `conversation-${i}`);
+    await write(path.join(directory, 'meta.json'), JSON.stringify({ session_id: `conversation-${i}`, origin_directory: CWD }));
+    await write(path.join(directory, 'CURRENT'), JSON.stringify({ generation: '0000000000000001' }));
+    await write(path.join(directory, 'generations/0000000000000001/runtime-state.json'), JSON.stringify({
+      core_system_instructions: `Native instructions\nSession binding: ${keys[i]}\nMore native instructions`,
+    }));
+  }
+  const listed = await sessions.listInteractiveSessions({ home, cwd: CWD });
+  assert.equal(listed.length, 2);
+  for (let i = 0; i < keys.length; i++) assert.equal(listed.find(row => row.id === `conversation-${i}`).sessionBinding, keys[i]);
+  const directory = path.join(home, '.vibe/logs/session/unified/conversation-0');
+  await write(path.join(directory, 'CURRENT'), JSON.stringify({ generation: '../../outside' }));
+  assert.deepEqual((await sessions.listInteractiveSessions({ home, cwd: CWD })).map(row => row.id), ['conversation-1']);
+});

@@ -55,16 +55,34 @@ async function firstUserText(directory) {
   return first?.text || '';
 }
 
+// The native runtime snapshot contains the exact instruction configuration of this conversation.
+// Never infer ownership from a title, a timestamp, or a PID in another PID namespace.
+async function sessionBinding(directory) {
+  try {
+    const current = JSON.parse(await readSlice(path.join(directory, 'CURRENT'), META_BYTES));
+    if (!/^[0-9]{16}$/u.test(current.generation)) return null;
+    const state = JSON.parse(await readSlice(path.join(directory, 'generations', current.generation, 'runtime-state.json'), 8 * 1024 * 1024));
+    const text = state.core_system_instructions;
+    if (typeof text !== 'string') return null;
+    const keys = [...text.matchAll(/^Session binding: ([a-f0-9-]{36})$/gmu)].map(match => match[1]);
+    return keys.length === 1 ? keys[0] : null;
+  } catch { return null; }
+}
+
+export const sessionBindingSupported = true;
+
 async function readSession(entry, cwd) {
   const meta = JSON.parse(await readSlice(path.join(entry.directory, 'meta.json'), META_BYTES));
   const folder = meta?.environment?.working_directory || meta?.origin_directory;
   if (meta?.session_id !== entry.id || folder !== cwd || meta.parent_session_id || meta.archived_at) return null;
   const named = typeof meta.title === 'string' ? meta.title.trim() : '';
   const text = named || await firstUserText(entry.directory);
-  if (!text) return null;
+  const binding = await sessionBinding(entry.directory);
+  if (!text && !binding) return null;
   return {
     id: entry.id,
-    title: sessionTitle(text),
+    title: sessionTitle(text) || entry.id,
+    sessionBinding: binding,
     createdAt: timestampOf(meta.start_time, entry.birthtimeMs || entry.mtimeMs),
     updatedAt: timestampOf(meta.bumped_at || meta.end_time, entry.mtimeMs)
   };
